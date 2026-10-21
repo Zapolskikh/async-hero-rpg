@@ -74,6 +74,7 @@ static func enemy_snapshot(eid: String, lvl: int) -> Dictionary:
 		spells.append({"id": s, "lvl": 1})
 	return {
 		"name": e["name"], "color": e["color"], "boss": e.get("boss", false), "target": e["target"],
+		"sprite": e.get("sprite", ""), "ranged": e.get("ranged", false),
 		"stats": {
 			"hp": e["hp"] * sc, "atk": e["atk"] * sc, "power": e["power"] * sc,
 			"armor": e["armor"] * (1.0 + 0.12 * (lvl - 1)), "haste": e["haste"], "crit": 0.05,

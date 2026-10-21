@@ -167,6 +167,7 @@ func _act(u: BattleUnit) -> void:
 		u.attack_cd = u.attack_interval()
 		var t := pick_target(u)
 		if t != null:
+			_emit({"t": "attack", "uid": u.uid, "tgt": t.uid})
 			_deal(u, t, u.atk * rng.randf_range(0.9, 1.1), true, false)
 
 ## Walks Slot 1 -> 2 -> 3, starting from the current rotation position.
@@ -270,7 +271,8 @@ func _find_spell_target(u: BattleUnit, sid: String):
 func _cast(u: BattleUnit, sid: String, lvl: int, target) -> void:
 	var s: Dictionary = Db.SPELLS[sid]
 	var amount: float = s["mult"] * Db.spell_level_mult(lvl) * u.power
-	_emit({"t": "spell", "uid": u.uid, "text": s["name"]})
+	var tgt_uid: int = target.uid if target is BattleUnit else u.uid
+	_emit({"t": "spell", "uid": u.uid, "text": s["name"], "sid": sid, "kind": s["kind"], "tgt": tgt_uid})
 	match s["kind"]:
 		"damage", "execute":
 			_deal(u, target, amount, true, false)
@@ -352,7 +354,7 @@ func _deal(src: BattleUnit, t: BattleUnit, amount: float, can_crit: bool, is_dot
 			_emit({"t": "absorb", "uid": t.uid, "v": absorbed})
 	if dmg > 0.0:
 		t.hp = max(0.0, t.hp - dmg)
-		_emit({"t": "dmg", "uid": t.uid, "v": dmg, "crit": crit, "dot": is_dot})
+		_emit({"t": "dmg", "uid": t.uid, "v": dmg, "crit": crit, "dot": is_dot, "src": src.uid})
 	src.dealt += dmg + absorbed
 	if not t.alive():
 		t.casting = {}

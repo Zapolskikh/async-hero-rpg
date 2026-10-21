@@ -64,23 +64,23 @@ const STARTER_SPELLS := ["strike", "fireball", "heal", "barrier", "kick"]
 # target: front / back / random / lowest  (who basic attacks and damage spells hit)
 const ENEMIES := {
 	"brute":    {"name": "Громила",  "hp": 260, "atk": 15, "power": 12, "armor": 10, "haste": 0.0, "target": "front",
-				 "spells": ["e_smash"], "color": "#c0533a", "role": "brute"},
+				 "spells": ["e_smash"], "color": "#c0533a", "sprite": "brute", "ranged": false, "role": "brute"},
 	"caster":   {"name": "Колдун",   "hp": 150, "atk": 8,  "power": 16, "armor": 0,  "haste": 0.0, "target": "random",
-				 "spells": ["e_bolt"], "color": "#8a4fd8", "role": "caster"},
+				 "spells": ["e_bolt"], "color": "#8a4fd8", "sprite": "caster", "ranged": true, "role": "caster"},
 	"healer":   {"name": "Знахарь",  "hp": 170, "atk": 7,  "power": 14, "armor": 5,  "haste": 0.0, "target": "front",
-				 "spells": ["e_mend"], "color": "#4fbf6a", "role": "healer"},
+				 "spells": ["e_mend"], "color": "#4fbf6a", "sprite": "e_healer", "ranged": true, "role": "healer"},
 	"tank":     {"name": "Страж",    "hp": 420, "atk": 9,  "power": 10, "armor": 45, "haste": 0.0, "target": "front",
-				 "spells": ["e_guard"], "color": "#7f8c99", "role": "tank"},
+				 "spells": ["e_guard"], "color": "#7f8c99", "sprite": "e_tank", "ranged": false, "role": "tank"},
 	"ranged":   {"name": "Лучник",   "hp": 160, "atk": 12, "power": 9,  "armor": 5,  "haste": 0.1, "target": "random",
-				 "spells": ["e_volley"], "color": "#c9a23a", "role": "ranged"},
+				 "spells": ["e_volley"], "color": "#c9a23a", "sprite": "ranged", "ranged": true, "role": "ranged"},
 	"assassin": {"name": "Убийца",   "hp": 170, "atk": 12, "power": 13, "armor": 5,  "haste": 0.2, "target": "back",
-				 "spells": ["e_backstab"], "color": "#3a3f4f", "role": "assassin"},
+				 "spells": ["e_backstab"], "color": "#3a3f4f", "sprite": "assassin", "ranged": false, "role": "assassin"},
 	"poisoner": {"name": "Отравитель", "hp": 160, "atk": 8, "power": 11, "armor": 5,  "haste": 0.0, "target": "random",
-				 "spells": ["e_venom"], "color": "#6c9a2a", "role": "disruptor"},
+				 "spells": ["e_venom"], "color": "#6c9a2a", "sprite": "poisoner", "ranged": true, "role": "disruptor"},
 	"boss_ogre":  {"name": "Вождь огров", "hp": 1500, "atk": 22, "power": 16, "armor": 20, "haste": 0.0, "target": "front",
-				 "spells": ["e_crush", "e_smash"], "color": "#9c2f2f", "role": "boss", "boss": true},
+				 "spells": ["e_crush", "e_smash"], "color": "#9c2f2f", "sprite": "boss_ogre", "ranged": false, "role": "boss", "boss": true},
 	"boss_lich":  {"name": "Лич", "hp": 1100, "atk": 14, "power": 18, "armor": 15, "haste": 0.0, "target": "random",
-				 "spells": ["e_cataclysm", "e_bolt", "e_dark_mend"], "color": "#5a3fa0", "role": "boss", "boss": true},
+				 "spells": ["e_cataclysm", "e_bolt", "e_dark_mend"], "color": "#5a3fa0", "sprite": "boss_lich", "ranged": true, "role": "boss", "boss": true},
 }
 
 # Campaign: each level is a list of waves; each wave is 1-4 enemy ids.
@@ -164,15 +164,15 @@ static func spell_level_mult(spell_level: int) -> float:
 
 # Guild mercenary templates (concept 9: decent generic builds, clearly NPC).
 const MERC_TEMPLATES := [
-	{"role": "Танк",     "spells": ["taunt", "barrier", "strike"],     "stat": {"hp": 1.4, "armor": 1.8, "atk": 0.8, "power": 0.8}},
-	{"role": "Лекарь",   "spells": ["heal", "renew", "barrier"],       "stat": {"hp": 0.9, "power": 1.2}},
-	{"role": "Лекарь",   "spells": ["heal", "cleanse", "strike"],      "stat": {"hp": 0.9, "power": 1.15}},
-	{"role": "Пиромант", "spells": ["ignite", "fireball", "strike"],   "stat": {"hp": 0.85, "power": 1.2}},
-	{"role": "Ядовик",   "spells": ["poison_cloud", "ignite", "strike"], "stat": {"hp": 0.85, "power": 1.15}},
-	{"role": "Боец",     "spells": ["cleave", "strike", "execute"],    "stat": {"hp": 1.1, "atk": 1.2}},
-	{"role": "Страж",    "spells": ["kick", "bash", "strike"],         "stat": {"hp": 1.1, "atk": 1.1, "armor": 1.3}},
-	{"role": "Паладин",  "spells": ["barrier", "heal", "strike"],      "stat": {"hp": 1.2, "armor": 1.3}},
-	{"role": "Охотник",  "spells": ["kick", "fireball", "strike"],     "stat": {"hp": 0.9, "power": 1.1, "atk": 1.1}},
+	{"sprite": "tank", "ranged": false, "role": "Танк",     "spells": ["taunt", "barrier", "strike"],     "stat": {"hp": 1.4, "armor": 1.8, "atk": 0.8, "power": 0.8}},
+	{"sprite": "healer", "ranged": true, "role": "Лекарь",   "spells": ["heal", "renew", "barrier"],       "stat": {"hp": 0.9, "power": 1.2}},
+	{"sprite": "healer", "ranged": true, "role": "Лекарь",   "spells": ["heal", "cleanse", "strike"],      "stat": {"hp": 0.9, "power": 1.15}},
+	{"sprite": "pyromancer", "ranged": true, "role": "Пиромант", "spells": ["ignite", "fireball", "strike"],   "stat": {"hp": 0.85, "power": 1.2}},
+	{"sprite": "poisoner_ally", "ranged": false, "role": "Ядовик",   "spells": ["poison_cloud", "ignite", "strike"], "stat": {"hp": 0.85, "power": 1.15}},
+	{"sprite": "fighter", "ranged": false, "role": "Боец",     "spells": ["cleave", "strike", "execute"],    "stat": {"hp": 1.1, "atk": 1.2}},
+	{"sprite": "guard", "ranged": false, "role": "Страж",    "spells": ["kick", "bash", "strike"],         "stat": {"hp": 1.1, "atk": 1.1, "armor": 1.3}},
+	{"sprite": "paladin", "ranged": false, "role": "Паладин",  "spells": ["barrier", "heal", "strike"],      "stat": {"hp": 1.2, "armor": 1.3}},
+	{"sprite": "hunter", "ranged": true, "role": "Охотник",  "spells": ["kick", "fireball", "strike"],     "stat": {"hp": 0.9, "power": 1.1, "atk": 1.1}},
 ]
 
 const MERC_NAMES := ["Борис", "Ольга", "Тарас", "Мира", "Гордей", "Злата", "Яромир", "Вера", "Ратибор",

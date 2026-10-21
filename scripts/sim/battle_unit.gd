@@ -14,6 +14,8 @@ var color: Color = Color.WHITE
 var is_boss := false
 var is_npc := false
 var target_rule := "front"
+var sprite := ""         # visual only: assets/units/<sprite>.png
+var ranged := false      # visual only: shoots instead of stepping forward
 
 var max_hp: float
 var hp: float
@@ -49,6 +51,8 @@ func _init(p_uid: int, p_side: int, p_slot: int, snap: Dictionary) -> void:
 	is_boss = snap.get("boss", false)
 	is_npc = snap.get("npc", false)
 	target_rule = snap.get("target", "front")
+	sprite = snap.get("sprite", "")
+	ranged = snap.get("ranged", false)
 	var st: Dictionary = snap["stats"]
 	max_hp = st["hp"]
 	hp = max_hp

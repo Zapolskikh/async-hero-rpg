@@ -205,11 +205,16 @@ func _party_panel() -> Control:
 			continue
 		var card := UI.panel(UI.PANEL_LIGHT, 6)
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var ch := UI.hbox(6)
+		card.add_child(ch)
+		Roster.ensure_visuals(snap)
+		ch.add_child(UI.portrait(snap["sprite"], 72))
 		var cv := UI.vbox(2)
-		card.add_child(cv)
+		cv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		ch.add_child(cv)
 		var slot_name: String = ["Перед", "Слот 2", "Слот 3", "Тыл"][i]
-		cv.add_child(UI.label("%s: %s" % [slot_name, snap["name"]], 18, UI.ACCENT if id == "hero" else Color.WHITE))
-		cv.add_child(UI.label("%s, ур. %d, сила %d" % [snap["role"], snap["level"], Roster.power_score(snap)], 16, UI.MUTED))
+		cv.add_child(UI.wrap_label("%s: %s" % [slot_name, snap["name"]], 18, UI.ACCENT if id == "hero" else Color.WHITE))
+		cv.add_child(UI.wrap_label("%s, ур. %d, сила %d" % [snap["role"], snap["level"], Roster.power_score(snap)], 15, UI.MUTED))
 		var arrows := UI.hbox(4)
 		var idx := i
 		var back := UI.button("◀", func(): Game.move_in_party(idx, 1), 18, 44)
@@ -315,7 +320,10 @@ func _build_hero() -> Control:
 	sp.custom_minimum_size.x = 300
 	var sv := UI.vbox(4)
 	sp.add_child(UI.scroll(sv))
-	sv.add_child(UI.label("%s, ур. %d" % [hero["name"], hero["level"]], 24, UI.ACCENT))
+	var hh := UI.hbox(8)
+	hh.add_child(UI.portrait("hero", 90))
+	hh.add_child(UI.label("%s\nур. %d" % [hero["name"], hero["level"]], 24, UI.ACCENT))
+	sv.add_child(hh)
 	sv.add_child(UI.label("Опыт %d / %d" % [hero["xp"], Db.xp_to_next(hero["level"])], 16, UI.MUTED))
 	sv.add_child(UI.label("Сила (Power): %d" % Roster.power_score(snap), 20))
 	for row in [["Здоровье", "%d" % st["hp"]], ["Атака", "%d" % st["atk"]], ["Сила заклинаний", "%d" % st["power"]],
@@ -429,12 +437,16 @@ func _build_mercs() -> Control:
 		var hired: bool = Game.party_order.has(m["id"])
 		var card := UI.panel(UI.PANEL_LIGHT if not hired else Color("#34452f"), 8)
 		card.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var mh := UI.hbox(8)
+		card.add_child(mh)
+		mh.add_child(UI.portrait(m.get("sprite", "hero"), 92))
 		var cv := UI.vbox(3)
-		card.add_child(cv)
-		cv.add_child(UI.label("%s — %s" % [m["name"], m["role"]], 20, Color.WHITE))
-		cv.add_child(UI.label("Гильдейский наёмник (NPC) · ур. %d · сила %d" % [m["level"], Roster.power_score(m)], 15, UI.MUTED))
+		cv.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		mh.add_child(cv)
+		cv.add_child(UI.wrap_label("%s — %s" % [m["name"], m["role"]], 20, Color.WHITE))
+		cv.add_child(UI.wrap_label("Гильдейский наёмник (NPC) · ур. %d · сила %d" % [m["level"], Roster.power_score(m)], 15, UI.MUTED))
 		var st: Dictionary = m["stats"]
-		cv.add_child(UI.label("HP %d  Атк %d  Магия %d  Броня %d" % [st["hp"], st["atk"], st["power"], st["armor"]], 15))
+		cv.add_child(UI.wrap_label("HP %d  Атк %d  Магия %d  Броня %d" % [st["hp"], st["atk"], st["power"], st["armor"]], 15, Color.WHITE))
 		cv.add_child(UI.wrap_label("Ротация: " + Roster.spell_tags_text(m), 15, Color("#ffd27a")))
 		var id: String = m["id"]
 		var b := UI.button("Уволить" if hired else "Нанять", func(): Game.toggle_hire(id), 18)

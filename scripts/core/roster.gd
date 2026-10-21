@@ -30,7 +30,7 @@ static func hero_snapshot(hero: Dictionary, collection: Dictionary) -> Dictionar
 		spells.append({"id": sid, "lvl": max(1, spell_best_level(collection, sid))})
 	return {
 		"name": hero["name"], "color": HERO_COLOR, "npc": false, "is_hero": true,
-		"role": "Герой", "level": hero["level"],
+		"role": "Герой", "level": hero["level"], "sprite": "hero", "ranged": false,
 		"stats": hero_stats(hero), "spells": spells, "target": "front",
 	}
 
@@ -50,6 +50,7 @@ static func make_merc(rng: RandomNumberGenerator, template_idx: int, level: int)
 		"npc": true, "role": t["role"], "level": level,
 		"stats": st, "spells": spells, "target": "front",
 		"id": "m%d" % rng.randi(), "template": template_idx,
+		"sprite": t.get("sprite", ""), "ranged": t.get("ranged", false),
 	}
 
 ## Guild mercenaries grow with the hero so the board stays in the relevant range.
@@ -58,6 +59,17 @@ static func relevel(rng: RandomNumberGenerator, merc: Dictionary, level: int) ->
 	for k in ["name", "color", "id"]:
 		fresh[k] = merc[k]
 	return fresh
+
+const ROLE_SPRITES := {"Герой": "hero", "Танк": "tank", "Лекарь": "healer", "Пиромант": "pyromancer",
+	"Ядовик": "poisoner_ally", "Боец": "fighter", "Страж": "guard", "Паладин": "paladin", "Охотник": "hunter"}
+const RANGED_ROLES := ["Лекарь", "Пиромант", "Охотник"]
+
+## Fills visual fields for snapshots saved before sprites existed.
+static func ensure_visuals(snap: Dictionary) -> void:
+	if not snap.has("sprite") or snap["sprite"] == "":
+		snap["sprite"] = ROLE_SPRITES.get(snap.get("role", ""), "hero")
+	if not snap.has("ranged"):
+		snap["ranged"] = snap.get("role", "") in RANGED_ROLES
 
 ## Single "Power" number shown in UI. Deliberately crude: the concept says
 ## success depends on composition, not just Power.

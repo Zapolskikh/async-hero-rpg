@@ -49,5 +49,20 @@ func _run() -> void:
 	main._close_watch()
 	await _wait(0.5)
 	await _shot("05_result")
+	# late level with a boss and casters
+	UI.clear(main.popup_layer)
+	Game.closed_level = 9
+	Game.hero["level"] = 16
+	Game.board = Roster.roll_board(Game.rng, 16)
+	Game._auto_party()
+	main._start(10, "push")
+	Game.watch_speed = 3.0
+	for i in 4:
+		await _wait(5.0)
+		await _shot("06_late_%d" % i)
+	main._close_watch()
+	main._switch("mercs")
+	await _wait(0.3)
+	await _shot("07_mercs")
 	print("shots done")
 	get_tree().quit()

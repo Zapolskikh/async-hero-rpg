@@ -29,7 +29,7 @@ static func label(text: String, size: int = 20, color: Color = Color.WHITE) -> L
 static func wrap_label(text: String, size: int = 18, color: Color = MUTED) -> Label:
 	var l := label(text, size, color)
 	l.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
-	l.custom_minimum_size.x = 120
+	l.custom_minimum_size.x = 80
 	return l
 
 static func button(text: String, cb: Callable, size: int = 20, min_w: int = 0) -> Button:
@@ -67,6 +67,19 @@ static func clear(node: Node) -> void:
 	for c in node.get_children():
 		node.remove_child(c)
 		c.queue_free()
+
+## Pixel-art portrait of a unit sprite, scaled with nearest filtering.
+static func portrait(sprite: String, height: float = 84.0, flip: bool = false) -> Control:
+	var path := "res://assets/units/%s.png" % sprite
+	var r := TextureRect.new()
+	r.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+	r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+	r.flip_h = flip
+	r.custom_minimum_size = Vector2(height * 0.81, height)
+	if ResourceLoader.exists(path):
+		r.texture = load(path)
+	return r
 
 static func roman(n: int) -> String:
 	return ["", "I", "II", "III", "IV", "V", "VI"][clamp(n, 0, 6)]

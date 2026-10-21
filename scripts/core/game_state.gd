@@ -304,6 +304,8 @@ func _apply_rewards(r: Dictionary) -> void:
 
 func _finish_push() -> void:
 	var ex := expedition
+	if ex == null or not ex.finished:
+		return
 	var r := ex.take_rewards()
 	r["level"] = ex.level
 	r["mode"] = ex.mode
@@ -370,6 +372,7 @@ func _fix_ints() -> void:
 			it["rarity"] = int(it["rarity"])
 			it["ilvl"] = int(it["ilvl"])
 	for m in board:
+		Roster.ensure_visuals(m)
 		m["level"] = int(m["level"])
 		for s in m["spells"]:
 			s["lvl"] = int(s["lvl"])
@@ -390,6 +393,7 @@ func _expedition_to_dict():
 func _expedition_from_dict(d: Dictionary, away: float) -> void:
 	var party: Array = d["party"]
 	for p in party:
+		Roster.ensure_visuals(p)
 		for s in p["spells"]:
 			s["lvl"] = int(s["lvl"])
 	expedition = Expedition.new()

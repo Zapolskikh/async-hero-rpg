@@ -1,59 +1,175 @@
 extends Control
-## Draws the live battle of Game.expedition with placeholder shapes.
-## Allies on the left (frontline nearest the centre), enemies on the right.
+## Draws the live battle of Game.expedition with placeholder pixel-art.
+## Allies on the left (frontline nearest the centre), enemies on the right,
+## mirrored. Everything here is visual only: the simulation already happened,
+## the view just reacts to the events it emitted.
 
-const UNIT_SIZE := Vector2(84, 112)
-const BOSS_SIZE := Vector2(120, 160)
+const UNIT_SCALE := 3.0          # 34x42 sprites -> ~102x126 on screen
+const BOSS_SCALE := 1.9          # bosses are generated at 2x already
 const FLOAT_LIFE := 1.1
+const LUNGE_TIME := 0.28
+const HURT_TIME := 0.22
+const DEATH_TIME := 0.6
+const PROJ_TIME := 0.28
+
+const SPELL_COLORS := {
+	"fireball": Color("#ff8a2a"), "ignite": Color("#ff5a2a"), "poison_cloud": Color("#7ccf3a"),
+	"chain_lightning": Color("#8fd8ff"), "drain": Color("#c0304a"), "bash": Color("#ffe14a"),
+	"kick": Color("#ffffff"), "cleave": Color("#ffffff"), "execute": Color("#ff3b3b"),
+	"e_bolt": Color("#c87bff"), "e_volley": Color("#d8c08a"), "e_venom": Color("#7ccf3a"),
+	"e_cataclysm": Color("#9a6aff"),
+}
+const MELEE_SPELLS := ["strike", "execute", "kick", "bash", "cleave", "e_smash", "e_backstab", "e_crush"]
+
+var textures := {}
+var sky: Texture2D
+var ground: Texture2D
 
 var floats: Array = []        # {text, color, uid, life, offset, size}
-var flashes := {}             # uid -> time left
+var anim := {}                # uid -> {lunge, hurt, dead}
+var projectiles: Array = []   # {from, to, t, color, kind}
+var effects: Array = []       # {pos, t, dur, kind, color, radius}
+var clock := 0.0
 var _sim_ref: BattleSim = null
 
+func _ready() -> void:
+	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+	sky = load("res://assets/bg/sky.png")
+	ground = load("res://assets/bg/ground.png")
+
+func tex(name: String) -> Texture2D:
+	if name == "":
+		return null
+	if not textures.has(name):
+		var path := "res://assets/units/%s.png" % name
+		textures[name] = load(path) if ResourceLoader.exists(path) else null
+	return textures[name]
+
 func _process(delta: float) -> void:
+	clock += delta
 	var ex: Expedition = Game.expedition
 	if ex != null and ex.sim != null:
 		if ex.sim != _sim_ref:
 			_sim_ref = ex.sim
 			floats.clear()
-			flashes.clear()
+			projectiles.clear()
+			effects.clear()
+			for u in ex.sim.units:
+				if u.side == 1 or not anim.has(u.uid):
+					anim[u.uid] = {"lunge": 0.0, "hurt": 0.0, "dead": 0.0 if u.alive() else DEATH_TIME}
 		_consume_events(ex.sim)
+		for u in ex.sim.units:
+			var a: Dictionary = _anim(u.uid)
+			a["lunge"] = max(0.0, a["lunge"] - delta)
+			a["hurt"] = max(0.0, a["hurt"] - delta)
+			if not u.alive():
+				a["dead"] = min(DEATH_TIME, a["dead"] + delta)
+			else:
+				a["dead"] = 0.0
 	for f in floats.duplicate():
 		f["life"] -= delta
 		if f["life"] <= 0.0:
 			floats.erase(f)
-	for k in flashes.keys():
-		flashes[k] -= delta
-		if flashes[k] <= 0.0:
-			flashes.erase(k)
+	for p in projectiles.duplicate():
+		p["t"] += delta
+		if p["t"] >= PROJ_TIME:
+			projectiles.erase(p)
+			effects.append({"pos": p["to"], "t": 0.0, "dur": 0.25, "kind": "burst", "color": p["color"], "radius": 18.0})
+	for e in effects.duplicate():
+		e["t"] += delta
+		if e["t"] >= e["dur"]:
+			effects.erase(e)
 	queue_redraw()
+
+func _anim(uid: int) -> Dictionary:
+	if not anim.has(uid):
+		anim[uid] = {"lunge": 0.0, "hurt": 0.0, "dead": 0.0}
+	return anim[uid]
 
 func _consume_events(sim: BattleSim) -> void:
 	for e in sim.events:
 		match e["t"]:
+			"attack":
+				var src := sim.unit_by_uid(e["uid"])
+				var dst := sim.unit_by_uid(e["tgt"])
+				if src != null and dst != null:
+					if src.ranged:
+						_shoot(src, dst, Color("#e8dcc0"), "arrow")
+					else:
+						_anim(src.uid)["lunge"] = LUNGE_TIME
+			"spell":
+				_on_spell(sim, e)
 			"dmg":
 				var col := Color("#ffd27a") if e.get("dot", false) else Color.WHITE
 				if e.get("crit", false):
 					col = Color("#ff7b4a")
-				_float(e["uid"], ("%d" % e["v"]) + ("!" if e.get("crit", false) else ""), col, 24 if e.get("crit", false) else 19)
-				flashes[e["uid"]] = 0.12
+				_float(e["uid"], ("%d" % e["v"]) + ("!" if e.get("crit", false) else ""), col, 26 if e.get("crit", false) else 20)
+				if not e.get("dot", false):
+					_anim(e["uid"])["hurt"] = HURT_TIME
 			"heal":
 				_float(e["uid"], "+%d" % e["v"], UI.GOOD, 20)
+				_effect_on(sim, e["uid"], "sparkle", UI.GOOD, 0.5)
 			"absorb":
 				_float(e["uid"], "(%d)" % e["v"], Color("#9fd7ff"), 17)
 			"shield":
-				_float(e["uid"], "Щит", Color("#9fd7ff"), 18)
+				_effect_on(sim, e["uid"], "bubble", Color("#8fd0ff"), 0.45)
 			"interrupt":
-				_float(e["uid"], e["text"], Color("#ff5ad1"), 24)
+				_float(e["uid"], e["text"], Color("#ff5ad1"), 26)
+				_effect_on(sim, e["uid"], "burst", Color("#ff5ad1"), 0.35)
 			"status":
 				_float(e["uid"], e["text"], Color("#c9b6ff"), 18)
-			"spell":
-				_float(e["uid"], e["text"], UI.ACCENT, 17, -40.0)
+			"cast":
+				pass
 			"death":
 				_float(e["uid"], "Пал", UI.BAD, 22)
 	sim.events.clear()
 	if floats.size() > 60:
 		floats = floats.slice(floats.size() - 60)
+
+func _on_spell(sim: BattleSim, e: Dictionary) -> void:
+	var src := sim.unit_by_uid(e["uid"])
+	if src == null:
+		return
+	var sid: String = e.get("sid", "")
+	var kind: String = e.get("kind", "")
+	_float(src.uid, e["text"], UI.ACCENT, 17, -44.0)
+	var col: Color = SPELL_COLORS.get(sid, Color.WHITE)
+	match kind:
+		"aoe_damage", "aoe_dot":
+			for f in sim.foes_of(src):
+				if sid in MELEE_SPELLS:
+					_effect_on(sim, f.uid, "slash", col, 0.3)
+				else:
+					_shoot(src, f, col, "orb")
+			if sid in MELEE_SPELLS:
+				_anim(src.uid)["lunge"] = LUNGE_TIME
+		"damage", "dot", "execute", "drain", "interrupt", "stun":
+			var dst := sim.unit_by_uid(e.get("tgt", -1))
+			if dst == null:
+				return
+			if sid in MELEE_SPELLS or not src.ranged and kind in ["interrupt", "stun"]:
+				_anim(src.uid)["lunge"] = LUNGE_TIME
+				_effect_on(sim, dst.uid, "slash", col, 0.3)
+			else:
+				_shoot(src, dst, col, "orb")
+		"heal", "cleanse":
+			var dst := sim.unit_by_uid(e.get("tgt", -1))
+			if dst != null and dst != src:
+				_shoot(src, dst, UI.GOOD, "orb")
+		"hot_all":
+			for f in sim.friends_of(src):
+				_effect_on(sim, f.uid, "sparkle", Color("#b6ffb0"), 0.6)
+		"taunt":
+			_effect_on(sim, src.uid, "ring", Color("#ff5a4a"), 0.5)
+
+func _shoot(src: BattleUnit, dst: BattleUnit, col: Color, kind: String) -> void:
+	projectiles.append({"from": _center(src) + Vector2(0, -10), "to": _center(dst), "t": 0.0, "color": col, "kind": kind})
+
+func _effect_on(sim: BattleSim, uid: int, kind: String, col: Color, dur: float) -> void:
+	var u := sim.unit_by_uid(uid)
+	if u == null:
+		return
+	effects.append({"pos": _center(u), "t": 0.0, "dur": dur, "kind": kind, "color": col, "radius": 40.0})
 
 func _float(uid: int, text: String, col: Color, size: int, y_off: float = 0.0) -> void:
 	var stack := 0
@@ -63,95 +179,242 @@ func _float(uid: int, text: String, col: Color, size: int, y_off: float = 0.0) -
 	floats.append({"text": text, "color": col, "uid": uid, "life": FLOAT_LIFE,
 		"offset": Vector2(0, y_off - stack * 22), "size": size})
 
-func unit_rect(u: BattleUnit) -> Rect2:
-	var sz := BOSS_SIZE if u.is_boss else UNIT_SIZE
+# ---------------- layout ----------------
+
+func ground_y() -> float:
+	return size.y * 0.76
+
+func _sprite_size(u: BattleUnit) -> Vector2:
+	var t := tex(u.sprite)
+	var sc := BOSS_SCALE if u.is_boss else UNIT_SCALE
+	if t == null:
+		return Vector2(84, 112) if not u.is_boss else Vector2(120, 160)
+	return t.get_size() * sc
+
+## Spot on the ground where the unit stands (bottom-centre), without animation.
+func _home(u: BattleUnit) -> Vector2:
 	var mid := size.x / 2.0
-	var gap: float = min(115.0, (mid - 60.0) / 4.0)
-	var ground := size.y * 0.72
-	var x: float
+	var gap: float = min(125.0, (mid - 80.0) / 4.0)
+	var depth := u.slot * 6.0   # backline stands slightly higher -> fake depth
 	if u.side == 0:
-		x = mid - 70.0 - u.slot * gap - sz.x / 2.0
-	else:
-		x = mid + 70.0 + u.slot * gap - sz.x / 2.0
-	return Rect2(Vector2(x, ground - sz.y), sz)
+		return Vector2(mid - 85.0 - u.slot * gap, ground_y() - depth)
+	return Vector2(mid + 85.0 + u.slot * gap + (30.0 if u.is_boss else 0.0), ground_y() - depth)
+
+func _center(u: BattleUnit) -> Vector2:
+	return _home(u) - Vector2(0, _sprite_size(u).y * 0.5)
+
+func unit_rect(u: BattleUnit) -> Rect2:
+	var sz := _sprite_size(u)
+	var h := _home(u)
+	return Rect2(h - Vector2(sz.x / 2.0, sz.y), sz)
+
+# ---------------- drawing ----------------
 
 func _draw() -> void:
-	draw_rect(Rect2(Vector2.ZERO, size), Color("#cfe3ef"))
-	draw_rect(Rect2(Vector2(0, size.y * 0.72), Vector2(size.x, size.y * 0.28)), Color("#b9a06a"))
-	draw_line(Vector2(0, size.y * 0.72), Vector2(size.x, size.y * 0.72), Color("#7d6a3f"), 3.0)
+	_draw_background()
 	var font := ThemeDB.fallback_font
 	var ex: Expedition = Game.expedition
 	if ex == null or ex.sim == null:
-		draw_string(font, Vector2(40, 80), "Нет активного похода", HORIZONTAL_ALIGNMENT_LEFT, -1, 28, Color.BLACK)
+		_text(font, Vector2(40, 110), "Нет активного похода", 28, Color.WHITE)
 		return
-	for u in ex.sim.units:
-		_draw_unit(u, font)
+	# back to front: higher slots first so the frontline overlaps them
+	var order: Array = ex.sim.units.duplicate()
+	order.sort_custom(func(a, b): return a.slot > b.slot)
+	for u in order:
+		if not u.alive():
+			_draw_unit(u, font)
+	for u in order:
+		if u.alive():
+			_draw_unit(u, font)
+	for e in effects:
+		_draw_effect(e)
+	for p in projectiles:
+		_draw_projectile(p)
 	for f in floats:
 		var u := ex.sim.unit_by_uid(f["uid"])
 		if u == null:
 			continue
 		var r := unit_rect(u)
 		var t: float = 1.0 - f["life"] / FLOAT_LIFE
-		var pos: Vector2 = Vector2(r.position.x + r.size.x / 2.0, r.position.y - 46.0) + f["offset"] + Vector2(0, -36.0 * t)
+		var pos: Vector2 = Vector2(r.position.x + r.size.x / 2.0, r.position.y - 40.0) + f["offset"] + Vector2(0, -36.0 * t)
 		var col: Color = f["color"]
 		col.a = clamp(f["life"] / FLOAT_LIFE * 1.6, 0.0, 1.0)
 		var w := font.get_string_size(f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, f["size"]).x
-		draw_string_outline(font, pos - Vector2(w / 2.0, 0), f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, f["size"], 4, Color(0, 0, 0, col.a))
+		draw_string_outline(font, pos - Vector2(w / 2.0, 0), f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, f["size"], 5, Color(0, 0, 0, col.a))
 		draw_string(font, pos - Vector2(w / 2.0, 0), f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, f["size"], col)
 	if ex.pause > 0.0:
 		var msg := "Волна %d / %d" % [ex.wave_index + 1, ex.total_waves()]
-		var w := font.get_string_size(msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 40).x
-		draw_string_outline(font, Vector2(size.x / 2.0 - w / 2.0, size.y * 0.35), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 40, 6, Color.BLACK)
-		draw_string(font, Vector2(size.x / 2.0 - w / 2.0, size.y * 0.35), msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 40, UI.ACCENT)
+		var w := font.get_string_size(msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 44).x
+		_text(font, Vector2(size.x / 2.0 - w / 2.0, size.y * 0.33), msg, 44, UI.ACCENT)
+
+func _draw_background() -> void:
+	var gy := ground_y()
+	if sky != null:
+		var sky_h := gy + 30.0
+		var sky_w: float = max(size.x, sky_h * sky.get_width() / sky.get_height())
+		draw_texture_rect(sky, Rect2(Vector2((size.x - sky_w) / 2.0, 0), Vector2(sky_w, sky_h)), false)
+	else:
+		draw_rect(Rect2(Vector2.ZERO, size), Color("#cfe3ef"))
+	if ground != null:
+		var tile := ground.get_size() * 3.0
+		var x := 0.0
+		while x < size.x:
+			draw_texture_rect(ground, Rect2(Vector2(x, gy - 6.0), tile), false)
+			var y := gy - 6.0 + tile.y
+			while y < size.y:
+				draw_texture_rect_region(ground, Rect2(Vector2(x, y), tile), Rect2(Vector2(0, 8), ground.get_size() - Vector2(0, 8)))
+				y += tile.y - 24.0
+			x += tile.x
+	else:
+		draw_rect(Rect2(Vector2(0, gy), Vector2(size.x, size.y - gy)), Color("#b9a06a"))
 
 func _draw_unit(u: BattleUnit, font: Font) -> void:
-	var r := unit_rect(u)
-	var base := u.color
-	if not u.alive():
-		draw_rect(Rect2(r.position + Vector2(0, r.size.y - 18), Vector2(r.size.x, 18)), Color(0.3, 0.3, 0.3, 0.6))
-		draw_string(font, Vector2(r.position.x, r.end.y + 22), u.name, HORIZONTAL_ALIGNMENT_CENTER, r.size.x, 16, Color(0.2, 0.2, 0.2, 0.7))
-		return
-	if flashes.has(u.uid):
-		base = base.lerp(Color.WHITE, 0.6)
+	var a: Dictionary = _anim(u.uid)
+	var sz := _sprite_size(u)
+	var home := _home(u)
+	var dir := 1.0 if u.side == 0 else -1.0
+	var offset := Vector2.ZERO
+	if u.alive():
+		offset.y = -abs(sin(clock * 3.0 + u.uid)) * 3.0   # idle breathing
+		if a["lunge"] > 0.0:
+			var k: float = sin((1.0 - a["lunge"] / LUNGE_TIME) * PI)
+			offset.x += dir * 46.0 * k
+		if a["hurt"] > 0.0:
+			offset.x -= dir * 8.0 * (a["hurt"] / HURT_TIME)
+		if u.is_casting():
+			offset.y -= 4.0
+	var t := tex(u.sprite)
+	var tint := Color.WHITE
+	if a["hurt"] > 0.0:
+		tint = Color(1.0, 0.55, 0.55)
 	if u.stun > 0.0:
-		base = base.darkened(0.35)
-	draw_rect(r, base)
-	draw_rect(r, Color.BLACK, false, 2.0)
-	# "face" to show which way the unit looks
-	var eye_x := r.end.x - 22.0 if u.side == 0 else r.position.x + 14.0
-	draw_rect(Rect2(Vector2(eye_x, r.position.y + 18.0), Vector2(8, 8)), Color.BLACK)
+		tint = tint.darkened(0.3)
+	var dead_k: float = a["dead"] / DEATH_TIME if not u.alive() else 0.0
+	if not u.alive():
+		tint.a = lerp(1.0, 0.35, dead_k)
+
+	# shadow
+	draw_set_transform(Vector2.ZERO)
+	var shadow_w := sz.x * (0.55 if not u.alive() else 0.45)
+	_ellipse(home + Vector2(offset.x, 0), Vector2(shadow_w, 9), Color(0, 0, 0, 0.25))
+
+	# cast glow under the feet
+	if u.is_casting():
+		var c := u.casting
+		var col: Color = SPELL_COLORS.get(c["spell"], Color("#ffd27a"))
+		col.a = 0.35 + 0.2 * sin(clock * 10.0)
+		_ellipse(home, Vector2(sz.x * 0.55, 14), col)
+
+	# sprite: rotate to fall over when dead, mirror for enemies
+	var pivot := home + offset
+	var angle := -dir * dead_k * PI / 2.0
+	draw_set_transform(pivot, angle, Vector2(dir, 1.0))
+	var rect := Rect2(Vector2(-sz.x / 2.0, -sz.y), sz)
+	if t != null:
+		draw_texture_rect(t, rect, false, tint)
+	else:
+		draw_rect(rect, u.color * tint)
+	draw_set_transform(Vector2.ZERO)
+
+	if not u.alive():
+		return
+	var r := Rect2(home + offset - Vector2(sz.x / 2.0, sz.y), sz)
 	if u.shield > 0.0:
-		draw_rect(r.grow(5.0), Color("#7fc8ff"), false, 4.0)
+		var sc := Color("#8fd0ff")
+		sc.a = 0.35 + 0.1 * sin(clock * 4.0)
+		_ellipse(r.get_center(), r.size * Vector2(0.62, 0.56), sc, false, 4.0)
 	if u.taunt > 0.0:
-		draw_string(font, Vector2(r.position.x + 4, r.position.y + r.size.y - 8), "!", HORIZONTAL_ALIGNMENT_LEFT, -1, 30, Color("#ff3b3b"))
-	# status markers: small coloured dots along the bottom of the unit
+		_text(font, Vector2(r.get_center().x - 6, r.position.y - 4), "!", 34, Color("#ff3b3b"))
+	if u.stun > 0.0:
+		for i in 3:
+			var ang := clock * 4.0 + i * TAU / 3.0
+			draw_circle(Vector2(r.get_center().x + cos(ang) * 22.0, r.position.y + 6 + sin(ang) * 6.0), 4.0, Color("#ffe14a"))
+	# status markers
 	var marks := []
 	for d in u.dots:
 		marks.append(Color("#7ccf3a") if d["id"] in ["poison_cloud", "e_venom"] else Color("#ff8a2a"))
 	if u.hots.size() > 0:
 		marks.append(Color("#b6ffb0"))
-	if u.stun > 0.0:
-		marks.append(Color("#ffe14a"))
 	for i in marks.size():
-		var c := Vector2(r.position.x + 12.0 + i * 16.0, r.end.y - 12.0)
+		var c := Vector2(r.position.x + 10.0 + i * 15.0, r.end.y + 34.0)
 		draw_circle(c, 6.0, marks[i])
 		draw_arc(c, 6.0, 0.0, TAU, 12, Color.BLACK, 1.5)
-	# HP bar above the unit
-	var bar := Rect2(Vector2(r.position.x - 6, r.position.y - 26), Vector2(r.size.x + 12, 12))
-	draw_rect(bar, Color(0, 0, 0, 0.7))
-	var hp_w := bar.size.x * u.hp_frac()
-	draw_rect(Rect2(bar.position, Vector2(hp_w, bar.size.y)), UI.GOOD if u.side == 0 else UI.BAD)
+	# HP bar and name above the unit
+	var bar := Rect2(Vector2(home.x - 48, r.position.y - 22), Vector2(96, 11))
+	if u.is_boss:
+		bar = Rect2(Vector2(home.x - 80, r.position.y - 22), Vector2(160, 13))
+	draw_rect(bar.grow(1.5), Color(0, 0, 0, 0.8))
+	draw_rect(Rect2(bar.position, Vector2(bar.size.x * u.hp_frac(), bar.size.y)), UI.GOOD if u.side == 0 else UI.BAD)
 	if u.shield > 0.0:
 		var sw: float = min(bar.size.x, bar.size.x * u.shield / u.max_hp)
 		draw_rect(Rect2(bar.position + Vector2(0, bar.size.y - 4), Vector2(sw, 4)), Color("#bfe6ff"))
-	draw_string(font, Vector2(bar.position.x, bar.position.y - 4), u.name, HORIZONTAL_ALIGNMENT_CENTER, bar.size.x, 16, Color.BLACK)
-	# cast bar below the unit
+	var nw := font.get_string_size(u.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
+	_text(font, Vector2(home.x - nw / 2.0, bar.position.y - 5), u.name, 16, Color.WHITE, 4)
+	# cast bar under the feet
 	if u.is_casting():
 		var c := u.casting
-		var cb := Rect2(Vector2(r.position.x - 6, r.end.y + 8), Vector2(r.size.x + 12, 14))
-		draw_rect(cb, Color(0, 0, 0, 0.75))
+		var cb := Rect2(Vector2(home.x - 50, home.y + 6), Vector2(100, 12))
+		draw_rect(cb.grow(1.5), Color(0, 0, 0, 0.8))
 		var frac: float = 1.0 - c["remaining"] / c["total"]
-		var col := Color("#f0a23a") if c.get("interruptible", true) else Color("#9a9a9a")
+		var col := Color("#f0a23a") if c.get("interruptible", true) else Color("#b0b0b0")
 		draw_rect(Rect2(cb.position, Vector2(cb.size.x * frac, cb.size.y)), col)
 		var sname: String = Db.SPELLS[c["spell"]]["name"]
-		draw_string(font, Vector2(cb.position.x - 20, cb.end.y + 18), sname, HORIZONTAL_ALIGNMENT_CENTER, cb.size.x + 40, 15, Color.BLACK)
+		var sw2 := font.get_string_size(sname, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
+		_text(font, Vector2(home.x - sw2 / 2.0, cb.end.y + 17), sname, 15, Color.WHITE, 4)
+
+func _draw_projectile(p: Dictionary) -> void:
+	var k: float = p["t"] / PROJ_TIME
+	var from: Vector2 = p["from"]
+	var to: Vector2 = p["to"]
+	var pos := from.lerp(to, k) + Vector2(0, -sin(k * PI) * 30.0)
+	var col: Color = p["color"]
+	if p["kind"] == "arrow":
+		var d := (to - from).normalized()
+		draw_line(pos - d * 16.0, pos, Color("#6a4a2a"), 3.0)
+		draw_line(pos - d * 4.0, pos, col, 4.0)
+	else:
+		for i in 4:
+			var tk: float = max(0.0, k - i * 0.06)
+			var tp := from.lerp(to, tk) + Vector2(0, -sin(tk * PI) * 30.0)
+			var tc := col
+			tc.a = 0.5 - i * 0.12
+			draw_circle(tp, 8.0 - i * 1.5, tc)
+		draw_circle(pos, 8.0, col)
+		draw_circle(pos, 4.0, col.lightened(0.6))
+
+func _draw_effect(e: Dictionary) -> void:
+	var k: float = e["t"] / e["dur"]
+	var col: Color = e["color"]
+	col.a = 1.0 - k
+	var pos: Vector2 = e["pos"]
+	match e["kind"]:
+		"burst":
+			draw_circle(pos, 6.0 + k * e["radius"], Color(col, (1.0 - k) * 0.5))
+			draw_arc(pos, 6.0 + k * e["radius"], 0.0, TAU, 20, col, 3.0)
+		"ring":
+			draw_arc(pos + Vector2(0, 40), 20.0 + k * 50.0, 0.0, TAU, 28, col, 4.0)
+		"bubble":
+			draw_arc(pos, 30.0 + k * 20.0, 0.0, TAU, 28, col, 5.0 * (1.0 - k) + 1.0)
+		"sparkle":
+			for i in 6:
+				var ang := i * TAU / 6.0 + k * 2.0
+				var p := pos + Vector2(cos(ang) * 26.0, sin(ang) * 30.0 - k * 40.0)
+				draw_rect(Rect2(p - Vector2(3, 3), Vector2(6, 6)), col)
+		"slash":
+			var a0 := -0.9 + k * 0.4
+			draw_arc(pos, 34.0, a0, a0 + 1.8, 14, col, 5.0 * (1.0 - k) + 1.0)
+
+func _ellipse(center: Vector2, radii: Vector2, col: Color, filled: bool = true, width: float = 2.0) -> void:
+	var pts := PackedVector2Array()
+	for i in 24:
+		var ang := i * TAU / 24.0
+		pts.append(center + Vector2(cos(ang) * radii.x, sin(ang) * radii.y))
+	if filled:
+		draw_colored_polygon(pts, col)
+	else:
+		pts.append(pts[0])
+		draw_polyline(pts, col, width)
+
+func _text(font: Font, pos: Vector2, text: String, size_px: int, col: Color, outline: int = 6) -> void:
+	draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, outline, Color(0, 0, 0, col.a))
+	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, col)
