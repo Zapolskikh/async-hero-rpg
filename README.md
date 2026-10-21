@@ -4,6 +4,10 @@
 
 ## Как запустить
 
+**В браузере (в том числе с телефона):** https://zapolskikh.github.io/async-hero-rpg/ — веб-сборка лежит в ветке `gh-pages`. Чтобы ссылка заработала, один раз включите GitHub Pages: Settings → Pages → Source: Deploy from a branch → `gh-pages` / `(root)`. Телефон лучше повернуть горизонтально.
+
+**В редакторе:**
+
 1. Скачайте Godot 4.5 (обычная версия, не .NET): https://godotengine.org/download
 2. Import → выберите `project.godot` из этого репозитория.
 3. F5 (Run Project).
@@ -63,6 +67,16 @@ godot --headless --script res://tests/balance_report.gd   # минимальны
 | 10 Склеп лича | 16 | 21 | 16 | 18 |
 
 Состав без лечения отстаёт всё сильнее, как и задумано в концепте.
+
+## Веб-сборка
+
+Пресет `Web` в `export_presets.cfg` (без потоков, чтобы работало на GitHub Pages без особых заголовков):
+
+```
+godot --headless --export-release "Web" build/web/index.html
+```
+
+Потом содержимое `build/web` кладётся в ветку `gh-pages`.
 
 ## Скриншоты для разработки
 
