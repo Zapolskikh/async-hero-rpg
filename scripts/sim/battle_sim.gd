@@ -393,3 +393,5 @@ func _check_end() -> void:
 func _emit(e: Dictionary) -> void:
 	if record_events:
 		events.append(e)
+		if events.size() > 300:
+			events = events.slice(150)

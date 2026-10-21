@@ -137,8 +137,9 @@ func _on_run_end(cleared: bool, reason: String) -> void:
 	run_index += 1
 	if cleared:
 		runs_won += 1
-		gold += 40 * level
 		xp += 30 * level
+		if mode == "push":
+			gold += 40 * level
 		if first_clear_pending:
 			first_clear_pending = false
 			level_closed_now = true

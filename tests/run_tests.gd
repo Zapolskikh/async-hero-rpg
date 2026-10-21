@@ -1,0 +1,105 @@
+extends SceneTree
+## Headless unit tests for the battle core. Run:
+##   godot --headless --script res://tests/run_tests.gd
+
+var failures := 0
+
+func check(cond: bool, msg: String) -> void:
+	if cond:
+		print("  ok   ", msg)
+	else:
+		failures += 1
+		print("  FAIL ", msg)
+
+func _init() -> void:
+	test_determinism()
+	test_rotation_skips_invalid()
+	test_interrupt_and_execute()
+	test_push_wipe_gives_partial()
+	test_farm_fast_forward()
+	print("FAILURES: %d" % failures)
+	quit(1 if failures > 0 else 0)
+
+func party(level: int, templates: Array, seed_value: int = 1) -> Array:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = seed_value
+	var hero := {"name": "Hero", "level": level, "rotation": ["fireball", "strike", "kick"],
+		"equipped": {"weapon": null, "armor": null, "trinket": null}}
+	var p := [Roster.hero_snapshot(hero, {})]
+	for t in templates:
+		p.append(Roster.make_merc(rng, t, level))
+	return p
+
+func run_push(lvl: int, p: Array, seed_value: int) -> Expedition:
+	var ex := Expedition.new()
+	ex.record_events = false
+	ex.start(lvl, "push", p, seed_value, true)
+	while not ex.finished:
+		ex.step_wave_headless()
+	return ex
+
+func test_determinism() -> void:
+	print("determinism")
+	var a := run_push(3, party(3, [0, 1, 3]), 42)
+	var b := run_push(3, party(3, [0, 1, 3]), 42)
+	check(a.gold == b.gold and a.best_wave == b.best_wave and is_equal_approx(a.elapsed, b.elapsed),
+		"same seed and party give identical result")
+
+func test_rotation_skips_invalid() -> void:
+	print("rotation")
+	# Kick is only valid while an enemy casts. Against a lone brute that never
+	# starts a cast, the hero must keep using fireball/strike instead.
+	var sim := BattleSim.new()
+	var hero := BattleUnit.new(0, 0, 0, {"name": "H", "stats": {"hp": 5000, "atk": 1, "power": 10, "armor": 0},
+		"spells": [{"id": "kick", "lvl": 1}, {"id": "strike", "lvl": 1}]})
+	var dummy := {"name": "D", "stats": {"hp": 100000, "atk": 0, "power": 0, "armor": 0}, "spells": []}
+	sim.setup([hero], [dummy], 1)
+	var casts := {}
+	for i in 300:
+		sim.step()
+		for e in sim.events:
+			if e["t"] == "spell" and e["uid"] == 0:
+				casts[e["text"]] = casts.get(e["text"], 0) + 1
+		sim.events.clear()
+	check(not casts.has(Db.SPELLS["kick"]["name"]), "kick skipped when nobody casts")
+	check(casts.get(Db.SPELLS["strike"]["name"], 0) >= 5, "strike used instead (%d times)" % casts.get(Db.SPELLS["strike"]["name"], 0))
+
+func test_interrupt_and_execute() -> void:
+	print("interrupt")
+	var sim := BattleSim.new()
+	var hero := BattleUnit.new(0, 0, 0, {"name": "H", "stats": {"hp": 100000, "atk": 1, "power": 1, "armor": 0},
+		"spells": [{"id": "kick", "lvl": 1}]})
+	var caster := Expedition.enemy_snapshot("caster", 1)
+	caster["stats"]["hp"] = 100000.0
+	sim.setup([hero], [caster], 3)
+	var interrupts := 0
+	var bolts := 0
+	for i in 600:
+		sim.step()
+		for e in sim.events:
+			if e["t"] == "interrupt":
+				interrupts += 1
+			if e["t"] == "spell" and e["uid"] == 1:
+				bolts += 1
+		sim.events.clear()
+	check(interrupts > 0, "enemy casts get interrupted (%d)" % interrupts)
+	check(bolts < interrupts, "most casts never land (%d landed)" % bolts)
+
+func test_push_wipe_gives_partial() -> void:
+	print("push / wipe")
+	var ex := run_push(10, party(1, [3, 4, 5]), 5)
+	check(ex.runs_won == 0 and ex.finished, "underleveled push wipes")
+	check(ex.gold > 0 or ex.kills == 0, "partial rewards for progress made (gold %d)" % ex.gold)
+	check(not ex.level_closed_now, "wipe does not close the level")
+
+func test_farm_fast_forward() -> void:
+	print("farm fast-forward")
+	var ex := Expedition.new()
+	ex.start(1, "farm", party(4, [0, 1, 3]), 9, false)
+	var t0 := Time.get_ticks_msec()
+	var res := ex.fast_forward(8 * 3600.0)
+	var ms := Time.get_ticks_msec() - t0
+	check(ms < 5000, "8h offline computed in %d ms" % ms)
+	check(res["extrapolated"] > 0.0, "long farm is extrapolated (simulated %d s)" % int(res["simulated"]))
+	check(ex.runs_won > 50, "many farm runs credited (%d)" % ex.runs_won)
+	check(not ex.finished, "farm keeps running")

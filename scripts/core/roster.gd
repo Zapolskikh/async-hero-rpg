@@ -72,6 +72,12 @@ static func roll_board(rng: RandomNumberGenerator, hero_level: int) -> Array:
 	board.append(make_merc(rng, healer_idx[rng.randi_range(0, healer_idx.size() - 1)], _merc_level(rng, hero_level)))
 	for i in 4:
 		board.append(make_merc(rng, rng.randi_range(0, Db.MERC_TEMPLATES.size() - 1), _merc_level(rng, hero_level)))
+	# unique names on one board
+	var used := {}
+	for m in board:
+		while used.has(m["name"]):
+			m["name"] = Db.MERC_NAMES[rng.randi_range(0, Db.MERC_NAMES.size() - 1)]
+		used[m["name"]] = true
 	# shuffle deterministically
 	for i in range(board.size() - 1, 0, -1):
 		var j := rng.randi_range(0, i)
