@@ -4,7 +4,7 @@ extends Control
 ## mirrored. Everything here is visual only: the simulation already happened,
 ## the view just reacts to the events it emitted.
 
-const UNIT_SCALE := 3.0          # 34x42 sprites -> ~102x126 on screen
+const UNIT_SCALE := 3.0          # 34x42 sprites -> ~102x126 on a 720px tall view
 const BOSS_SCALE := 1.9          # bosses are generated at 2x already
 const FLOAT_LIFE := 1.1
 const LUNGE_TIME := 0.28
@@ -30,7 +30,11 @@ var anim := {}                # uid -> {lunge, hurt, dead}
 var projectiles: Array = []   # {from, to, t, color, kind}
 var effects: Array = []       # {pos, t, dur, kind, color, radius}
 var clock := 0.0
+var preview_mode := false      # embedded on the hub: show the idle party when no expedition runs
 var _sim_ref: BattleSim = null
+var _last_n := 0
+var _preview_units: Array = []
+var _preview_key := ""
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -51,6 +55,7 @@ func _process(delta: float) -> void:
 	if ex != null and ex.sim != null:
 		if ex.sim != _sim_ref:
 			_sim_ref = ex.sim
+			_last_n = 0
 			floats.clear()
 			projectiles.clear()
 			effects.clear()
@@ -88,6 +93,9 @@ func _anim(uid: int) -> Dictionary:
 
 func _consume_events(sim: BattleSim) -> void:
 	for e in sim.events:
+		if e.get("n", 0) <= _last_n:
+			continue
+		_last_n = e.get("n", 0)
 		match e["t"]:
 			"attack":
 				var src := sim.unit_by_uid(e["uid"])
@@ -122,7 +130,6 @@ func _consume_events(sim: BattleSim) -> void:
 				pass
 			"death":
 				_float(e["uid"], "Пал", UI.BAD, 22)
-	sim.events.clear()
 	if floats.size() > 60:
 		floats = floats.slice(floats.size() - 60)
 
@@ -184,9 +191,13 @@ func _float(uid: int, text: String, col: Color, size: int, y_off: float = 0.0) -
 func ground_y() -> float:
 	return size.y * 0.76
 
+## Scale factor relative to a 720px tall full-screen view.
+func k() -> float:
+	return clamp(size.y / 720.0, 0.5, 1.0)
+
 func _sprite_size(u: BattleUnit) -> Vector2:
 	var t := tex(u.sprite)
-	var sc := BOSS_SCALE if u.is_boss else UNIT_SCALE
+	var sc := (BOSS_SCALE if u.is_boss else UNIT_SCALE) * k()
 	if t == null:
 		return Vector2(84, 112) if not u.is_boss else Vector2(120, 160)
 	return t.get_size() * sc
@@ -194,11 +205,11 @@ func _sprite_size(u: BattleUnit) -> Vector2:
 ## Spot on the ground where the unit stands (bottom-centre), without animation.
 func _home(u: BattleUnit) -> Vector2:
 	var mid := size.x / 2.0
-	var gap: float = min(125.0, (mid - 80.0) / 4.0)
-	var depth := u.slot * 6.0   # backline stands slightly higher -> fake depth
+	var gap: float = min(125.0 * k(), (mid - 80.0 * k()) / 4.0)
+	var depth := u.slot * 6.0 * k()   # backline stands slightly higher -> fake depth
 	if u.side == 0:
-		return Vector2(mid - 85.0 - u.slot * gap, ground_y() - depth)
-	return Vector2(mid + 85.0 + u.slot * gap + (30.0 if u.is_boss else 0.0), ground_y() - depth)
+		return Vector2(mid - 85.0 * k() - u.slot * gap, ground_y() - depth)
+	return Vector2(mid + 85.0 * k() + u.slot * gap + (30.0 * k() if u.is_boss else 0.0), ground_y() - depth)
 
 func _center(u: BattleUnit) -> Vector2:
 	return _home(u) - Vector2(0, _sprite_size(u).y * 0.5)
@@ -215,7 +226,11 @@ func _draw() -> void:
 	var font := ThemeDB.fallback_font
 	var ex: Expedition = Game.expedition
 	if ex == null or ex.sim == null:
-		_text(font, Vector2(40, 110), "Нет активного похода", 28, Color.WHITE)
+		if preview_mode:
+			for u in _get_preview_units():
+				_draw_unit(u, font)
+		else:
+			_text(font, Vector2(40, 110), "Нет активного похода", 28, Color.WHITE)
 		return
 	# back to front: higher slots first so the frontline overlaps them
 	var order: Array = ex.sim.units.duplicate()
@@ -418,3 +433,14 @@ func _ellipse(center: Vector2, radii: Vector2, col: Color, filled: bool = true, 
 func _text(font: Font, pos: Vector2, text: String, size_px: int, col: Color, outline: int = 6) -> void:
 	draw_string_outline(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, outline, Color(0, 0, 0, col.a))
 	draw_string(font, pos, text, HORIZONTAL_ALIGNMENT_LEFT, -1, size_px, col)
+
+func _get_preview_units() -> Array:
+	var snaps: Array = Game.party_snapshots()
+	var key := str(Game.party_order) + str(Game.hero["level"])
+	if key != _preview_key:
+		_preview_key = key
+		_preview_units.clear()
+		for i in snaps.size():
+			Roster.ensure_visuals(snaps[i])
+			_preview_units.append(BattleUnit.new(i, 0, i, snaps[i]))
+	return _preview_units

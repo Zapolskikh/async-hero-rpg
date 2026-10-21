@@ -15,7 +15,8 @@ var finished := false
 var won := false
 var end_reason := ""
 var record_events := true
-var events: Array = []         # consumed by the view; ignored headless
+var events: Array = []         # read by views (each keeps its own cursor); ignored headless
+var event_seq := 0
 
 var _acc := 0.0
 
@@ -394,6 +395,8 @@ func _check_end() -> void:
 
 func _emit(e: Dictionary) -> void:
 	if record_events:
+		event_seq += 1
+		e["n"] = event_seq
 		events.append(e)
 		if events.size() > 300:
 			events = events.slice(150)

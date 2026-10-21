@@ -24,6 +24,7 @@ func _wait(sec: float) -> void:
 
 func _run() -> void:
 	Game.reset_progress()
+	UI.clear(main.popup_layer)
 	Game.gold = 600
 	Game.boxes = 2
 	Game.changed.emit()
@@ -31,8 +32,18 @@ func _run() -> void:
 	await _shot("01_expedition")
 	for tab in ["hero", "mercs", "spells", "bag"]:
 		main._switch(tab)
-		await _wait(0.3)
+		await _wait(0.4)
 		await _shot("02_" + tab)
+	main._switch("hero")
+	main._spell_popup("fireball")
+	await _wait(0.4)
+	await _shot("02_hero_spell_popup")
+	UI.clear(main.popup_layer)
+	main._switch("spells")
+	main._open_box("token")
+	await _wait(1.2)
+	await _shot("02_box_open")
+	UI.clear(main.popup_layer)
 	main._switch("expedition")
 	main._start(1, "push")
 	Game.watch_speed = 2.0
@@ -47,8 +58,16 @@ func _run() -> void:
 		await _wait(0.5)
 		t += 0.5
 	main._close_watch()
-	await _wait(0.5)
+	await _wait(1.2)
 	await _shot("05_result")
+	UI.clear(main.popup_layer)
+	main._switch("bag")
+	await _wait(0.4)
+	await _shot("05_bag_with_item")
+	main._switch("expedition")
+	Game.start_expedition(1, "farm")
+	await _wait(2.0)
+	await _shot("05_hub_farming")
 	# late level with a boss and casters
 	UI.clear(main.popup_layer)
 	Game.closed_level = 9
