@@ -49,8 +49,15 @@ static func make_merc(rng: RandomNumberGenerator, template_idx: int, level: int)
 		"color": MERC_COLORS[rng.randi_range(0, MERC_COLORS.size() - 1)],
 		"npc": true, "role": t["role"], "level": level,
 		"stats": st, "spells": spells, "target": "front",
-		"id": "m%d" % rng.randi(),
+		"id": "m%d" % rng.randi(), "template": template_idx,
 	}
+
+## Guild mercenaries grow with the hero so the board stays in the relevant range.
+static func relevel(rng: RandomNumberGenerator, merc: Dictionary, level: int) -> Dictionary:
+	var fresh := make_merc(rng, int(merc.get("template", 0)), level)
+	for k in ["name", "color", "id"]:
+		fresh[k] = merc[k]
+	return fresh
 
 ## Single "Power" number shown in UI. Deliberately crude: the concept says
 ## success depends on composition, not just Power.

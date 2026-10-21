@@ -293,6 +293,10 @@ func _apply_rewards(r: Dictionary) -> void:
 	gold += r["gold"]
 	boxes += r["boxes"]
 	r["level_ups"] = add_xp(r["xp"])
+	if r["level_ups"] > 0:
+		for i in board.size():
+			if int(board[i]["level"]) < hero["level"] - 1:
+				board[i] = Roster.relevel(rng, board[i], hero["level"])
 	for it in r["items"]:
 		inventory.append(it)
 	if r["closed"] and r["level"] > closed_level:
