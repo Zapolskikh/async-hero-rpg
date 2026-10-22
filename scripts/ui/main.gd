@@ -499,7 +499,7 @@ func _build_watch_layer() -> void:
 	watch_label = UI.label("", Style.FONT_BODY, Style.TEXT, true)
 	watch_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(watch_label)
-	for sp in [1.0, 2.0, 4.0]:
+	for sp in [1.0, 2.0, 4.0, 8.0]:
 		var b := UI.btn("x%d" % int(sp), _set_speed.bind(sp), "ghost", Style.FONT_BODY, "", 64, 48)
 		speed_buttons.append(b)
 		h.add_child(b)
@@ -1414,6 +1414,9 @@ func _screen_bag() -> Control:
 	head.add_child(UI.expand(UI.title("Сумка", 22)))
 	head.add_child(UI.label("%d предм." % Game.inventory.size(), Style.FONT_SMALL, Style.MUTED))
 	lv.add_child(head)
+	var potions := _potions_row()
+	if potions != null:
+		lv.add_child(potions)
 	var items: Array = Game.inventory.duplicate()
 	items.sort_custom(func(a, b): return a["rarity"] * 1000 + Loot.item_score(a) > b["rarity"] * 1000 + Loot.item_score(b))
 	if items.is_empty():
@@ -1452,6 +1455,54 @@ func _screen_bag() -> Control:
 		rv.add_child(bh)
 	h.add_child(right)
 	return h
+
+## Potions and tonics in the bag: count, effect and a "Выпить" button.
+func _potions_row() -> Control:
+	var have := []
+	for res in Prof.CONSUMABLES:
+		if Rules.res_count(Game.profile, res) > 0:
+			have.append(res)
+	var buffs: Dictionary = Rules.active_buffs(Game.profile, Game.now())
+	if have.is_empty() and buffs.is_empty():
+		return null
+	var v := UI.vbox(6)
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 8)
+	row.add_theme_constant_override("v_separation", 8)
+	for res in have:
+		var c := UI.card(Style.BG_DEEP, 8)
+		var h := UI.hbox(8)
+		c.add_child(h)
+		var t := UI.tile("res_" + res, Style.RARITY[int(Prof.RESOURCES[res]["tier"])], 52)
+		var n := UI.chip("×%d" % Rules.res_count(Game.profile, res), Style.BG_DEEP, 12)
+		n.position = Vector2(30, 32)
+		t.add_child(n)
+		h.add_child(t)
+		var tv := UI.vbox(2)
+		tv.add_child(UI.label(Prof.RESOURCES[res]["name"], Style.FONT_SMALL, Style.TEXT, true))
+		tv.add_child(UI.label(Prof.CONSUMABLES[res]["desc"], Style.FONT_TINY, Style.MUTED))
+		h.add_child(tv)
+		h.add_child(UI.btn("Выпить", _drink.bind(res), "primary", Style.FONT_SMALL, "", 0, 44))
+		row.add_child(c)
+	v.add_child(row)
+	var parts := []
+	for eff in buffs:
+		var b: Dictionary = buffs[eff]
+		if eff == "gather_yield":
+			parts.append("тоник: +%d%% к следующему сбору" % roundi((float(b["value"]) - 1.0) * 100))
+		else:
+			parts.append("%s +%d%% ещё %s" % ["урон" if eff == "dmg_mult" else "лечение", roundi((float(b["value"]) - 1.0) * 100),
+				UI.format_time(float(b["until"]) - Game.now())])
+	var note := "Зелья урона и лечения действуют с запуска следующего похода."
+	if not parts.is_empty():
+		note = "Активно: " + ", ".join(parts) + ". " + note
+	v.add_child(UI.wrap(note, Style.FONT_TINY, Style.WARNING))
+	return v
+
+func _drink(res: String) -> void:
+	var r: Dictionary = await Game.use_item(res)
+	_toast(("%s: эффект активен" % Prof.RESOURCES[res]["name"]) if r.get("ok", false) else "Не получилось")
+	_refresh()
 
 func _equip(id: String, to: String) -> void:
 	Game.equip(id, to)

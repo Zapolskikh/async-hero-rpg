@@ -399,6 +399,8 @@ func _mats_view() -> Control:
 	var v := UI.vbox(12)
 	var any := false
 	for cat in Prof.CATEGORIES:
+		if cat[0] == "alchemy":
+			continue   # potions live in the bag
 		var ids := []
 		for res in Prof.RESOURCES:
 			if Prof.RESOURCES[res]["cat"] == cat[0] and Rules.res_count(Game.profile, res) > 0:
@@ -417,6 +419,7 @@ func _mats_view() -> Control:
 		v.add_child(c)
 	if not any:
 		v.add_child(UI.wrap("Пока пусто. Руда, травы и кожа — со сбора, ткань и особые материалы — из боёв (фарм и боссы).", Style.FONT_BODY))
+	v.add_child(UI.label("Зелья — во вкладке «Сумка».", Style.FONT_SMALL, Style.MUTED))
 	return UI.scroll(v)
 
 func _res_cell(res: String) -> Control:

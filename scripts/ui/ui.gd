@@ -72,8 +72,26 @@ static func scroll(child: Control, horizontal: bool = false) -> ScrollContainer:
 		child.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	s.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	s.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	s.scroll_deadzone = 12
 	s.add_child(child)
+	# let touches on cards and buttons reach the scroll so the list drags from anywhere
+	s.ready.connect(func(): pass_mouse(child))
 	return s
+
+## Makes a subtree let pointer events through to the parent (ScrollContainer drag).
+static func pass_mouse(n: Node) -> void:
+	for c in n.get_children():
+		if c is Control and not (c is LineEdit) and c.mouse_filter == Control.MOUSE_FILTER_STOP:
+			c.mouse_filter = Control.MOUSE_FILTER_PASS
+		pass_mouse(c)
+
+## A tap: fires `cb` on release only if the finger did not move (so dragging a list never presses).
+static func connect_tap(b: BaseButton, cb: Callable) -> void:
+	b.button_down.connect(func(): b.set_meta("down_at", b.get_global_mouse_position()))
+	b.pressed.connect(func():
+		var d = b.get_meta("down_at", null)
+		if d == null or b.get_global_mouse_position().distance_to(d) < 16.0:
+			cb.call())
 
 static func spacer(w: float = 0.0, h: float = 0.0) -> Control:
 	var c := Control.new()
@@ -223,7 +241,7 @@ static func btn(text: String, cb: Callable, kind: String = "ghost", size: int = 
 	if icon_name != "":
 		b.icon = icon_tex_px(icon_name, int(size * 1.5))
 		b.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
-	b.pressed.connect(cb)
+	connect_tap(b, cb)
 	return b
 
 ## Invisible full-size button laid over a card to make the whole card tappable.
@@ -234,7 +252,7 @@ static func tap_overlay(parent: Control, cb: Callable) -> Button:
 	for k in ["normal", "hover", "pressed", "focus", "disabled"]:
 		b.add_theme_stylebox_override(k, empty)
 	b.set_anchors_preset(Control.PRESET_FULL_RECT)
-	b.pressed.connect(cb)
+	connect_tap(b, cb)
 	parent.add_child(b)
 	return b
 
