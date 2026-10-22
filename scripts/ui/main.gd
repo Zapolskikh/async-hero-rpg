@@ -376,7 +376,7 @@ func _level_card() -> Control:
 				foes.add_child(UI.avatar(Db.ENEMIES[e]["sprite"], Style.CARD_2, 52, true))
 	var row := UI.hbox(12)
 	var fv := UI.vbox(4)
-	fv.add_child(UI.label("Враги · волн: %d" % Db.LEVELS[lvl - 1]["waves"].size(), Style.FONT_TINY, Style.MUTED))
+	fv.add_child(UI.label("Враги · волн: %d" % Db.level_waves(lvl).size(), Style.FONT_TINY, Style.MUTED))
 	fv.add_child(foes)
 	row.add_child(UI.expand(fv))
 	if boss_id != "":

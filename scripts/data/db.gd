@@ -204,10 +204,35 @@ const LEVEL_SCALE := 1.25   # enemy stat growth per level for chapter 1 (levels 
 const SCALE_BREAK := 10     # after this level enemies follow the party's expected growth
 const HERO_AT_BREAK := 16.0 # hero level a typical player has when clearing SCALE_BREAK
 const HERO_PER_LEVEL := 1.2 # expected hero levels per campaign level after the break
-const LATE_TOUGHNESS := 1.0 # extra difficulty multiplier per level after the break (tuning knob)
+const LATE_TOUGHNESS := 1.09 # extra difficulty multiplier per level after the break (tuning knob)
 
 static func level_count() -> int:
 	return LEVELS.size()
+
+## Waves per campaign level. The hand-made waves of a level repeat in order
+## until there are WAVES_PER_LEVEL; a boss wave always stays last.
+const WAVES_PER_LEVEL := 10
+
+static func level_waves(level: int) -> Array:
+	var base: Array = LEVELS[level - 1]["waves"]
+	var boss_wave = null
+	var normal := []
+	for w in base:
+		var has_boss := false
+		for e in w:
+			if ENEMIES[e].get("boss", false):
+				has_boss = true
+		if has_boss and w == base[-1]:
+			boss_wave = w
+		else:
+			normal.append(w)
+	var n := WAVES_PER_LEVEL - (1 if boss_wave != null else 0)
+	var out := []
+	for i in n:
+		out.append(normal[i % normal.size()])
+	if boss_wave != null:
+		out.append(boss_wave)
+	return out
 
 static func chapter_of(level: int) -> Dictionary:
 	var ch: Dictionary = CHAPTERS[0]

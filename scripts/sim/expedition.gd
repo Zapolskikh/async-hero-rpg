@@ -52,7 +52,7 @@ func start(p_level: int, p_mode: String, p_party: Array, p_seed: int, p_first_cl
 	_start_run()
 
 func waves() -> Array:
-	return Db.LEVELS[level - 1]["waves"]
+	return Db.level_waves(level)
 
 func _start_run() -> void:
 	allies.clear()
