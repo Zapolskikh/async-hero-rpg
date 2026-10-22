@@ -20,6 +20,7 @@ func _init() -> void:
 	test_spell_levels()
 	test_weapons()
 	test_talents()
+	test_rare_loot_and_mods()
 	test_boxes_and_validation()
 	test_json_roundtrip()
 	test_migrate_v1()
@@ -153,6 +154,43 @@ func test_weapons() -> void:
 	check(q["inventory"][0]["affixes"][0]["stat"] == "str" and q["hero"]["equipped"].has("offhand"), "old items lose the attack stat; left hand slot added")
 	var qs := Rules.hero_snapshot(q)
 	check(qs["weapons"] == ["staff"] and qs["stats"]["atk"] == 0, "migrated staff hero casts instead of attacking")
+
+func test_rare_loot_and_mods() -> void:
+	print("rare loot, weapon recipes, enemy modifiers")
+	var sw := Prof.make_item("iron_sword", "x")
+	check(sw["slot"] == "weapon" and sw["wtype"] == "sword" and sw["dmg"] > 0 and sw["affixes"][0].get("imp", false), "crafted sword is a real sword")
+	check(Prof.make_item("iron_shield", "y")["slot"] == "offhand", "crafted shield goes to the left hand")
+	var p := fresh(51)
+	p["gold"] = 5000
+	p["professions"]["blacksmithing"]["level"] = 10
+	for r in ["silver_ore", "mithril_fragment", "boss_core"]:
+		Rules._add_res(p, r, 20)
+	check(Rules.can_craft(p, "core_blade")["error"] == "recipe not learned", "drop-only recipe needs to be learned")
+	Rules._add_res(p, "rcp_core_blade", 1)
+	check(Rules.can_craft(p, "core_blade")["ok"] and not p["resources"].has("rcp_core_blade"), "recipe drop teaches it, not stored as a resource")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 2
+	var slots := {}
+	for i in 3000:
+		slots[Loot.roll_gear(rng, 10)["slot"]] = true
+	check(slots.has("head") and slots.has("feet") and slots.has("offhand"), "combat loot can be any slot")
+	var drops := {}
+	var ex := Expedition.new()
+	ex.record_events = false
+	var party := [Roster.hero_snapshot({"name": "H", "level": 40, "rotation": ["strike"], "equipped": {}}, {})]
+	ex.start(1, "farm", party, 5, false)
+	ex.fast_forward(4 * 3600.0, 2400.0)
+	var got_res := false
+	for k in ex.mats:
+		if Prof.RESOURCES.has(k) and Prof.RESOURCES[k]["cat"] in ["ore", "herb", "leather"]:
+			got_res = true
+	check(got_res, "farming sometimes drops gathering resources (%s)" % str(ex.mats))
+	check(Db.level_modifiers(5).is_empty() and Db.level_modifiers(12).size() == 1 and Db.level_modifiers(25).size() == 2, "modifiers from level 11, two from 21")
+	var lv := 11
+	while not "armored" in Db.level_modifiers(lv):
+		lv += 1
+	var plain := Db.ENEMIES["brute"]["armor"] * Db.enemy_armor_mult(lv)
+	check(absf(Expedition.enemy_snapshot("brute", lv)["stats"]["armor"] - plain * 1.35) < 0.01, "armored modifier raises armor (level %d)" % lv)
 
 func test_talents() -> void:
 	print("talents")

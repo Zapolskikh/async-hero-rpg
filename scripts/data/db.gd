@@ -211,6 +211,32 @@ const LATE_TOUGHNESS := 1.09 # extra difficulty multiplier per level after the b
 static func level_count() -> int:
 	return LEVELS.size()
 
+## Enemy modifiers on later levels: one from MODS_FROM, two from MODS_TWO_FROM.
+## Each changes every enemy of the level (bosses too); shown on the level card and in the atlas.
+const MODS_FROM := 11
+const MODS_TWO_FROM := 21
+const MODIFIERS := {
+	"armored":  {"name": "Бронированные", "icon": "mod_armored", "desc": "Броня врагов ×1.35 — помогают DoT и много мелких ударов"},
+	"swift":    {"name": "Стремительные", "icon": "mod_swift", "desc": "Скорость врагов +20% — чаще бьют и кастуют, важны прерывания"},
+	"shielded": {"name": "Под щитом", "icon": "mod_shielded", "desc": "В начале волны у врагов щит на 15% здоровья"},
+	"regen":    {"name": "Регенерация", "icon": "mod_regen", "desc": "Враги восстанавливают 0.8% здоровья в секунду — нужен быстрый урон"},
+	"brutal":   {"name": "Свирепые", "icon": "mod_brutal", "desc": "Урон и сила заклинаний врагов ×1.15 — нужны лечение и щиты"},
+	"vital":    {"name": "Живучие", "icon": "mod_vital", "desc": "Здоровье врагов ×1.2"},
+}
+const MODIFIER_ORDER := ["armored", "swift", "shielded", "regen", "brutal", "vital"]
+
+static func level_modifiers(level: int) -> Array:
+	if level < MODS_FROM:
+		return []
+	var n := MODIFIER_ORDER.size()
+	var first: String = MODIFIER_ORDER[(level * 5) % n]
+	if level < MODS_TWO_FROM:
+		return [first]
+	var second: String = MODIFIER_ORDER[(level * 5 + 2 + level % 3) % n]
+	if second == first:
+		second = MODIFIER_ORDER[(level * 5 + 1) % n]
+	return [first, second]
+
 ## Waves per campaign level. The hand-made waves of a level repeat in order
 ## until there are WAVES_PER_LEVEL; a boss wave always stays last.
 const WAVES_PER_LEVEL := 10

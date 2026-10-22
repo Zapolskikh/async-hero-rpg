@@ -11,7 +11,9 @@ const SLOT_NAMES := {"weapon": "Оружие", "offhand": "Левая рука",
 ## All equipment slots of a character.
 const ALL_SLOTS := ["weapon", "offhand", "head", "armor", "hands", "legs", "feet", "trinket"]
 ## Drop weights per slot (offhand = shields only; swords for the left hand drop as weapons).
-const SLOT_WEIGHTS := {"weapon": 3.0, "offhand": 1.0, "armor": 2.0, "trinket": 2.0}
+## Head, hands, legs and feet are mostly crafted, but drop now and then too.
+const SLOT_WEIGHTS := {"weapon": 3.0, "offhand": 1.0, "armor": 2.0, "trinket": 2.0,
+	"head": 0.12, "hands": 0.12, "legs": 0.12, "feet": 0.12}
 
 ## Weapon types.
 ##   hands: 1 = one-handed (a sword also fits the left hand), 2 = takes both hands
@@ -45,10 +47,18 @@ const UNARMED := {"stat": "str", "coef": 1.0, "speed": 1.6}
 const BASE_NAMES := {
 	"armor": ["Кираса", "Мантия", "Кольчуга", "Доспех", "Куртка"],
 	"trinket": ["Амулет", "Кольцо", "Талисман", "Оберег", "Печать"],
+	"head": ["Шлем", "Капюшон", "Венец"],
+	"hands": ["Перчатки", "Наручи", "Рукавицы"],
+	"legs": ["Поножи", "Штаны", "Набедренник"],
+	"feet": ["Сапоги", "Ботинки", "Туфли"],
 }
 const AFFIXES := {
 	"armor": ["hp", "armor", "power", "crit"],
 	"trinket": ["haste", "crit", "power", "hp", "str", "agi"],
+	"head": ["hp", "armor", "power", "crit"],
+	"hands": ["str", "agi", "armor", "crit"],
+	"legs": ["hp", "armor", "str", "agi"],
+	"feet": ["haste", "armor", "hp", "agi"],
 }
 const STAT_NAMES := {"hp": "Здоровье", "str": "Сила", "agi": "Ловкость", "power": "Сила заклинаний",
 	"armor": "Броня", "haste": "Скорость", "crit": "Крит", "atk": "Атака"}

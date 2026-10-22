@@ -304,6 +304,21 @@ ICONS.update({
 })
 
 
+ICONS.update({
+    "recipe": lambda d: (d.rectangle([3, 2, 12, 13], fill=(236, 220, 170)), d.rectangle([2, 1, 13, 3], fill=(200, 170, 110)),
+                         d.rectangle([2, 12, 13, 14], fill=(200, 170, 110)), d.line([(5, 6), (10, 6)], fill=(120, 90, 60)),
+                         d.line([(5, 9), (10, 9)], fill=(120, 90, 60))),
+    "mod_armored": lambda d: (d.polygon([(2, 2), (13, 2), (13, 8), (8, 14), (2, 8)], fill=C["steel_d"]), d.rectangle([7, 3, 8, 12], fill=C["steel"])),
+    "mod_swift": lambda d: (d.polygon([(1, 4), (8, 8), (1, 12)], fill=C["yellow"]), d.polygon([(7, 4), (14, 8), (7, 12)], fill=C["yellow"])),
+    "mod_shielded": lambda d: (d.ellipse([1, 1, 14, 14], outline=C["blue"], width=2), d.ellipse([5, 5, 10, 10], fill=C["blue"])),
+    "mod_regen": lambda d: (d.rectangle([6, 2, 9, 13], fill=C["green_d"]), d.rectangle([2, 6, 13, 9], fill=C["green_d"]),
+                            d.arc([0, 0, 15, 15], 200, 340, fill=C["green"], width=1)),
+    "mod_brutal": lambda d: (d.polygon([(8, 1), (14, 8), (8, 15), (2, 8)], fill=C["red"]), d.polygon([(8, 4), (11, 8), (8, 12), (5, 8)], fill=C["red_d"])),
+    "mod_vital": lambda d: (d.ellipse([1, 3, 8, 10], fill=C["red_d"]), d.ellipse([7, 3, 14, 10], fill=C["red_d"]),
+                            d.polygon([(1, 7), (14, 7), (8, 14)], fill=C["red_d"]), d.rectangle([7, 4, 8, 10], fill=C["white"])),
+})
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for name, fn in ICONS.items():

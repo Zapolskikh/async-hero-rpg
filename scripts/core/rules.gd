@@ -51,7 +51,7 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 		"collection": {}, "inventory": [], "board": [], "hired": [], "party_order": [],
 		"rerolls_today": 0, "reroll_day": "", "free_box_day": "",
 		"expedition": null, "reports": [], "stats": {"hired_total": 0, "assist_gold_total": 0},
-		"resources": {}, "professions": _fresh_professions(), "gathering": null, "crafting": {}, "buffs": {},
+		"resources": {}, "recipes_known": [], "professions": _fresh_professions(), "gathering": null, "crafting": {}, "buffs": {},
 		"rng": {"seed": str(seed_value), "state": ""},
 	}
 	var r := _rng(p)
@@ -93,6 +93,8 @@ static func migrate(p: Dictionary, now: float) -> void:
 		hero["talents"] = {}
 	if typeof(hero.get("spell_settings")) != TYPE_DICTIONARY:
 		hero["spell_settings"] = {}
+	if typeof(p.get("recipes_known")) != TYPE_ARRAY:
+		p["recipes_known"] = []
 	for k in hero["talents"].keys():
 		hero["talents"][k] = int(hero["talents"][k])
 	hero["xp"] = int(hero["xp"])
@@ -756,6 +758,11 @@ static func res_count(p: Dictionary, res: String) -> int:
 	return int(p["resources"].get(res, 0))
 
 static func _add_res(p: Dictionary, res: String, n: int) -> void:
+	if res.begins_with("rcp_"):   # a recipe drop: learn it (duplicates do nothing)
+		var rid := res.substr(4)
+		if Prof.RECIPES.has(rid) and n > 0 and not rid in p["recipes_known"]:
+			p["recipes_known"].append(rid)
+		return
 	p["resources"][res] = res_count(p, res) + n
 	if int(p["resources"][res]) <= 0:
 		p["resources"].erase(res)
@@ -789,6 +796,8 @@ static func can_craft(p: Dictionary, recipe_id: String) -> Dictionary:
 	if not Prof.RECIPES.has(recipe_id):
 		return {"ok": false, "error": "no such recipe"}
 	var r: Dictionary = Prof.RECIPES[recipe_id]
+	if r.get("drop_only", false) and not recipe_id in p.get("recipes_known", []):
+		return {"ok": false, "error": "recipe not learned"}
 	if prof_level(p, r["prof"]) < int(r["req"]):
 		return {"ok": false, "error": "profession level too low"}
 	if p["crafting"].has(r["prof"]):

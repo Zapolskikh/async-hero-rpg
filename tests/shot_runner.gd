@@ -9,6 +9,7 @@ var spells_only := false
 var weapons_only := false
 var meter_only := false
 var talents_only := false
+var atlas_only := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -24,9 +25,13 @@ func _ready() -> void:
 			meter_only = true
 		if a == "--shots-talents":
 			talents_only = true
+		if a == "--shots-atlas":
+			atlas_only = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if talents_only:
+	if atlas_only:
+		_run_atlas()
+	elif talents_only:
 		_run_talents()
 	elif meter_only:
 		_run_meter()
@@ -300,5 +305,31 @@ func _run_talents() -> void:
 	main._talents_popup()
 	await _wait(0.5)
 	await _shot("31_talents")
+	print("shots done")
+	get_tree().quit()
+
+func _run_atlas() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	Game.profile["closed_level"] = 20
+	Game.profile["hero"]["level"] = 30
+	Game.profile["recipes_known"] = ["core_blade"]
+	for r in ["iron_ore", "raw_leather", "coal", "tough_leather", "silver_ore", "mithril_fragment", "boss_core"]:
+		Rules._add_res(Game.profile, r, 40)
+	Game.changed.emit()
+	main._switch("expedition")
+	await _wait(0.5)
+	await _shot("32_level_mods")
+	main._atlas_popup(21)
+	await _wait(0.5)
+	await _shot("33_atlas")
+	UI.clear(main.popup_layer)
+	CraftsScreen.view = "craft"
+	CraftsScreen.craft_prof = "blacksmithing"
+	main._switch("crafts")
+	await _wait(0.5)
+	main.content.get_child(0)._set_view("craft")
+	await _wait(0.4)
+	await _shot("34_weapon_recipes")
 	print("shots done")
 	get_tree().quit()

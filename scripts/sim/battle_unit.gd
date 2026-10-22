@@ -28,6 +28,7 @@ var armor: float
 var haste: float
 var crit: float
 var dmg_mult := 1.0      # potion buffs (Prof.CONSUMABLES)
+var regen := 0.0         # share of max hp restored per second (enemy modifier)
 var heal_mult := 1.0
 
 var spells: Array = []   # [{id, lvl}] in rotation order
@@ -73,6 +74,10 @@ func _init(p_uid: int, p_side: int, p_slot: int, snap: Dictionary) -> void:
 	haste = st.get("haste", 0.0)
 	crit = st.get("crit", 0.0)
 	dmg_mult = st.get("dmg_mult", 1.0)
+	regen = float(st.get("regen", 0.0))
+	if st.get("start_shield", 0.0) > 0.0:
+		shield = float(st["start_shield"])
+		shield_time = 9999.0
 	heal_mult = st.get("heal_mult", 1.0)
 	spells = snap.get("spells", []).duplicate(true)
 

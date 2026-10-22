@@ -81,14 +81,27 @@ static func enemy_snapshot(eid: String, lvl: int) -> Dictionary:
 	var spells := []
 	for s in e["spells"]:
 		spells.append({"id": s, "lvl": 1})
+	var st := {
+		"hp": e["hp"] * sc, "atk": e["atk"] * sc, "power": e["power"] * sc,
+		"armor": e["armor"] * Db.enemy_armor_mult(lvl), "haste": e["haste"], "crit": 0.05,
+	}
+	var mods := Db.level_modifiers(lvl)
+	for m in mods:
+		match m:
+			"armored": st["armor"] *= 1.35
+			"swift": st["haste"] += 0.2
+			"shielded": st["start_shield"] = st["hp"] * 0.15
+			"regen": st["regen"] = 0.008
+			"brutal":
+				st["atk"] *= 1.15
+				st["power"] *= 1.15
+			"vital": st["hp"] *= 1.2
+	if st.has("start_shield"):
+		st["start_shield"] = st["hp"] * 0.15
 	return {
 		"name": e["name"], "color": e["color"], "boss": e.get("boss", false), "target": e["target"],
 		"sprite": e.get("sprite", ""), "ranged": e.get("ranged", false),
-		"stats": {
-			"hp": e["hp"] * sc, "atk": e["atk"] * sc, "power": e["power"] * sc,
-			"armor": e["armor"] * Db.enemy_armor_mult(lvl), "haste": e["haste"], "crit": 0.05,
-		},
-		"spells": spells,
+		"stats": st, "spells": spells, "mods": mods, "id": eid,
 	}
 
 func advance(dt: float) -> void:
@@ -175,6 +188,13 @@ func _drop_mats(u: BattleUnit) -> void:
 	for res in table:
 		if mat_rng.randf() < float(table[res]):
 			_add_mat(res, mat_rng.randi_range(Prof.CLOTH_PER_DROP[0], Prof.CLOTH_PER_DROP[1]))
+	# rare extras: a gathering resource or a drop-only recipe
+	if mat_rng.randf() < Prof.RES_DROP_CHANCE:
+		var pool := Prof.drop_resources(level)
+		_add_mat(pool[mat_rng.randi_range(0, pool.size() - 1)], mat_rng.randi_range(Prof.RES_DROP_AMOUNT[0], Prof.RES_DROP_AMOUNT[1]))
+	if mat_rng.randf() < (Prof.RECIPE_DROP_CHANCE_BOSS if u.is_boss else Prof.RECIPE_DROP_CHANCE):
+		var rcps := Prof.drop_recipes()
+		_add_mat("rcp_" + rcps[mat_rng.randi_range(0, rcps.size() - 1)], 1)
 	if u.is_boss and Prof.BOSS_DROPS.has(u.sprite):
 		var drops: Dictionary = Prof.BOSS_DROPS[u.sprite]
 		var first := true

@@ -374,10 +374,17 @@ func _level_card() -> Control:
 			elif not seen.has(e):
 				seen[e] = true
 				foes.add_child(UI.avatar(Db.ENEMIES[e]["sprite"], Style.CARD_2, 52, true))
+	foes.add_child(UI.btn("Атлас", _atlas_popup.bind(lvl), "ghost", Style.FONT_TINY, "", 0, 44))
 	var row := UI.hbox(12)
 	var fv := UI.vbox(4)
 	fv.add_child(UI.label("Враги · волн: %d" % Db.level_waves(lvl).size(), Style.FONT_TINY, Style.MUTED))
 	fv.add_child(foes)
+	var mods := Db.level_modifiers(lvl)
+	if not mods.is_empty():
+		var mh := UI.hbox(6)
+		for m in mods:
+			mh.add_child(UI.pill(Db.MODIFIERS[m]["icon"], Db.MODIFIERS[m]["name"], Style.FONT_TINY, Color("#5a2530")))
+		fv.add_child(mh)
 	row.add_child(UI.expand(fv))
 	if boss_id != "":
 		var bv := UI.vbox(4)
@@ -790,6 +797,70 @@ func _rot_remove(i: int) -> void:
 	var rot: Array = Game.hero["rotation"].duplicate()
 	rot.remove_at(i)
 	Game.set_rotation(rot)
+
+## Enemy atlas: every enemy of a level with its stats at that level, spells and modifiers.
+func _atlas_popup(lvl: int) -> void:
+	var v := UI.vbox(8)
+	var mods := Db.level_modifiers(lvl)
+	for m in mods:
+		var mh := UI.hbox(8)
+		mh.add_child(UI.icon(Db.MODIFIERS[m]["icon"], 28))
+		mh.add_child(UI.expand(UI.wrap("%s: %s" % [Db.MODIFIERS[m]["name"], Db.MODIFIERS[m]["desc"]], Style.FONT_SMALL, Style.WARNING)))
+		v.add_child(mh)
+	var ids := []
+	for w in Db.level_waves(lvl):
+		for e in w:
+			if not e in ids:
+				ids.append(e)
+	ids.sort_custom(func(a, b): return int(Db.ENEMIES[a].get("boss", false)) < int(Db.ENEMIES[b].get("boss", false)))
+	var list := UI.vbox(8)
+	for eid in ids:
+		var e: Dictionary = Db.ENEMIES[eid]
+		var snap := Expedition.enemy_snapshot(eid, lvl)
+		var st: Dictionary = snap["stats"]
+		var c := UI.card(Color("#3a2530") if e.get("boss", false) else Style.BG_DEEP, 10)
+		var h := UI.hbox(12)
+		c.add_child(h)
+		h.add_child(UI.avatar(e["sprite"], Style.CARD_2, 72, true))
+		var cv := UI.vbox(4)
+		var nh := UI.hbox(6)
+		nh.add_child(UI.label(e["name"], Style.FONT_BODY, Style.TEXT, true))
+		if e.get("boss", false):
+			nh.add_child(UI.chip("Босс", Style.DANGER, 13))
+		nh.add_child(UI.chip({"front": "бьёт передних", "back": "бьёт тыл", "random": "бьёт случайных", "lowest": "добивает раненых"}.get(e["target"], ""), Style.CARD_3, 13))
+		cv.add_child(nh)
+		var sh := HFlowContainer.new()
+		sh.add_theme_constant_override("h_separation", 6)
+		sh.add_theme_constant_override("v_separation", 4)
+		var stat_list := [["hp", "%d" % st["hp"]], ["atk", "%d" % st["atk"]], ["power", "%d" % st["power"]], ["armor", "%d" % st["armor"]]]
+		if st["haste"] != 0.0:
+			stat_list.append(["haste", "%+d%%" % roundi(st["haste"] * 100)])
+		if st.has("start_shield"):
+			stat_list.append(["sp_barrier", "щит %d" % st["start_shield"]])
+		if st.has("regen"):
+			stat_list.append(["hp", "+%d/с" % roundi(st["hp"] * st["regen"])])
+		for sl in stat_list:
+			sh.add_child(UI.pill(sl[0], sl[1], Style.FONT_TINY, Style.CARD_2))
+		cv.add_child(sh)
+		for sp in e["spells"]:
+			var s: Dictionary = Db.SPELLS[sp]
+			var bits := [SpellInfo.short(sp, 1, snap)]
+			bits.append(("каст %.1f с" % s["cast"]) if s.get("cast", 0.0) > 0.0 else "мгновенно")
+			if s.get("cd", 0.0) > 0.0:
+				bits.append("кд %.0f с" % s["cd"])
+			if s.get("cast", 0.0) > 0.0:
+				bits.append("можно сбить" if s.get("interruptible", true) else "НЕЛЬЗЯ сбить")
+			var sl := UI.hbox(6)
+			sl.add_child(UI.label("• " + s["name"], Style.FONT_TINY, Style.TEXT, true))
+			sl.add_child(UI.label(" · ".join(bits), Style.FONT_TINY,
+				Style.DANGER if s.get("cast", 0.0) > 0.0 and not s.get("interruptible", true) else Style.MUTED))
+			cv.add_child(sl)
+		h.add_child(UI.expand(cv))
+		list.add_child(c)
+	var sc := UI.scroll(list)
+	sc.custom_minimum_size = Vector2(780, 420 - 36 * mods.size())
+	v.add_child(sc)
+	_modal("Атлас врагов · %d. %s" % [lvl, Db.LEVELS[lvl - 1]["name"]], v)
 
 func _talents_popup() -> void:
 	UI.clear(popup_layer)
@@ -1670,6 +1741,12 @@ func mats_row(mats: Dictionary) -> Control:
 	f.add_theme_constant_override("h_separation", 8)
 	f.add_theme_constant_override("v_separation", 8)
 	for res in mats:
+		if res.begins_with("rcp_"):
+			if int(mats[res]) <= 0:
+				continue
+			var rp := UI.pill("recipe", "Рецепт: " + Prof.RECIPES.get(res.substr(4), {}).get("name", res), Style.FONT_SMALL, Style.SECONDARY)
+			f.add_child(rp)
+			continue
 		var pill := UI.pill("res_" + res, "+%d" % int(mats[res]), Style.FONT_SMALL, Style.BG_DEEP)
 		pill.tooltip_text = Prof.RESOURCES.get(res, {}).get("name", res)
 		f.add_child(pill)

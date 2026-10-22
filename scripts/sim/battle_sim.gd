@@ -119,6 +119,8 @@ func pick_target(u: BattleUnit, rule: String = "") -> BattleUnit:
 # ---------------- per-step logic ----------------
 
 func _tick_statuses(u: BattleUnit) -> void:
+	if u.regen > 0.0 and u.hp < u.max_hp:
+		u.hp = min(u.max_hp, u.hp + u.max_hp * u.regen * STEP)
 	if u.stun > 0.0:
 		u.stun = max(0.0, u.stun - STEP)
 	if u.taunt > 0.0:

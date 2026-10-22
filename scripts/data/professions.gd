@@ -117,7 +117,19 @@ const RECIPES := {
 	"boss_forged_chestguard": {"name": "Нагрудник, кованный в ядре", "prof": "blacksmithing", "req": 6, "gold": 600, "time": 3600, "xp": 220,
 		"ingredients": {"iron_ore": 30, "silver_ore": 5, "boss_core": 1},
 		"item": {"slot": "armor", "rarity": 2, "ilvl": 18, "affixes": [["armor", 1.0], ["hp", 1.0], ["str", 0.8]]}},
-	"mithril_helm": {"name": "Мифриловый шлем", "prof": "blacksmithing", "req": 8, "gold": 900, "time": 3600, "xp": 260,
+	"iron_sword": {"name": "Железный меч", "prof": "blacksmithing", "req": 2, "gold": 90, "time": 480, "xp": 55,
+		"ingredients": {"iron_ore": 12, "raw_leather": 2},
+		"item": {"wtype": "sword", "rarity": 0, "ilvl": 6, "affixes": [["str", 0.8]]}},
+	"iron_shield": {"name": "Железный щит", "prof": "blacksmithing", "req": 3, "gold": 130, "time": 600, "xp": 70,
+		"ingredients": {"iron_ore": 16, "light_hide": 4},
+		"item": {"wtype": "shield", "rarity": 1, "ilvl": 9, "affixes": [["hp", 0.8]]}},
+	"steel_greatsword": {"name": "Стальной двуручник", "prof": "blacksmithing", "req": 5, "gold": 260, "time": 1200, "xp": 120,
+		"ingredients": {"iron_ore": 24, "coal": 6, "tough_leather": 2},
+		"item": {"wtype": "greatsword", "rarity": 1, "ilvl": 12, "affixes": [["crit", 0.7]]}},
+	"core_blade": {"name": "Клинок из ядра", "prof": "blacksmithing", "req": 7, "gold": 900, "time": 3600, "xp": 260, "drop_only": true,
+		"ingredients": {"silver_ore": 10, "mithril_fragment": 3, "boss_core": 1},
+		"item": {"wtype": "sword", "rarity": 2, "ilvl": 22, "affixes": [["str", 1.0], ["crit", 0.8]]}},
+	"mithril_helm": {"name": "Мифриловый шлем", "prof": "blacksmithing", "req": 8, "gold": 900, "time": 3600, "xp": 260, "drop_only": true,
 		"ingredients": {"mithril_fragment": 6, "silver_ore": 4, "tough_leather": 3, "boss_core": 1},
 		"item": {"slot": "head", "rarity": 2, "ilvl": 24, "affixes": [["armor", 1.0], ["hp", 1.0], ["crit", 0.8]]}},
 	# --- Tailoring (cloth comes from combat)
@@ -139,7 +151,19 @@ const RECIPES := {
 	"pristine_slippers": {"name": "Туфли из безупречной кожи", "prof": "tailoring", "req": 6, "gold": 400, "time": 1800, "xp": 160,
 		"ingredients": {"fine_cloth": 6, "pristine_hide": 2, "thick_hide": 4},
 		"item": {"slot": "feet", "rarity": 2, "ilvl": 16, "affixes": [["power", 1.0], ["haste", 1.0], ["hp", 0.6]]}},
-	"enchanted_robe": {"name": "Зачарованная мантия", "prof": "tailoring", "req": 7, "gold": 700, "time": 3600, "xp": 240,
+	"hunting_bow": {"name": "Охотничий лук", "prof": "tailoring", "req": 2, "gold": 90, "time": 480, "xp": 55,
+		"ingredients": {"raw_leather": 6, "rough_cloth": 6},
+		"item": {"wtype": "bow", "rarity": 0, "ilvl": 6, "affixes": [["agi", 0.8]]}},
+	"apprentice_staff": {"name": "Посох ученика", "prof": "tailoring", "req": 3, "gold": 130, "time": 600, "xp": 70,
+		"ingredients": {"linen_cloth": 8, "greenleaf": 6},
+		"item": {"wtype": "staff", "rarity": 1, "ilvl": 9, "affixes": [["haste", 0.6]]}},
+	"pristine_longbow": {"name": "Безупречный длинный лук", "prof": "tailoring", "req": 6, "gold": 700, "time": 3000, "xp": 220, "drop_only": true,
+		"ingredients": {"pristine_hide": 6, "fine_cloth": 4},
+		"item": {"wtype": "bow", "rarity": 2, "ilvl": 18, "affixes": [["agi", 1.0], ["crit", 0.8]]}},
+	"moonweave_staff": {"name": "Посох лунного плетения", "prof": "tailoring", "req": 7, "gold": 900, "time": 3600, "xp": 260, "drop_only": true,
+		"ingredients": {"fine_cloth": 10, "moonflower": 6, "enchanted_thread": 1},
+		"item": {"wtype": "staff", "rarity": 2, "ilvl": 22, "affixes": [["power", 1.0], ["haste", 0.8]]}},
+	"enchanted_robe": {"name": "Зачарованная мантия", "prof": "tailoring", "req": 7, "gold": 700, "time": 3600, "xp": 240, "drop_only": true,
 		"ingredients": {"fine_cloth": 24, "enchanted_thread": 1},
 		"item": {"slot": "armor", "rarity": 2, "ilvl": 20, "affixes": [["power", 1.0], ["hp", 1.0], ["crit", 0.8]]}},
 	# --- Alchemy (consumables)
@@ -249,6 +273,15 @@ static func make_item(recipe_id: String, item_id: String) -> Dictionary:
 	var r: Dictionary = RECIPES[recipe_id]
 	var spec: Dictionary = r["item"]
 	var affixes := []
+	var extra := {}
+	var slot: String = spec.get("slot", "")
+	if spec.has("wtype"):
+		var wt: Dictionary = Loot.WEAPON_TYPES[spec["wtype"]]
+		slot = "offhand" if wt.get("offhand", false) else "weapon"
+		extra["wtype"] = spec["wtype"]
+		if float(wt["dmg"]) > 0.0:
+			extra["dmg"] = round(float(wt["dmg"]) * (int(spec["ilvl"]) + 1) * 0.95 * (1.0 + 0.04 * int(spec["rarity"])))
+		affixes.append({"stat": wt["implicit"][0], "value": round(float(wt["implicit"][1]) * int(spec["ilvl"]) * 0.95), "q": 0.95, "imp": true})
 	for a in spec["affixes"]:
 		var stat: String = a[0]
 		var q: float = a[1]
@@ -258,5 +291,34 @@ static func make_item(recipe_id: String, item_id: String) -> Dictionary:
 		else:
 			value = round(Loot.STAT_PER_ILVL[stat] * int(spec["ilvl"]) * q)
 		affixes.append({"stat": stat, "value": value, "q": q})
-	return {"id": item_id, "slot": spec["slot"], "name": r["name"], "rarity": int(spec["rarity"]),
+	var it := {"id": item_id, "slot": slot, "name": r["name"], "rarity": int(spec["rarity"]),
 		"ilvl": int(spec["ilvl"]), "affixes": affixes, "crafted": true}
+	it.merge(extra)
+	return it
+
+# ---------------------------------------------------------------- rare drops
+
+## Per kill: a gathering resource of the level's tier (small chance), and a
+## drop-only recipe (very small; bosses more often). Recipes travel through the
+## materials of a timeline as "rcp_<recipe id>" and are learned when collected.
+const RES_DROP_CHANCE := 0.012
+const RES_DROP_AMOUNT := [1, 3]
+const RECIPE_DROP_CHANCE := 0.0015
+const RECIPE_DROP_CHANCE_BOSS := 0.04
+
+static func drop_recipes() -> Array:
+	var out := []
+	for id in RECIPES:
+		if RECIPES[id].get("drop_only", false):
+			out.append(id)
+	return out
+
+## Gathering resources that can drop at this campaign level (tier by level).
+static func drop_resources(level: int) -> Array:
+	var tier := 0 if level < 8 else (1 if level < 18 else 2)
+	var out := []
+	for id in RESOURCES:
+		var r: Dictionary = RESOURCES[id]
+		if r["cat"] in ["ore", "herb", "leather"] and int(r["tier"]) <= tier:
+			out.append(id)
+	return out

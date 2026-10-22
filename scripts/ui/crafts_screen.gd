@@ -291,7 +291,7 @@ func _active_craft(prof: String, c: Dictionary) -> Control:
 func _output_tile(rid: String, size_px: float) -> Control:
 	var r: Dictionary = Prof.RECIPES[rid]
 	if r.has("item"):
-		return UI.tile("item_" + str(r["item"]["slot"]), Style.RARITY[int(r["item"]["rarity"])], size_px)
+		return UI.tile(UI.item_icon(Prof.make_item(rid, "preview")), Style.RARITY[int(r["item"]["rarity"])], size_px)
 	var res: String = r["output"].keys()[0]
 	return UI.tile("res_" + res, Style.RARITY[int(Prof.RESOURCES[res]["tier"])], size_px)
 
@@ -311,9 +311,15 @@ func _recipe_card(rid: String) -> Control:
 	head.add_child(UI.label(r["name"], Style.FONT_BODY, Style.RARITY[rarity] if not locked else Style.MUTED, true))
 	head.add_child(UI.chip("ур. %d" % r["req"], Style.DANGER if locked else Style.CARD_3, 13))
 	if r.has("item"):
-		head.add_child(UI.chip(Loot.SLOT_NAMES[r["item"]["slot"]], Style.CARD_3, 13))
+		var pv := Prof.make_item(rid, "preview")
+		var kind: String = Loot.WEAPON_TYPES[pv["wtype"]]["name"] if pv.has("wtype") else Loot.SLOT_NAMES[pv["slot"]]
+		head.add_child(UI.chip(kind, Style.CARD_3, 13))
+	if r.get("drop_only", false):
+		var known: bool = rid in Game.profile.get("recipes_known", [])
+		head.add_child(UI.chip("Изучен" if known else "Редкий рецепт", Style.SUCCESS if known else Style.SECONDARY, 13,
+			Color("#062b16") if known else Style.TEXT))
 	v.add_child(head)
-	v.add_child(UI.label(_output_text(rid), Style.FONT_SMALL, Style.TEXT))
+	v.add_child(UI.wrap(_output_text(rid), Style.FONT_SMALL, Style.TEXT))
 	var ing := HFlowContainer.new()
 	ing.add_theme_constant_override("h_separation", 6)
 	ing.add_theme_constant_override("v_separation", 6)
@@ -343,7 +349,12 @@ func _output_text(rid: String) -> String:
 	var r: Dictionary = Prof.RECIPES[rid]
 	if r.has("item"):
 		var it := Prof.make_item(rid, "preview")
-		return UI.item_line(it)
+		var parts := []
+		if it.has("wtype"):
+			parts.append(Loot.weapon_text(it))
+		for a in it["affixes"]:
+			parts.append(Loot.affix_text(a))
+		return ", ".join(parts)
 	var parts := []
 	for res in r["output"]:
 		var line := "%s ×%d" % [Prof.RESOURCES[res]["name"], r["output"][res]]
@@ -461,6 +472,7 @@ func _err_text(r: Dictionary) -> String:
 	var e := str(r.get("error", ""))
 	match e:
 		"profession level too low": return "Нужен выше уровень профессии"
+		"recipe not learned": return "Рецепт не изучен — изредка выпадает в бою, чаще с боссов"
 		"already crafting": return "Уже идёт создание"
 		"already gathering": return "Уже идёт сбор"
 		"not enough gold": return "Не хватает золота"
