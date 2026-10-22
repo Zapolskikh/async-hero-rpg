@@ -7,6 +7,7 @@ var main: Node
 var crafts_only := false
 var spells_only := false
 var weapons_only := false
+var meter_only := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -18,9 +19,13 @@ func _ready() -> void:
 			spells_only = true
 		if a == "--shots-weapons":
 			weapons_only = true
+		if a == "--shots-meter":
+			meter_only = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if weapons_only:
+	if meter_only:
+		_run_meter()
+	elif weapons_only:
 		_run_weapons()
 	elif spells_only:
 		_run_spells()
@@ -257,5 +262,17 @@ func _run_weapons() -> void:
 	main._merc_popup(Game.board[0])
 	await _wait(0.4)
 	await _shot("27_merc_weapons")
+	print("shots done")
+	get_tree().quit()
+
+func _run_meter() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	await Game.start_expedition(1, "push")
+	main._open_watch()
+	await _wait(0.4)
+	await _shot("28_meter_start")
+	await _wait(6.0)
+	await _shot("29_meter_fight")
 	print("shots done")
 	get_tree().quit()

@@ -25,6 +25,7 @@ var exp_status: Label
 var watch_layer: Control
 var watch_label: Label
 var battle_view: Control
+var meter_rows: Array = []   # [{root, bar, name, value}] damage meter in the watch screen
 var popup_layer: Control
 var toast_layer: Control
 var speed_buttons: Array = []
@@ -494,6 +495,76 @@ func _build_watch_layer() -> void:
 		var b := UI.btn("x%d" % int(sp), _set_speed.bind(sp), "ghost", Style.FONT_BODY, "", 64, 48)
 		speed_buttons.append(b)
 		h.add_child(b)
+	_build_meter()
+
+## Recount-style damage meter: one bar per ally, total damage (DPS), best on top.
+func _build_meter() -> void:
+	var panel := PanelContainer.new()
+	panel.add_theme_stylebox_override("panel", Style.box(Color(0.06, 0.07, 0.1, 0.85), Style.RADIUS_SMALL, 8))
+	panel.anchor_left = 0.0
+	panel.anchor_right = 0.0
+	panel.anchor_top = 1.0
+	panel.anchor_bottom = 1.0
+	panel.offset_left = 12
+	panel.offset_right = 452
+	panel.offset_bottom = -12
+	panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
+	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	watch_layer.add_child(panel)
+	var v := UI.vbox(3)
+	panel.add_child(v)
+	var head := UI.hbox(6)
+	head.add_child(UI.expand(UI.label("Урон", Style.FONT_SMALL, Style.TEXT, true)))
+	head.add_child(UI.label("всего (DPS)", Style.FONT_TINY, Style.MUTED))
+	v.add_child(head)
+	meter_rows.clear()
+	for i in 4:
+		var row := Control.new()
+		row.custom_minimum_size = Vector2(0, 26)
+		row.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		var bg := ColorRect.new()
+		bg.color = Color(1, 1, 1, 0.06)
+		bg.set_anchors_preset(Control.PRESET_FULL_RECT)
+		row.add_child(bg)
+		var bar := ColorRect.new()
+		bar.anchor_bottom = 1.0
+		row.add_child(bar)
+		var name := UI.label("", Style.FONT_TINY, Style.TEXT, true)
+		name.set_anchors_preset(Control.PRESET_FULL_RECT)
+		name.offset_left = 8
+		name.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		row.add_child(name)
+		var val := UI.label("", Style.FONT_TINY, Style.TEXT, true)
+		val.set_anchors_preset(Control.PRESET_FULL_RECT)
+		val.offset_right = -8
+		val.horizontal_alignment = HORIZONTAL_ALIGNMENT_RIGHT
+		val.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+		row.add_child(val)
+		v.add_child(row)
+		meter_rows.append({"root": row, "bar": bar, "name": name, "value": val})
+
+func _update_meter(ex: Expedition) -> void:
+	var allies := []
+	if ex != null and ex.sim != null:
+		for u in ex.sim.units:
+			if u.side == 0:
+				allies.append(u)
+	allies.sort_custom(func(a, b): return a.dealt > b.dealt)
+	var top := 1.0
+	for u in allies:
+		top = max(top, u.dealt)
+	var t: float = max(1.0, ex.sim.time) if ex != null and ex.sim != null else 1.0
+	for i in meter_rows.size():
+		var r: Dictionary = meter_rows[i]
+		r["root"].visible = i < allies.size()
+		if i >= allies.size():
+			continue
+		var u = allies[i]
+		var bar: ColorRect = r["bar"]
+		bar.color = Color(u.color, 0.75) if u.alive() else Color(0.4, 0.4, 0.45, 0.6)
+		bar.anchor_right = u.dealt / top
+		r["name"].text = "%d. %s" % [i + 1, u.name]
+		r["value"].text = "%d (%d)" % [roundi(u.dealt), roundi(u.dealt / t)]
 
 func _set_speed(s: float) -> void:
 	Game.watch_speed = s
@@ -519,6 +590,7 @@ func _process(_delta: float) -> void:
 			var mode := "Штурм" if ex.mode == "push" else "Фарм"
 			watch_label.text = "%s · ур. %d · забег %d · волна %d/%d · x%d" % [mode, ex.level, ex.run_index + 1,
 				min(ex.wave_index + 1, ex.total_waves()), ex.total_waves(), int(Game.watch_speed)]
+		_update_meter(ex)
 
 # =====================================================================
 # Screen: Hero

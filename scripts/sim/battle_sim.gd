@@ -34,6 +34,8 @@ func setup(allies: Array, enemy_snaps: Array, seed_value: int) -> void:
 		e.spell_cd = rng.randf_range(1.5, 3.0)
 		units.append(e)
 	for a in allies:
+		a.dealt = 0.0   # damage meter counts each fight from zero
+		a.healed = 0.0
 		a.casting = {}
 		a.cooldowns.clear()
 		a.attack_cd = rng.randf_range(0.1, 0.6)
