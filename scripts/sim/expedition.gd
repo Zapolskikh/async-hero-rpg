@@ -8,10 +8,7 @@ extends RefCounted
 const WAVE_PAUSE := 1.5
 const BETWEEN_WAVE_HEAL := 0.25
 const FIRST_CLEAR_RARITY_BONUS := 0.25
-## Farm loot comes with battle time, not with runs: on average one item per
-## FARM_ITEM_SECONDS of fighting, on any level. Higher levels drop higher item levels.
-## A first clear (push) always drops an item and a box.
-const FARM_ITEM_SECONDS := 1800.0
+const FARM_DROP_CHANCE := 0.15  # per farm run won; first clears always drop
 
 var level := 1
 var mode := "push"
@@ -136,8 +133,6 @@ func step_wave_headless() -> void:
 
 func _on_wave_end() -> void:
 	var sc := Db.enemy_scale(level)
-	if mode == "farm" and rng.randf() < min(1.0, sim.time / FARM_ITEM_SECONDS):
-		items.append(Loot.roll_gear(rng, level, 0.0))
 	for u in sim.units:
 		if u.side == 1 and not u.alive():
 			kills += 1
@@ -180,6 +175,8 @@ func _on_run_end(cleared: bool, reason: String) -> void:
 			level_closed_now = true
 			items.append(Loot.roll_gear(rng, level, FIRST_CLEAR_RARITY_BONUS))
 			boxes += 1
+		elif rng.randf() < FARM_DROP_CHANCE:
+			items.append(Loot.roll_gear(rng, level, 0.0))
 	else:
 		runs_lost += 1
 	if mode == "push":
