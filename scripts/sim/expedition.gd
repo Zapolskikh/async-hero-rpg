@@ -137,8 +137,10 @@ func _on_wave_end() -> void:
 		if u.side == 1 and not u.alive():
 			kills += 1
 			var mult := 8 if u.is_boss else 1
-			gold += int(round(5.0 * pow(sc, 0.85) * mult * Db.GOLD_MULT))
-			xp += int(round(6.0 * Db.xp_level_factor(level) * mult))
+			# rewards grow a bit faster than enemy toughness, so a harder level you can
+			# clear always pays more per hour than farming an easy one
+			gold += int(round(5.0 * pow(sc, 1.15) * mult * Db.GOLD_MULT))
+			xp += int(round(6.0 * Db.xp_level_factor(level) * pow(sc, 0.35) * mult))
 			_drop_mats(u)
 	if sim.won:
 		wave_index += 1
