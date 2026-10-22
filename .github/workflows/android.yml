@@ -1,0 +1,77 @@
+name: Android APK
+
+# Builds a debug-signed APK on every push to main and publishes it as the
+# "android-latest" release, so the phone can download it from GitHub.
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  GODOT_VERSION: 4.5.1
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - uses: android-actions/setup-android@v3
+
+      - name: Android SDK packages
+        run: sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34"
+
+      - name: Godot and export templates
+        run: |
+          base=https://github.com/godotengine/godot/releases/download/${GODOT_VERSION}-stable
+          wget -q $base/Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip
+          wget -q $base/Godot_v${GODOT_VERSION}-stable_export_templates.tpz
+          unzip -q Godot_v${GODOT_VERSION}-stable_linux.x86_64.zip
+          mv Godot_v${GODOT_VERSION}-stable_linux.x86_64 godot
+          mkdir -p ~/.local/share/godot/export_templates
+          unzip -q Godot_v${GODOT_VERSION}-stable_export_templates.tpz
+          mv templates ~/.local/share/godot/export_templates/${GODOT_VERSION}.stable
+
+      - name: Debug keystore and editor settings
+        run: |
+          keytool -genkeypair -v -keystore debug.keystore -storepass android -alias androiddebugkey \
+            -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
+          mkdir -p ~/.config/godot
+          for f in editor_settings-4.tres editor_settings-4.5.tres; do
+            printf '[gd_resource type="EditorSettings" format=3]\n\n[resource]\nexport/android/android_sdk_path = "%s"\nexport/android/java_sdk_path = "%s"\nexport/android/debug_keystore = "%s"\nexport/android/debug_keystore_user = "androiddebugkey"\nexport/android/debug_keystore_pass = "android"\n' \
+              "$ANDROID_SDK_ROOT" "$JAVA_HOME" "$PWD/debug.keystore" > ~/.config/godot/$f
+          done
+
+      - name: Export APK
+        env:
+          GODOT_ANDROID_KEYSTORE_DEBUG_PATH: ${{ github.workspace }}/debug.keystore
+          GODOT_ANDROID_KEYSTORE_DEBUG_USER: androiddebugkey
+          GODOT_ANDROID_KEYSTORE_DEBUG_PASSWORD: android
+        run: |
+          mkdir -p build/android
+          ./godot --headless --import || true
+          ./godot --headless --export-debug "Android" build/android/AsyncHeroRPG.apk
+          ls -la build/android
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AsyncHeroRPG-apk
+          path: build/android/AsyncHeroRPG.apk
+
+      - name: Publish as release "android-latest"
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release delete android-latest --yes --cleanup-tag || true
+          gh release create android-latest build/android/AsyncHeroRPG.apk \
+            --title "Android APK (последняя сборка)" \
+            --notes "Сборка из коммита ${GITHUB_SHA::7}. Скачайте AsyncHeroRPG.apk на телефон и установите (разрешите установку из неизвестных источников)." \
+            --target "$GITHUB_SHA"

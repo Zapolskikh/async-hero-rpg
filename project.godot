@@ -3,6 +3,8 @@ config_version=5
 
 [application]
 
+config/icon="res://icon.png"
+
 config/name="Async Hero RPG"
 config/description="Prototype of an async AFK RPG: one hero, three mercenaries, deterministic 3-spell rotations."
 run/main_scene="res://scenes/main.tscn"
