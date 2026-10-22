@@ -184,9 +184,8 @@ func _nav_badges() -> Dictionary:
 			break
 	var fusable := false
 	for sid in Game.collection:
-		for k in Game.collection[sid]:
-			if Game.can_fuse(sid, int(k)):
-				fusable = true
+		if Game.can_fuse(sid):
+			fusable = true
 	return {
 		"expedition": ex == null or (ex["mode"] == "farm" and Game.has_pending()),
 		"hero": Game.hero["rotation"].size() < 3,
@@ -728,14 +727,20 @@ func _spell_popup(sid: String, caster: Dictionary = {}) -> void:
 	top.add_child(UI.expand(tv))
 	body.add_child(top)
 	body.add_child(_spell_numbers(sid, shown_lvl, snap))
-	if own and lvl > 0:
-		var copies := int(Game.collection.get(sid, {}).get(str(lvl), 0))
-		var ph := UI.hbox(8)
-		ph.add_child(UI.label("Копии %s: %d / %d" % [UI.roman(lvl), copies, Game.FUSE_COUNT], Style.FONT_SMALL, Style.MUTED))
-		ph.add_child(UI.expand(UI.progress(copies, Game.FUSE_COUNT, Style.SECONDARY, 12)))
-		ph.add_child(UI.label("%s: %s" % [UI.roman(lvl + 1), SpellInfo.short(sid, lvl + 1, power)], Style.FONT_SMALL, Style.TEXT, true))
-		body.add_child(ph)
 	var buttons := []
+	if own and lvl > 0:
+		var ph := UI.hbox(8)
+		if lvl >= Game.SPELL_MAX_LEVEL:
+			ph.add_child(UI.label("Максимальный уровень", Style.FONT_SMALL, Style.SUCCESS, true))
+		else:
+			var copies := Game.spell_copies(sid)
+			var cost := Game.fuse_cost(lvl)
+			ph.add_child(UI.label("Копии для %s: %d / %d" % [UI.roman(lvl + 1), copies, cost], Style.FONT_SMALL, Style.MUTED))
+			ph.add_child(UI.expand(UI.progress(min(copies, cost), cost, Style.SECONDARY, 12)))
+			ph.add_child(UI.label("%s: %s" % [UI.roman(lvl + 1), SpellInfo.short(sid, lvl + 1, power)], Style.FONT_SMALL, Style.TEXT, true))
+			if Game.can_fuse(sid):
+				buttons.append(["Улучшить → %s" % UI.roman(lvl + 1), _fuse.bind(sid), "primary", true])
+		body.add_child(ph)
 	if own:
 		var rot: Array = Game.hero["rotation"]
 		var idx := rot.find(sid)
@@ -1019,7 +1024,7 @@ func _screen_spells() -> Control:
 	h.add_child(UI.icon("box", 48))
 	var tv := UI.vbox(0)
 	tv.add_child(UI.title("Spell Box", 22))
-	tv.add_child(UI.label("5 одинаковых копий → следующий уровень", Style.FONT_TINY, Style.MUTED))
+	tv.add_child(UI.label("Повторы копятся и повышают уровень, до X", Style.FONT_TINY, Style.MUTED))
 	h.add_child(UI.expand(tv))
 	var free := UI.btn("Ежедневная", _open_box.bind("free"), "success", Style.FONT_SMALL, "box", 0, 52)
 	free.disabled = not Game.free_box_available()
@@ -1069,23 +1074,25 @@ func _spell_card(sid: String) -> Control:
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(l)
 		return c
-	var copies := int(Game.collection[sid].get(str(lvl), 0))
-	var fuse_lvl := 0
-	for k in Game.collection[sid]:
-		if Game.can_fuse(sid, int(k)):
-			fuse_lvl = int(k)
-	if fuse_lvl > 0:
-		v.add_child(UI.btn("Слить → %s" % UI.roman(fuse_lvl + 1), _fuse.bind(sid, fuse_lvl), "primary", Style.FONT_TINY, "", 0, 40))
+	var copies := Game.spell_copies(sid)
+	var cost := Game.fuse_cost(lvl)
+	if lvl >= Game.SPELL_MAX_LEVEL:
+		var l := UI.label("Макс. уровень", Style.FONT_TINY, Style.SUCCESS, true)
+		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(l)
+	elif Game.can_fuse(sid):
+		v.add_child(UI.btn("Улучшить → %s" % UI.roman(lvl + 1), _fuse.bind(sid), "primary", Style.FONT_TINY, "", 0, 40))
 	else:
 		var ph := UI.hbox(6)
-		ph.add_child(UI.expand(UI.progress(copies, Game.FUSE_COUNT, Style.SECONDARY, 10)))
-		ph.add_child(UI.label("%d/%d" % [copies, Game.FUSE_COUNT], Style.FONT_TINY, Style.MUTED))
+		ph.add_child(UI.expand(UI.progress(copies, cost, Style.SECONDARY, 10)))
+		ph.add_child(UI.label("%d/%d" % [copies, cost], Style.FONT_TINY, Style.MUTED))
 		v.add_child(ph)
 	return c
 
-func _fuse(sid: String, lvl: int) -> void:
-	if Game.fuse(sid, lvl):
-		_toast("%s теперь %s" % [Db.SPELLS[sid]["name"], UI.roman(lvl + 1)])
+func _fuse(sid: String) -> void:
+	if Game.fuse(sid):
+		UI.clear(popup_layer)
+		_toast("%s теперь %s" % [Db.SPELLS[sid]["name"], UI.roman(Roster.spell_best_level(Game.collection, sid))])
 
 func _open_pack(use: String) -> void:
 	var res: Array = await Game.open_box_pack(use)
@@ -1137,12 +1144,11 @@ func _pack_popup(res: Array) -> void:
 	v.add_child(g)
 	var fusable := 0
 	for sid in Game.collection:
-		for k in Game.collection[sid]:
-			if Game.can_fuse(sid, int(k)):
-				fusable += 1
+		if Game.can_fuse(sid):
+			fusable += 1
 	var summary := "Новых способностей: %d · копий всего: %d" % [news.size(), res.size()]
 	if fusable > 0:
-		summary += " · можно слить: %d" % fusable
+		summary += " · можно улучшить: %d" % fusable
 	v.add_child(UI.label(summary, Style.FONT_SMALL, Style.MUTED))
 	_modal("Spell Box ×%d" % res.size(), v, [], "Забрать")
 
@@ -1519,8 +1525,11 @@ func _box_animation(r: Dictionary) -> void:
 	if r["new"]:
 		chips.add_child(UI.chip("Новая!", Style.PRIMARY, Style.FONT_TINY, Style.PRIMARY_TEXT))
 	else:
-		var copies := int(Game.collection[r["spell"]].get("1", 0))
-		chips.add_child(UI.chip("Копий I: %d/%d" % [copies, Game.FUSE_COUNT], Style.CARD_3))
+		var slvl := Roster.spell_best_level(Game.collection, r["spell"])
+		if slvl >= Game.SPELL_MAX_LEVEL:
+			chips.add_child(UI.chip("Макс. уровень", Style.CARD_3))
+		else:
+			chips.add_child(UI.chip("Копий для %s: %d/%d" % [UI.roman(slvl + 1), Game.spell_copies(r["spell"]), Game.fuse_cost(slvl)], Style.CARD_3))
 	reveal.add_child(chips)
 	var desc := UI.wrap(d["desc"], Style.FONT_SMALL)
 	desc.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER

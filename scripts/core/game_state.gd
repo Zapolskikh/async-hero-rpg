@@ -24,7 +24,7 @@ const AUTOSAVE_EVERY := 10.0
 const BOX_PRICE := Rules.BOX_PRICE
 const BOX_PACK := Rules.BOX_PACK
 const BOX_PACK_PRICE := Rules.BOX_PACK_PRICE
-const FUSE_COUNT := Rules.FUSE_COUNT
+const SPELL_MAX_LEVEL := Rules.SPELL_MAX_LEVEL
 const MAX_HIRED := Rules.MAX_HIRED
 const OFFLINE_CAP := Rules.OFFLINE_CAP
 
@@ -204,8 +204,14 @@ func reroll_cost() -> int:
 func free_box_available() -> bool:
 	return Rules.free_box_available(profile, now())
 
-func can_fuse(sid: String, lvl: int) -> bool:
-	return Rules.can_fuse(profile, sid, lvl)
+func can_fuse(sid: String) -> bool:
+	return Rules.can_fuse(profile, sid)
+
+func fuse_cost(lvl: int) -> int:
+	return Rules.fuse_cost(lvl)
+
+func spell_copies(sid: String) -> int:
+	return int(collection.get(sid, {}).get("copies", 0))
 
 func owned_spells() -> Array:
 	var out := []
@@ -289,8 +295,8 @@ func fire(id: String) -> void:
 func replace_hired(old_id: String, new_id: String) -> bool:
 	return act("replace", {"old": old_id, "new": new_id})["ok"]
 
-func fuse(sid: String, lvl: int) -> bool:
-	return act("fuse", {"sid": sid, "lvl": lvl})["ok"]
+func fuse(sid: String) -> bool:
+	return act("fuse", {"sid": sid})["ok"]
 
 # authority actions (await them)
 

@@ -12,7 +12,7 @@ extends RefCounted
 ## so a server keeps it secret by stripping it before sending the profile.
 ## `ctx` (server only): {"account": id, "real_pool": [public snapshots of other players]}
 
-const VERSION := 3
+const VERSION := 4
 const OFFLINE_CAP := 12.0 * 3600.0
 const BOX_PRICE := 150
 const BOX_PACK := 10
@@ -20,7 +20,9 @@ const BOX_PACK_PRICE := 1350
 const REROLL_BASE := 20
 const REROLL_GROWTH := 1.5
 const MAX_HIRED := 3
-const FUSE_COUNT := 5
+const SPELL_MAX_LEVEL := 10
+## Spare copies (duplicates from boxes) eaten by each upgrade: I->II, II->III, ... IX->X.
+const FUSE_COST := [4, 5, 6, 7, 8, 9, 10, 11, 12]
 const ASSIST_SHARE := 0.05       # owner of a hired real character gets 5% of the gold (concept 8.1)
 const MAX_ITEMS_PER_COLLECT := 30
 const REAL_SLOTS := 3            # up to 3 of 6 board places go to real players
@@ -51,7 +53,7 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 	}
 	var r := _rng(p)
 	for sid in Db.STARTER_SPELLS:
-		p["collection"][sid] = {"1": 1}
+		p["collection"][sid] = {"lvl": 1, "copies": 0}
 	p["board"] = Roster.roll_board(r, 1)
 	_auto_party(p)
 	p["board"] = Roster.roll_board(r, 1)
@@ -75,6 +77,7 @@ static func migrate(p: Dictionary, now: float) -> void:
 	if not p.has("hired"):
 		p["hired"] = []
 	_migrate_professions(p)
+	_migrate_spells(p)
 	var hero: Dictionary = p["hero"]
 	hero["level"] = int(hero["level"])
 	hero["xp"] = int(hero["xp"])
@@ -107,6 +110,33 @@ static func _empty_equipment() -> Dictionary:
 	for slot in Loot.ALL_SLOTS:
 		e[slot] = null
 	return e
+
+## v4: a spell is {"lvl", "copies"} (one level + spare duplicates) instead of
+## copies per level. Old copies are converted to level-I equivalents (a level-k
+## copy was worth 5^(k-1)), the best level is kept, the rest become spare copies.
+static func _migrate_spells(p: Dictionary) -> void:
+	var col: Dictionary = p["collection"]
+	for sid in col.keys():
+		var c: Dictionary = col[sid]
+		if c.has("lvl"):
+			c["lvl"] = int(c["lvl"])
+			c["copies"] = int(c.get("copies", 0))
+			continue
+		var best := 0
+		var total := 0
+		for k in c.keys():
+			var n := int(c[k])
+			if n > 0:
+				best = max(best, int(k))
+				total += n * int(pow(5, int(k) - 1))
+		if best == 0:
+			col.erase(sid)
+			continue
+		best = min(best, SPELL_MAX_LEVEL)
+		var spare := total - 1
+		for l in range(1, best):
+			spare -= fuse_cost(l)
+		col[sid] = {"lvl": best, "copies": max(0, spare)}
 
 static func _fresh_professions() -> Dictionary:
 	var d := {}
@@ -255,8 +285,16 @@ static func reroll_cost(p: Dictionary, now: float) -> int:
 static func free_box_available(p: Dictionary, now: float) -> bool:
 	return p["free_box_day"] != day_of(now)
 
-static func can_fuse(p: Dictionary, sid: String, lvl: int) -> bool:
-	return int(p["collection"].get(sid, {}).get(str(lvl), 0)) >= FUSE_COUNT
+## Spare copies needed to raise a spell from `lvl` to `lvl + 1` (0 at max level).
+static func fuse_cost(lvl: int) -> int:
+	if lvl < 1 or lvl >= SPELL_MAX_LEVEL:
+		return 0
+	return int(FUSE_COST[lvl - 1])
+
+static func can_fuse(p: Dictionary, sid: String) -> bool:
+	var c: Dictionary = p["collection"].get(sid, {})
+	var lvl := int(c.get("lvl", 0))
+	return lvl >= 1 and lvl < SPELL_MAX_LEVEL and int(c.get("copies", 0)) >= fuse_cost(lvl)
 
 ## Expedition time used for rewards: real elapsed, farm capped 12 h after the last collect.
 static func expedition_time(ex: Dictionary, now: float) -> float:
@@ -299,7 +337,7 @@ static func apply(p: Dictionary, action: String, args: Dictionary, now: float, c
 		"hire": res = _hire(p, str(args.get("id", "")))
 		"fire": res = _fire(p, str(args.get("id", "")))
 		"replace": res = _replace(p, str(args.get("old", "")), str(args.get("new", "")))
-		"fuse": res = _fuse(p, str(args.get("sid", "")), int(args.get("lvl", 1)))
+		"fuse": res = _fuse(p, str(args.get("sid", "")))
 		"set_name": res = _set_name(p, str(args.get("name", "")))
 		"reroll": res = _reroll(p, r, now, ctx)
 		"open_box": res = _open_box(p, r, str(args.get("use", "")), now)
@@ -425,13 +463,17 @@ static func _replace(p: Dictionary, old_id: String, new_id: String) -> Dictionar
 	p["party_order"][pos] = new_id
 	return _ok()
 
-static func _fuse(p: Dictionary, sid: String, lvl: int) -> Dictionary:
-	if not can_fuse(p, sid, lvl):
-		return _err("not enough copies")
+static func _fuse(p: Dictionary, sid: String) -> Dictionary:
+	if not p["collection"].has(sid):
+		return _err("spell not owned")
 	var c: Dictionary = p["collection"][sid]
-	c[str(lvl)] = int(c[str(lvl)]) - FUSE_COUNT
-	c[str(lvl + 1)] = int(c.get(str(lvl + 1), 0)) + 1
-	return _ok()
+	if int(c["lvl"]) >= SPELL_MAX_LEVEL:
+		return _err("max level")
+	if not can_fuse(p, sid):
+		return _err("not enough copies")
+	c["copies"] = int(c["copies"]) - fuse_cost(int(c["lvl"]))
+	c["lvl"] = int(c["lvl"]) + 1
+	return _ok({"lvl": c["lvl"]})
 
 static func _set_name(p: Dictionary, name: String) -> Dictionary:
 	name = name.strip_edges()
@@ -509,8 +551,9 @@ static func _roll_box(p: Dictionary, r: RandomNumberGenerator) -> Dictionary:
 			break
 	var was_new := Roster.spell_best_level(p["collection"], pick) == 0
 	if not p["collection"].has(pick):
-		p["collection"][pick] = {}
-	p["collection"][pick]["1"] = int(p["collection"][pick].get("1", 0)) + 1
+		p["collection"][pick] = {"lvl": 1, "copies": 0}
+	else:
+		p["collection"][pick]["copies"] = int(p["collection"][pick]["copies"]) + 1
 	return {"spell": pick, "new": was_new}
 
 static func _start(p: Dictionary, r: RandomNumberGenerator, level: int, mode: String, now: float, ctx: Dictionary) -> Dictionary:

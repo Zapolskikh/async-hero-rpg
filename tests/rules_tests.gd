@@ -17,6 +17,7 @@ func _init() -> void:
 	test_timeline_matches_live()
 	test_farm_collect_and_cap()
 	test_push_finish()
+	test_spell_levels()
 	test_boxes_and_validation()
 	test_json_roundtrip()
 	test_migrate_v1()
@@ -82,17 +83,54 @@ func test_push_finish() -> void:
 	check(int(p["closed_level"]) == (1 if won else 0), "level closed only on a win (won=%s)" % won)
 	check(not Rules.apply(p, "start", {"level": 1, "mode": "push"}, T0 + t_end + 1.0)["ok"] or not won, "cannot push an already cleared level")
 
+func test_spell_levels() -> void:
+	print("spell levels")
+	var p := fresh(21)
+	var col: Dictionary = p["collection"]
+	check(col["fireball"]["lvl"] == 1 and col["fireball"]["copies"] == 0, "starter spell is level I, no spare copies")
+	check(not Rules.apply(p, "fuse", {"sid": "fireball"}, T0)["ok"], "no upgrade without copies")
+	col["fireball"]["copies"] = 3
+	check(not Rules.can_fuse(p, "fireball"), "3 copies are not enough for II")
+	col["fireball"]["copies"] = 4
+	check(Rules.apply(p, "fuse", {"sid": "fireball"}, T0)["ok"] and col["fireball"]["lvl"] == 2 and col["fireball"]["copies"] == 0, "4 copies: I -> II")
+	col["fireball"]["copies"] = 4
+	check(not Rules.can_fuse(p, "fireball"), "II -> III needs more than I -> II")
+	col["fireball"]["copies"] = 1000
+	var ups := 0
+	while Rules.apply(p, "fuse", {"sid": "fireball"}, T0)["ok"]:
+		ups += 1
+	check(col["fireball"]["lvl"] == Rules.SPELL_MAX_LEVEL and ups == Rules.SPELL_MAX_LEVEL - 2, "upgrades go all the way to X")
+	var spent := 0
+	for c in Rules.FUSE_COST:
+		spent += int(c)
+	check(col["fireball"]["copies"] == 1000 + 4 - spent, "each upgrade eats its own cost")
+	check(Rules.apply(p, "fuse", {"sid": "fireball"}, T0)["error"] == "max level", "no upgrade past X")
+	var snap := Rules.hero_snapshot(p)
+	var lv := 0
+	for sp in snap["spells"]:
+		if sp["id"] == "fireball":
+			lv = int(sp["lvl"])
+	check(lv == Rules.SPELL_MAX_LEVEL, "hero snapshot uses the spell level")
+	# v3 -> v4: copies per level become one level + spare copies (level-k copy = 5^(k-1) level-I copies)
+	var old := fresh(22)
+	old["collection"] = {"fireball": {"1": 3, "2": 6}, "heal": {"1": 1}, "kick": {"1": 0, "2": 0}}
+	Rules.migrate(old, T0)
+	var oc: Dictionary = old["collection"]
+	check(oc["fireball"]["lvl"] == 2 and oc["fireball"]["copies"] == 3 + 30 - 1 - 4, "old II copies are refunded as spare copies (%s)" % oc["fireball"])
+	check(oc["heal"]["lvl"] == 1 and oc["heal"]["copies"] == 0, "old single copy stays level I")
+	check(not oc.has("kick"), "empty entries are dropped")
+
 func test_boxes_and_validation() -> void:
 	print("boxes and validation")
 	var p := fresh(13)
 	p["gold"] = 2000
 	var copies_before := 0
 	for sid in p["collection"]:
-		copies_before += int(p["collection"][sid].get("1", 0))
+		copies_before += 1 + int(p["collection"][sid]["copies"])
 	var r := Rules.apply(p, "open_pack", {"use": "gold"}, T0)
 	var copies_after := 0
 	for sid in p["collection"]:
-		copies_after += int(p["collection"][sid].get("1", 0))
+		copies_after += 1 + int(p["collection"][sid]["copies"])
 	check(r["ok"] and r["boxes"].size() == 10 and p["gold"] == 650 and copies_after == copies_before + 10, "pack of 10 for 1350 gold")
 	check(not Rules.apply(p, "open_pack", {"use": "gold"}, T0)["ok"], "cannot buy without gold")
 	check(Rules.apply(p, "open_box", {"use": "free"}, T0)["ok"] and not Rules.apply(p, "open_box", {"use": "free"}, T0 + 60)["ok"], "one free box per day")
@@ -262,5 +300,5 @@ func test_v2_migration() -> void:
 	p["v"] = 2
 	var q = JSON.parse_string(JSON.stringify(p))
 	Rules.migrate(q, T0)
-	check(q["v"] == 3 and q["professions"].size() == 6 and q["hero"]["equipped"].has("feet"), "old profile gets professions and new slots")
+	check(q["v"] == Rules.VERSION and q["professions"].size() == 6 and q["hero"]["equipped"].has("feet"), "old profile gets professions and new slots")
 	check(Rules.apply(q, "gather_start", {"prof": "herbalism", "loc": "green_meadow", "sec": 900}, T0)["ok"], "migrated profile can gather")

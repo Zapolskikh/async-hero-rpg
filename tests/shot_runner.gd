@@ -5,6 +5,7 @@ extends Node
 var out_dir := "user://shots"
 var main: Node
 var crafts_only := false
+var spells_only := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -12,9 +13,13 @@ func _ready() -> void:
 			out_dir = a.substr(8)
 		if a == "--shots-crafts":
 			crafts_only = true
+		if a == "--shots-spells":
+			spells_only = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if crafts_only:
+	if spells_only:
+		_run_spells()
+	elif crafts_only:
 		_run_crafts()
 	else:
 		_run()
@@ -184,5 +189,23 @@ func _run_crafts() -> void:
 	main._switch("hero")
 	await _wait(0.5)
 	await _shot("19_hero_slots")
+	print("shots done")
+	get_tree().quit()
+
+func _run_spells() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	var col: Dictionary = Game.profile["collection"]
+	col["fireball"] = {"lvl": 3, "copies": 7}
+	col["strike"] = {"lvl": 2, "copies": 2}
+	col["heal"] = {"lvl": 10, "copies": 5}
+	col["cleave"] = {"lvl": 1, "copies": 4}
+	Game.changed.emit()
+	main._switch("spells")
+	await _wait(0.5)
+	await _shot("20_spells_levels")
+	main._spell_popup("fireball")
+	await _wait(0.4)
+	await _shot("21_spell_popup_upgrade")
 	print("shots done")
 	get_tree().quit()

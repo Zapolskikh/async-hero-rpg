@@ -35,12 +35,9 @@ static func apply_gear(base: Dictionary, gear: Dictionary) -> Dictionary:
 	return st
 
 static func spell_best_level(collection: Dictionary, sid: String) -> int:
-	var best := 0
-	if collection.has(sid):
-		for k in collection[sid].keys():
-			if int(collection[sid][k]) > 0:
-				best = max(best, int(k))
-	return best
+	if not collection.has(sid):
+		return 0
+	return int(collection[sid].get("lvl", 0))
 
 static func hero_stats(hero: Dictionary) -> Dictionary:
 	return apply_gear(Db.hero_base_stats(hero["level"]), hero["equipped"])
