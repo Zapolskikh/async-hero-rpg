@@ -1,0 +1,5 @@
+# HTTPS certificate is issued automatically for $DOMAIN (point its DNS A record to the server first).
+{$DOMAIN} {
+	encode gzip
+	reverse_proxy api:8000
+}

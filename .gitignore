@@ -5,3 +5,8 @@
 export/
 build/
 *.translation
+# server
+server/.env
+server/*.db
+server/**/__pycache__/
+.pytest_cache/
