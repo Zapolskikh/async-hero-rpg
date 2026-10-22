@@ -4,7 +4,7 @@ extends RefCounted
 
 const HERO_COLOR := "#3fa7d6"
 const MERC_COLORS := ["#e0a458", "#7bc96f", "#d36fa3", "#6fb3d3", "#c9c95b", "#9d8cff"]
-const MERC_STAT_FACTOR := 0.95   # NPCs are decent, but a good real build should beat them
+const MERC_STAT_FACTOR := 0.92   # NPCs are decent, but a good real build should beat them
 
 ## Quality tiers of guild mercenaries. Same level, very different strength:
 ## gear rarity, number of items, spell levels and how sensible the rotation is.
@@ -34,13 +34,25 @@ static func apply_gear(base: Dictionary, gear: Dictionary) -> Dictionary:
 			st[a["stat"]] = st.get(a["stat"], 0.0) + a["value"]
 	return st
 
+static func empty_gear() -> Dictionary:
+	var g := {}
+	for slot in Loot.SLOTS:
+		g[slot] = null
+	return g
+
 static func spell_best_level(collection: Dictionary, sid: String) -> int:
 	if not collection.has(sid):
 		return 0
 	return int(collection[sid].get("lvl", 0))
 
+## Final stats: base + gear affixes + basic attack from the weapon (atk, atk_speed).
+static func combat_stats(base: Dictionary, gear: Dictionary) -> Dictionary:
+	var st := apply_gear(base, gear)
+	st.merge(Loot.attack_of(st, gear), true)
+	return st
+
 static func hero_stats(hero: Dictionary) -> Dictionary:
-	return apply_gear(Db.hero_base_stats(hero["level"]), hero["equipped"])
+	return combat_stats(Db.hero_base_stats(hero["level"]), hero["equipped"])
 
 static func hero_snapshot(hero: Dictionary, collection: Dictionary) -> Dictionary:
 	var spells := []
@@ -48,8 +60,9 @@ static func hero_snapshot(hero: Dictionary, collection: Dictionary) -> Dictionar
 		spells.append({"id": sid, "lvl": max(1, spell_best_level(collection, sid))})
 	return {
 		"name": hero["name"], "color": HERO_COLOR, "npc": false, "is_hero": true,
-		"role": "Герой", "level": hero["level"], "sprite": "hero", "ranged": false,
+		"role": "Герой", "level": hero["level"], "sprite": "hero", "ranged": "bow" in Loot.weapon_types(hero["equipped"]),
 		"stats": hero_stats(hero), "spells": spells, "target": "front",
+		"weapons": Loot.weapon_types(hero["equipped"]),
 	}
 
 static func make_merc(rng: RandomNumberGenerator, template_idx: int, level: int, tier: int = -1) -> Dictionary:
@@ -58,20 +71,29 @@ static func make_merc(rng: RandomNumberGenerator, template_idx: int, level: int,
 		tier = roll_tier(rng)
 	var tr: Dictionary = TIERS[tier]
 	var base := Db.hero_base_stats(level)
-	for k in ["hp", "atk", "power", "armor"]:
+	for k in ["hp", "str", "agi", "power", "armor"]:
 		base[k] = round(base[k] * t["stat"].get(k, 1.0) * MERC_STAT_FACTOR * tr["stat"] * rng.randf_range(0.95, 1.05))
 	base["crit"] = 0.05
-	# gear: some slots may stay empty for weak mercenaries
-	var gear := {"weapon": null, "armor": null, "trinket": null}
-	var n_items := rng.randi_range(tr["items"][0], tr["items"][1])
-	var slots: Array = Loot.SLOTS.duplicate()
+	# gear: some slots may stay empty for weak mercenaries; weapons follow the template
+	var gear := empty_gear()
+	var wts: Array = t.get("weapons", [])
+	var slots: Array = ["weapon", "armor", "trinket"]
+	if wts.size() > 1:
+		slots.insert(1, "offhand")
+	var n_items := rng.randi_range(tr["items"][0], tr["items"][1]) + (1 if wts.size() > 1 else 0)
 	for i in range(slots.size() - 1, 0, -1):
 		var j := rng.randi_range(0, i)
 		var tmp = slots[i]
 		slots[i] = slots[j]
 		slots[j] = tmp
-	for i in n_items:
-		gear[slots[i]] = Loot.roll_gear(rng, level, tr["rarity_bonus"], slots[i])
+	for i in min(n_items, slots.size()):
+		var slot: String = slots[i]
+		var wtype := ""
+		if slot == "weapon" and wts.size() > 0:
+			wtype = wts[0]
+		elif slot == "offhand":
+			wtype = wts[1]
+		gear[slot] = Loot.roll_gear(rng, level, tr["rarity_bonus"], slot, wtype)
 	# spells: levels vary, weak ones sometimes have a clumsy rotation order
 	var spell_lvl := baseline_spell_level(level) + int(tr["spell"])
 	var spells := []
@@ -83,7 +105,8 @@ static func make_merc(rng: RandomNumberGenerator, template_idx: int, level: int,
 		"name": Db.MERC_NAMES[rng.randi_range(0, Db.MERC_NAMES.size() - 1)],
 		"color": MERC_COLORS[rng.randi_range(0, MERC_COLORS.size() - 1)],
 		"npc": true, "role": t["role"], "level": level, "tier": tier,
-		"base_stats": base, "gear": gear, "stats": apply_gear(base, gear),
+		"base_stats": base, "gear": gear, "stats": combat_stats(base, gear),
+		"weapons": Loot.weapon_types(gear),
 		"spells": spells, "target": "front",
 		"id": "m%d" % rng.randi(), "template": template_idx,
 		"sprite": t.get("sprite", ""), "ranged": t.get("ranged", false),
@@ -102,14 +125,27 @@ static func ensure_merc(m: Dictionary) -> void:
 	m["level"] = int(m["level"])
 	m["tier"] = int(m.get("tier", 1))
 	if not m.has("gear") or typeof(m["gear"]) != TYPE_DICTIONARY:
-		m["gear"] = {"weapon": null, "armor": null, "trinket": null}
+		m["gear"] = empty_gear()
 	if not m.has("base_stats"):
 		m["base_stats"] = m["stats"]
+	if not m["gear"].has("offhand"):
+		m["gear"]["offhand"] = null
 	for slot in m["gear"]:
 		var it = m["gear"][slot]
 		if it != null:
 			it["rarity"] = int(it["rarity"])
 			it["ilvl"] = int(it["ilvl"])
+			Loot.upgrade_item(it)
+	# v5: strength and agility replace the flat attack stat
+	var b: Dictionary = m["base_stats"]
+	if not b.has("str"):
+		var a: float = float(b.get("atk", b.get("power", 15.0)))
+		b["str"] = a
+		b["agi"] = a
+		b.erase("atk")
+		m["stats"] = combat_stats(b, m["gear"])
+	if not m.has("weapons"):
+		m["weapons"] = Loot.weapon_types(m["gear"])
 	for sp in m["spells"]:
 		sp["lvl"] = int(sp["lvl"])
 
@@ -121,7 +157,7 @@ static func baseline_spell_level(level: int) -> int:
 static func expected_power(level: int) -> float:
 	var st := Db.hero_base_stats(level)
 	var spell_lvl := baseline_spell_level(level)
-	return st["hp"] / 8.0 + st["atk"] * 2.0 + st["power"] * 2.5 + st["armor"] * 1.5 + st["crit"] * 300.0 + 30.0 * spell_lvl
+	return st["hp"] / 8.0 + st["str"] * 2.0 + st["power"] * 2.5 + st["armor"] * 1.5 + st["crit"] * 300.0 + 30.0 * spell_lvl
 
 const ROLE_SPRITES := {"Герой": "hero", "Танк": "tank", "Лекарь": "healer", "Пиромант": "pyromancer",
 	"Ядовик": "poisoner_ally", "Боец": "fighter", "Страж": "guard", "Паладин": "paladin", "Охотник": "hunter"}
@@ -141,7 +177,8 @@ static func power_score(snap: Dictionary) -> int:
 	var spell_bonus := 0.0
 	for s in snap["spells"]:
 		spell_bonus += 10.0 * s["lvl"]
-	return int(st["hp"] / 8.0 + st["atk"] * 2.0 + st["power"] * 2.5 + st.get("armor", 0) * 1.5
+	var atk_rate: float = float(st.get("atk", 0.0)) * 1.6 / max(0.5, float(st.get("atk_speed", 1.6)))
+	return int(st["hp"] / 8.0 + atk_rate * 2.0 + st["power"] * 2.5 + st.get("armor", 0) * 1.5
 		+ st.get("haste", 0.0) * 300.0 + st.get("crit", 0.0) * 300.0 + spell_bonus)
 
 ## Mercenary Board: 6 candidates around the hero's level, always including at

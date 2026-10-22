@@ -1,19 +1,41 @@
 class_name SpellInfo
 extends RefCounted
 ## Human-readable numbers for a spell, computed with the same formulas the
-## battle uses: amount = mult x level multiplier x caster's spell power.
+## battle uses: amount = mult x level multiplier x caster's stat x weapon bonus.
+## `caster` is a combat snapshot ({stats, weapons}).
 ## Damage numbers are before armor (DoT ignores armor) and without crits.
 
 const DOT_TICK := 1.0
 
-static func amount(sid: String, lvl: int, power: float) -> float:
+static func amount(sid: String, lvl: int, caster: Dictionary) -> float:
+	return Db.spell_amount(sid, lvl, caster.get("stats", {}), caster.get("weapons", []))
+
+## Requirement / weapon bonus lines: [[icon, text, ok], ...]
+static func weapon_lines(sid: String, caster: Dictionary) -> Array:
 	var s: Dictionary = Db.SPELLS[sid]
-	return s["mult"] * Db.spell_level_mult(max(1, lvl)) * power
+	var weapons: Array = caster.get("weapons", [])
+	var out := []
+	var req: Array = s.get("req", [])
+	if not req.is_empty():
+		var names := []
+		for w in req:
+			names.append(Db.WEAPON_LABELS[w])
+		var ok := Db.spell_usable(sid, weapons)
+		out.append(["item_weapon", "Нужно оружие: %s%s" % [" или ".join(names), "" if ok else " — сейчас нет, заклинание пропускается"], ok])
+	var b: Dictionary = s.get("bonus", {})
+	if not b.is_empty():
+		var on := Db.spell_bonus(sid, weapons) > 1.0
+		out.append(["star", "+%d%% с оружием: %s%s" % [roundi((float(b["mult"]) - 1.0) * 100.0), Db.WEAPON_LABELS[b["w"]], " (действует)" if on else ""], on])
+	return out
+
+## Which stat the spell grows from, for the numbers block.
+static func stat_label(sid: String) -> String:
+	return Db.STAT_LABELS[Db.SPELLS[sid].get("stat", "power")]
 
 ## Main effect lines: [[icon, text], ...]
-static func effects(sid: String, lvl: int, power: float) -> Array:
+static func effects(sid: String, lvl: int, caster: Dictionary) -> Array:
 	var s: Dictionary = Db.SPELLS[sid]
-	var a := roundi(amount(sid, lvl, power))
+	var a := roundi(amount(sid, lvl, caster))
 	var dur: float = s.get("dur", 0.0)
 	var ticks := int(round(dur / DOT_TICK))
 	match s["kind"]:
@@ -42,6 +64,8 @@ static func effects(sid: String, lvl: int, power: float) -> Array:
 			return [["sp_barrier", "Щит на %d урона, %.0f с" % [a, dur]]]
 		"taunt":
 			return [["sp_taunt", "Враги бьют только вас %.0f с" % dur], ["sp_barrier", "Щит на %d урона" % a]]
+		"self_shield":
+			return [["sp_barrier", "Щит на себя на %d урона, %.0f с" % [a, dur]]]
 		"cleanse":
 			return [["sp_cleanse", "Снимает яды, горение, оглушение"], ["hp", "Лечение %d" % a]]
 	return []
@@ -57,9 +81,9 @@ static func timing(sid: String) -> Array:
 	return out
 
 ## One short line for tiles and cards, e.g. "Урон 42" or "Щит 90".
-static func short(sid: String, lvl: int, power: float) -> String:
+static func short(sid: String, lvl: int, caster: Dictionary) -> String:
 	var s: Dictionary = Db.SPELLS[sid]
-	var a := roundi(amount(sid, lvl, power))
+	var a := roundi(amount(sid, lvl, caster))
 	match s["kind"]:
 		"damage", "execute", "drain", "interrupt", "stun":
 			return "Урон %d" % a
@@ -71,7 +95,7 @@ static func short(sid: String, lvl: int, power: float) -> String:
 			return "Лечение %d" % a
 		"hot_all":
 			return "%d/с всем" % a
-		"shield", "taunt":
+		"shield", "taunt", "self_shield":
 			return "Щит %d" % a
 	return ""
 

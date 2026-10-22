@@ -151,9 +151,10 @@ func test_merc_tiers() -> void:
 	for slot in m["gear"]:
 		if m["gear"][slot] != null:
 			gear_items += 1
-	check(gear_items == 3 and m["stats"]["hp"] > m["base_stats"]["hp"] - 0.1, "strong merc has full gear that adds stats")
+	check(gear_items == 4 and m["stats"]["hp"] > m["base_stats"]["hp"] - 0.1, "strong tank has full gear (sword + shield) that adds stats")
+	check(m["gear"]["weapon"]["wtype"] == "sword" and m["gear"]["offhand"]["wtype"] == "shield" and m["weapons"] == ["sword", "shield"], "tank holds a sword and a shield")
 
 func test_board_and_group() -> void:
 	print("board and group")
-	var info := SpellInfo.effects("ignite", 1, 20)
+	var info := SpellInfo.effects("ignite", 1, {"stats": {"power": 20.0}})
 	check(info.size() > 0 and "в сек" in info[0][1], "spell info gives numbers (%s)" % info[0][1])

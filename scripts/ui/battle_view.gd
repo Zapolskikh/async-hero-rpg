@@ -18,8 +18,12 @@ const SPELL_COLORS := {
 	"kick": Color("#ffffff"), "cleave": Color("#ffffff"), "execute": Color("#ff3b3b"),
 	"e_bolt": Color("#c87bff"), "e_volley": Color("#d8c08a"), "e_venom": Color("#7ccf3a"),
 	"e_cataclysm": Color("#9a6aff"),
+	"twin_strike": Color("#ffffff"), "mortal_strike": Color("#ff6a3b"), "whirlwind": Color("#ffffff"),
+	"shield_slam": Color("#ffd75a"), "aimed_shot": Color("#d8c08a"), "arrow_rain": Color("#d8c08a"),
+	"arcane_bolt": Color("#8ad0ff"),
 }
-const MELEE_SPELLS := ["strike", "execute", "kick", "bash", "cleave", "e_smash", "e_backstab", "e_crush"]
+const MELEE_SPELLS := ["strike", "execute", "kick", "bash", "cleave", "e_smash", "e_backstab", "e_crush",
+	"twin_strike", "mortal_strike", "whirlwind", "shield_slam"]
 
 var textures := {}
 var sky: Texture2D
@@ -168,6 +172,8 @@ func _on_spell(sim: BattleSim, e: Dictionary) -> void:
 				_effect_on(sim, f.uid, "sparkle", Color("#b6ffb0"), 0.6)
 		"taunt":
 			_effect_on(sim, src.uid, "ring", Color("#ff5a4a"), 0.5)
+		"self_shield":
+			_effect_on(sim, src.uid, "ring", Color("#ffd75a"), 0.5)
 
 func _shoot(src: BattleUnit, dst: BattleUnit, col: Color, kind: String) -> void:
 	projectiles.append({"from": _center(src) + Vector2(0, -10), "to": _center(dst), "t": 0.0, "color": col, "kind": kind})

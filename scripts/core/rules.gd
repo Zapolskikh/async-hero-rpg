@@ -12,11 +12,13 @@ extends RefCounted
 ## so a server keeps it secret by stripping it before sending the profile.
 ## `ctx` (server only): {"account": id, "real_pool": [public snapshots of other players]}
 
-const VERSION := 4
+const VERSION := 5
 const OFFLINE_CAP := 12.0 * 3600.0
 const BOX_PRICE := 150
 const BOX_PACK := 10
 const BOX_PACK_PRICE := 1350
+## Spell Box odds by spell rarity (common, rare, epic, legendary), per spell.
+const BOX_RARITY_WEIGHTS := [10.0, 3.0, 0.8, 0.25]
 const REROLL_BASE := 20
 const REROLL_GROWTH := 1.5
 const MAX_HIRED := 3
@@ -52,6 +54,9 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 		"rng": {"seed": str(seed_value), "state": ""},
 	}
 	var r := _rng(p)
+	var sword := Loot.roll_gear(r, 1, -1.0, "weapon", "sword")
+	sword["name"] = "Учебный меч"
+	p["hero"]["equipped"]["weapon"] = sword
 	for sid in Db.STARTER_SPELLS:
 		p["collection"][sid] = {"lvl": 1, "copies": 0}
 	p["board"] = Roster.roll_board(r, 1)
@@ -83,6 +88,10 @@ static func migrate(p: Dictionary, now: float) -> void:
 	hero["xp"] = int(hero["xp"])
 	for slot in hero["equipped"]:
 		_fix_item(hero["equipped"][slot])
+	# v5: a two-handed weapon and something in the left hand cannot be held together
+	if Loot.is_two_handed(hero["equipped"].get("weapon")) and hero["equipped"].get("offhand") != null:
+		p["inventory"].append(hero["equipped"]["offhand"])
+		hero["equipped"]["offhand"] = null
 	for it in p["inventory"]:
 		_fix_item(it)
 	for m in p["board"] + p["hired"]:
@@ -185,6 +194,7 @@ static func _fix_item(it) -> void:
 		return
 	it["rarity"] = int(it["rarity"])
 	it["ilvl"] = int(it["ilvl"])
+	Loot.upgrade_item(it)
 
 static func _fix_expedition(ex: Dictionary) -> void:
 	ex["level"] = int(ex["level"])
@@ -331,7 +341,7 @@ static func apply(p: Dictionary, action: String, args: Dictionary, now: float, c
 	match action:
 		"set_rotation": res = _set_rotation(p, args)
 		"move_party": res = _move_party(p, int(args.get("index", 0)), int(args.get("dir", 0)))
-		"equip": res = _equip(p, str(args.get("id", "")))
+		"equip": res = _equip(p, str(args.get("id", "")), str(args.get("to", "")))
 		"unequip": res = _unequip(p, str(args.get("slot", "")))
 		"sell": res = _sell(p, str(args.get("id", "")))
 		"hire": res = _hire(p, str(args.get("id", "")))
@@ -401,17 +411,36 @@ static func _move_party(p: Dictionary, index: int, dir: int) -> Dictionary:
 	order[j] = tmp
 	return _ok()
 
-static func _equip(p: Dictionary, id: String) -> Dictionary:
+## Puts an item on. `to` = "offhand" sends a one-handed sword to the left hand.
+## A two-handed weapon takes both hands: whatever is in the left hand goes to the bag,
+## and anything put in the left hand pushes a two-handed weapon out.
+static func _equip(p: Dictionary, id: String, to: String = "") -> Dictionary:
 	for it in p["inventory"]:
 		if it["id"] == id:
 			var slot: String = it["slot"]
-			var old = p["hero"]["equipped"][slot]
-			p["hero"]["equipped"][slot] = it
+			if to == "offhand":
+				if not Loot.fits_offhand(it):
+					return _err("not an offhand item")
+				slot = "offhand"
 			p["inventory"].erase(it)
-			if old != null:
-				p["inventory"].append(old)
+			p["inventory"].append_array(place_item(p["hero"]["equipped"], it, slot))
 			return _ok()
 	return _err("no such item")
+
+## Puts `it` into `slot` of an equipment dict; returns the items that come off.
+## Also used by the UI to preview a change.
+static func place_item(eq: Dictionary, it: Dictionary, slot: String) -> Array:
+	var removed := []
+	if eq.get(slot) != null:
+		removed.append(eq[slot])
+	eq[slot] = it
+	if slot == "weapon" and Loot.is_two_handed(it) and eq.get("offhand") != null:
+		removed.append(eq["offhand"])
+		eq["offhand"] = null
+	if slot == "offhand" and Loot.is_two_handed(eq.get("weapon")):
+		removed.append(eq["weapon"])
+		eq["weapon"] = null
+	return removed
 
 static func _unequip(p: Dictionary, slot: String) -> Dictionary:
 	if not p["hero"]["equipped"].has(slot) or p["hero"]["equipped"][slot] == null:
@@ -534,7 +563,7 @@ static func _open_pack(p: Dictionary, r: RandomNumberGenerator, use: String) -> 
 	return _ok({"boxes": out})
 
 static func _roll_box(p: Dictionary, r: RandomNumberGenerator) -> Dictionary:
-	var weights := [10.0, 5.0, 2.0, 0.7]
+	var weights := BOX_RARITY_WEIGHTS
 	var pool := []
 	var total := 0.0
 	for sid in Db.SPELLS:

@@ -208,6 +208,8 @@ func _try_rotation(u: BattleUnit) -> bool:
 ## or null when the spell is not valid right now.
 func _find_spell_target(u: BattleUnit, sid: String):
 	var s: Dictionary = Db.SPELLS[sid]
+	if not Db.spell_usable(sid, u.weapons):
+		return null   # needs a weapon this unit does not hold
 	var foes := foes_of(u)
 	var friends := friends_of(u)
 	if foes.is_empty():
@@ -271,6 +273,8 @@ func _find_spell_target(u: BattleUnit, sid: String):
 			return best
 		"taunt":
 			return u if u.taunt <= 0.0 else null
+		"self_shield":
+			return u if u.shield <= 0.0 else null
 		"cleanse":
 			for f in friends:
 				if f.is_debuffed():
@@ -280,7 +284,7 @@ func _find_spell_target(u: BattleUnit, sid: String):
 
 func _cast(u: BattleUnit, sid: String, lvl: int, target) -> void:
 	var s: Dictionary = Db.SPELLS[sid]
-	var amount: float = s["mult"] * Db.spell_level_mult(lvl) * u.power
+	var amount: float = Db.spell_amount(sid, lvl, u.stats, u.weapons)
 	var tgt_uid: int = target.uid if target is BattleUnit else u.uid
 	_emit({"t": "spell", "uid": u.uid, "text": s["name"], "sid": sid, "kind": s["kind"], "tgt": tgt_uid})
 	match s["kind"]:
@@ -320,6 +324,10 @@ func _cast(u: BattleUnit, sid: String, lvl: int, target) -> void:
 			target.shield += amount
 			target.shield_time = s.get("dur", 10.0)
 			_emit({"t": "shield", "uid": target.uid, "v": amount})
+		"self_shield":
+			u.shield += amount
+			u.shield_time = s.get("dur", 8.0)
+			_emit({"t": "shield", "uid": u.uid, "v": amount})
 		"taunt":
 			u.taunt = s.get("dur", 6.0)
 			u.shield += amount

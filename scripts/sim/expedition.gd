@@ -8,7 +8,7 @@ extends RefCounted
 const WAVE_PAUSE := 1.5
 const BETWEEN_WAVE_HEAL := 0.25
 const FIRST_CLEAR_RARITY_BONUS := 0.25
-const FARM_DROP_CHANCE := 0.35
+const FARM_DROP_CHANCE := 0.15  # per farm run won; first clears always drop
 
 var level := 1
 var mode := "push"

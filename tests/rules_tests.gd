@@ -18,6 +18,7 @@ func _init() -> void:
 	test_farm_collect_and_cap()
 	test_push_finish()
 	test_spell_levels()
+	test_weapons()
 	test_boxes_and_validation()
 	test_json_roundtrip()
 	test_migrate_v1()
@@ -82,6 +83,73 @@ func test_push_finish() -> void:
 	check(out["reports"].size() == 1 and out["reports"][0]["type"] == "push_end" and p["expedition"] == null, "tick after the end closes the push")
 	check(int(p["closed_level"]) == (1 if won else 0), "level closed only on a win (won=%s)" % won)
 	check(not Rules.apply(p, "start", {"level": 1, "mode": "push"}, T0 + t_end + 1.0)["ok"] or not won, "cannot push an already cleared level")
+
+func _weapon(rng: RandomNumberGenerator, wtype: String) -> Dictionary:
+	return Loot.roll_gear(rng, 10, 0.0, "", wtype)
+
+func test_weapons() -> void:
+	print("weapons")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 9
+	var p := fresh(31)
+	var eq: Dictionary = p["hero"]["equipped"]
+	check(eq["weapon"] != null and eq["weapon"]["wtype"] == "sword" and eq["offhand"] == null, "new hero starts with a sword")
+	var gs := _weapon(rng, "greatsword")
+	var sh := _weapon(rng, "shield")
+	var sw := _weapon(rng, "sword")
+	check(gs["slot"] == "weapon" and sh["slot"] == "offhand" and sw["slot"] == "weapon", "weapon types pick their slot")
+	check(gs["affixes"][0].get("imp", false) and gs["affixes"][0]["stat"] == "str" and gs["dmg"] > sw["dmg"], "greatsword: implicit strength, more damage than a sword")
+	p["inventory"].append_array([gs, sh, sw])
+	check(Rules.apply(p, "equip", {"id": sh["id"]}, T0)["ok"] and eq["offhand"] == sh, "shield goes to the left hand")
+	check(Rules.apply(p, "equip", {"id": gs["id"]}, T0)["ok"] and eq["weapon"] == gs and eq["offhand"] == null, "two-handed weapon pushes the shield to the bag")
+	check(sh in p["inventory"], "the shield is back in the bag")
+	check(Rules.apply(p, "equip", {"id": sw["id"], "to": "offhand"}, T0)["ok"] and eq["offhand"] == sw and eq["weapon"] == null, "sword in the left hand pushes the two-hander out")
+	check(not Rules.apply(p, "equip", {"id": gs["id"], "to": "offhand"}, T0)["ok"], "two-hander cannot go to the left hand")
+	# basic attack follows the weapon
+	var base := Db.hero_base_stats(10)
+	var st_gs := Roster.combat_stats(base, {"weapon": gs, "offhand": null})
+	var st_sw := Roster.combat_stats(base, {"weapon": sw, "offhand": null})
+	var st_dual := Roster.combat_stats(base, {"weapon": sw, "offhand": sw})
+	var st_none := Roster.combat_stats(base, {"weapon": null, "offhand": null})
+	check(st_gs["atk_speed"] > st_sw["atk_speed"] and st_gs["atk"] > st_sw["atk"], "greatsword hits harder and slower (%d/%.1f vs %d/%.1f)" % [st_gs["atk"], st_gs["atk_speed"], st_sw["atk"], st_sw["atk_speed"]])
+	check(st_dual["atk"] > st_sw["atk"], "second sword adds damage")
+	check(st_none["atk"] == base["str"] and st_sw["atk"] > st_none["atk"], "unarmed attack = strength, a sword is better")
+	var bow := _weapon(rng, "bow")
+	var b_lo := Roster.combat_stats({"str": 10.0, "agi": 10.0, "power": 10.0, "hp": 100.0}, {"weapon": bow})
+	var b_hi := Roster.combat_stats({"str": 10.0, "agi": 60.0, "power": 10.0, "hp": 100.0}, {"weapon": bow})
+	var staff := _weapon(rng, "staff")
+	var s_hi := Roster.combat_stats({"str": 10.0, "agi": 10.0, "power": 60.0, "hp": 100.0}, {"weapon": staff})
+	var s_lo := Roster.combat_stats({"str": 10.0, "agi": 10.0, "power": 10.0, "hp": 100.0}, {"weapon": staff})
+	check(b_hi["atk"] > b_lo["atk"] and s_hi["atk"] > s_lo["atk"], "bow scales with agility, staff with spell power")
+	# weapon spells: requirement and bonus
+	check(not Db.spell_usable("aimed_shot", ["sword"]) and Db.spell_usable("aimed_shot", ["bow"]), "aimed shot needs a bow")
+	check(Db.spell_bonus("fireball", ["staff"]) > 1.0 and Db.spell_bonus("fireball", ["sword"]) == 1.0, "fireball is stronger with a staff")
+	check(Db.spell_bonus("twin_strike", ["sword", "sword"]) > Db.spell_bonus("twin_strike", ["sword", "shield"]), "twin strike bonus with two swords")
+	check(Db.spell_amount("strike", 1, {"str": 50.0, "power": 10.0}, []) == 1.8 * 50.0, "strike scales from strength")
+	var hero := {"name": "H", "level": 10, "rotation": ["aimed_shot"], "equipped": {"weapon": sw, "offhand": null}}
+	var snap := Roster.hero_snapshot(hero, {"aimed_shot": {"lvl": 1, "copies": 0}})
+	var u := BattleUnit.new(0, 0, 0, snap)
+	var sim := BattleSim.new()
+	sim.setup([u], [{"name": "dummy", "stats": {"hp": 99999.0, "atk": 0.0, "power": 0.0}}], 1)
+	check(sim._find_spell_target(u, "aimed_shot") == null, "battle skips a spell without its weapon")
+	hero["equipped"]["weapon"] = bow
+	var u2 := BattleUnit.new(5, 0, 0, Roster.hero_snapshot(hero, {"aimed_shot": {"lvl": 1, "copies": 0}}))
+	sim.setup([u2], [{"name": "dummy", "stats": {"hp": 99999.0, "atk": 0.0, "power": 0.0}}], 1)
+	check(sim._find_spell_target(u2, "aimed_shot") != null and u2.atk_speed == 2.0, "with a bow it is used; the bow shoots every 2.0 s")
+	# v4 -> v5: old weapons get a type, attack becomes strength
+	var old := fresh(32)
+	old["hero"]["equipped"]["weapon"] = {"id": "x1", "slot": "weapon", "name": "Посох", "rarity": 1, "ilvl": 5,
+		"affixes": [{"stat": "atk", "value": 10.0, "q": 0.8}]}
+	old["hero"]["equipped"].erase("offhand")
+	old["inventory"] = [{"id": "x2", "slot": "trinket", "name": "Кольцо", "rarity": 0, "ilvl": 3, "affixes": [{"stat": "atk", "value": 5.0, "q": 0.7}]}]
+	old["v"] = 4
+	var q = JSON.parse_string(JSON.stringify(old))
+	Rules.migrate(q, T0)
+	var w: Dictionary = q["hero"]["equipped"]["weapon"]
+	check(w["wtype"] == "staff" and w["dmg"] > 0 and w["affixes"][0]["stat"] == "str", "old 'Посох' became a staff, attack became strength")
+	check(q["inventory"][0]["affixes"][0]["stat"] == "str" and q["hero"]["equipped"].has("offhand"), "old items lose the attack stat; left hand slot added")
+	var qs := Rules.hero_snapshot(q)
+	check(qs["weapons"] == ["staff"] and qs["stats"]["atk"] > 0, "migrated hero has a working attack")
 
 func test_spell_levels() -> void:
 	print("spell levels")

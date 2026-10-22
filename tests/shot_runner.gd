@@ -6,6 +6,7 @@ var out_dir := "user://shots"
 var main: Node
 var crafts_only := false
 var spells_only := false
+var weapons_only := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -15,9 +16,13 @@ func _ready() -> void:
 			crafts_only = true
 		if a == "--shots-spells":
 			spells_only = true
+		if a == "--shots-weapons":
+			weapons_only = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if spells_only:
+	if weapons_only:
+		_run_weapons()
+	elif spells_only:
 		_run_spells()
 	elif crafts_only:
 		_run_crafts()
@@ -207,5 +212,50 @@ func _run_spells() -> void:
 	main._spell_popup("fireball")
 	await _wait(0.4)
 	await _shot("21_spell_popup_upgrade")
+	print("shots done")
+	get_tree().quit()
+
+func _run_weapons() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	var p: Dictionary = Game.profile
+	p["hero"]["level"] = 8
+	var gs := Loot.roll_gear(rng, 8, 0.3, "", "greatsword")
+	var sh := Loot.roll_gear(rng, 8, 0.2, "", "shield")
+	var sw := Loot.roll_gear(rng, 8, 0.1, "", "sword")
+	var bow := Loot.roll_gear(rng, 8, 0.4, "", "bow")
+	var st := Loot.roll_gear(rng, 8, 0.2, "", "staff")
+	p["inventory"].append_array([gs, sh, sw, bow, st])
+	for sid in ["mortal_strike", "whirlwind", "aimed_shot", "shield_slam", "twin_strike", "arcane_bolt", "shield_wall", "arrow_rain"]:
+		p["collection"][sid] = {"lvl": 1, "copies": 0}
+	p["hero"]["rotation"] = ["mortal_strike", "strike", "aimed_shot"]
+	Game.equip(gs["id"])
+	Game.changed.emit()
+	main._switch("hero")
+	await _wait(0.5)
+	await _shot("22_hero_greatsword")
+	main.selected_item = sw["id"]
+	main._switch("bag")
+	await _wait(0.5)
+	await _shot("23_bag_sword")
+	main._spell_popup("aimed_shot")
+	await _wait(0.4)
+	await _shot("24_spell_needs_bow")
+	UI.clear(main.popup_layer)
+	Game.equip(sw["id"])
+	Game.equip(sh["id"])
+	main._switch("hero")
+	await _wait(0.5)
+	await _shot("25_hero_sword_shield")
+	main._switch("spells")
+	await _wait(0.5)
+	await _shot("26_spells_weapons")
+	main._switch("mercs")
+	await _wait(0.4)
+	main._merc_popup(Game.board[0])
+	await _wait(0.4)
+	await _shot("27_merc_weapons")
 	print("shots done")
 	get_tree().quit()

@@ -10,41 +10,82 @@ const RARITY_COLORS := [Color("#b8b8b8"), Color("#4da3ff"), Color("#b36bff"), Co
 # Spell kinds understood by BattleSim:
 #   damage, aoe_damage, dot, aoe_dot, execute, interrupt, stun, drain,
 #   heal, hot_all, shield, taunt, cleanse
-# Fields: kind, mult (x power), cast (sec, 0 = instant), interruptible,
+#   self_shield (shield on the caster)
+# Fields: kind, mult (x caster stat), cast (sec, 0 = instant), interruptible,
 #   dur (status duration), min_targets, threshold (hp fraction), rarity (0-3),
-#   cd (own cooldown in seconds; a spell on cooldown is skipped like an invalid one)
+#   cd (own cooldown in seconds; a spell on cooldown is skipped like an invalid one),
+#   stat (what it scales from: power (default), str, agi),
+#   req (weapon types, any of them is needed; without one the spell is skipped),
+#   bonus ({w: weapon type or "dual" for two swords, mult}: stronger with that weapon)
 const SPELLS := {
 	# --- Player spells ---
 	"strike":       {"name": "Мощный удар",     "kind": "damage",     "mult": 1.8, "cast": 0.0, "cd": 0.0, "rarity": 0, "tags": ["dps"],
+					 "stat": "str", "bonus": {"w": "sword", "mult": 1.2},
 					 "desc": "Удар по цели. Срабатывает всегда."},
 	"fireball":     {"name": "Огненный шар",    "kind": "damage",     "mult": 2.8, "cast": 1.2, "cd": 0.0, "rarity": 0, "tags": ["dps"],
+					 "bonus": {"w": "staff", "mult": 1.2},
 					 "desc": "Каст 1.2 с, сильный урон по цели."},
 	"cleave":       {"name": "Рассечение",      "kind": "aoe_damage", "mult": 1.0, "cast": 0.0, "cd": 5.0, "rarity": 1, "min_targets": 2, "tags": ["aoe"],
+					 "stat": "str", "bonus": {"w": "greatsword", "mult": 1.3},
 					 "desc": "Урон по всем врагам. Только если врагов 2+."},
 	"chain_lightning": {"name": "Цепная молния", "kind": "aoe_damage", "mult": 1.4, "cast": 1.5, "cd": 7.0, "rarity": 2, "min_targets": 3, "tags": ["aoe"],
+					 "bonus": {"w": "staff", "mult": 1.2},
 					 "desc": "Каст 1.5 с, урон по всем. Только если врагов 3+."},
 	"ignite":       {"name": "Поджог",          "kind": "dot",        "mult": 0.55, "cast": 0.0, "cd": 0.0, "dur": 6.0, "rarity": 0, "tags": ["dot"],
 					 "desc": "Горение 6 с на цели без горения."},
 	"poison_cloud": {"name": "Ядовитое облако", "kind": "aoe_dot",    "mult": 0.35, "cast": 0.0, "cd": 0.0, "dur": 6.0, "rarity": 1, "min_targets": 2, "tags": ["dot", "aoe"],
 					 "desc": "Яд на всех врагах. Только если врагов 2+."},
 	"execute":      {"name": "Казнь",           "kind": "execute",    "mult": 4.5, "cast": 0.0, "cd": 4.0, "threshold": 0.3, "rarity": 1, "tags": ["dps"],
+					 "stat": "str", "bonus": {"w": "greatsword", "mult": 1.25},
 					 "desc": "Огромный урон по врагу ниже 30% HP."},
 	"kick":         {"name": "Пинок",           "kind": "interrupt",  "mult": 0.8, "cast": 0.0, "cd": 5.0, "rarity": 0, "tags": ["interrupt"],
+					 "stat": "str",
 					 "desc": "Сбивает вражеский каст. Только если враг кастует."},
 	"bash":         {"name": "Оглушение",       "kind": "stun",       "mult": 0.6, "cast": 0.0, "cd": 10.0, "dur": 2.0, "rarity": 1, "tags": ["control"],
+					 "stat": "str", "bonus": {"w": "shield", "mult": 1.3},
 					 "desc": "Оглушает цель на 2 с и сбивает каст. Боссы невосприимчивы."},
 	"drain":        {"name": "Похищение жизни", "kind": "drain",      "mult": 1.6, "cast": 0.0, "cd": 6.0, "rarity": 2, "tags": ["dps", "sustain"],
 					 "desc": "Урон по цели, лечит себя на нанесённый урон."},
 	"heal":         {"name": "Исцеление",       "kind": "heal",       "mult": 3.0, "cast": 1.0, "cd": 0.0, "threshold": 0.7, "rarity": 0, "tags": ["heal"],
+					 "bonus": {"w": "staff", "mult": 1.2},
 					 "desc": "Каст 1 с, лечит самого раненого союзника ниже 70%."},
 	"renew":        {"name": "Обновление",      "kind": "hot_all",    "mult": 0.45, "cast": 0.0, "cd": 10.0, "dur": 6.0, "threshold": 0.9, "rarity": 1, "tags": ["heal"],
+					 "bonus": {"w": "staff", "mult": 1.2},
 					 "desc": "Лечение со временем на всю группу, если кто-то ниже 90%."},
 	"barrier":      {"name": "Барьер",          "kind": "shield",     "mult": 3.0, "cast": 0.0, "cd": 7.0, "dur": 10.0, "rarity": 0, "tags": ["shield"],
+					 "bonus": {"w": "shield", "mult": 1.3},
 					 "desc": "Щит на переднего союзника без щита."},
 	"taunt":        {"name": "Провокация",      "kind": "taunt",      "mult": 1.5, "cast": 0.0, "cd": 12.0, "dur": 6.0, "rarity": 0, "tags": ["tank"],
+					 "bonus": {"w": "shield", "mult": 1.5},
 					 "desc": "Враги бьют только вас 6 с, плюс небольшой щит."},
 	"cleanse":      {"name": "Очищение",        "kind": "cleanse",    "mult": 1.0, "cast": 0.0, "cd": 6.0, "rarity": 1, "tags": ["cleanse", "heal"],
 					 "desc": "Снимает яд/горение/оглушение с союзника и подлечивает."},
+
+	# --- Weapon spells: only usable with the required weapon (req = any of these) ---
+	"twin_strike":  {"name": "Двойной удар",    "kind": "damage",     "mult": 2.2, "cast": 0.0, "cd": 0.0, "rarity": 0, "tags": ["dps"],
+					 "stat": "str", "req": ["sword"], "bonus": {"w": "dual", "mult": 1.4},
+					 "desc": "Нужен меч. Два быстрых удара по цели; с мечом в каждой руке сильнее."},
+	"mortal_strike": {"name": "Сокрушительный удар", "kind": "damage", "mult": 3.4, "cast": 0.0, "cd": 6.0, "rarity": 0, "tags": ["dps"],
+					 "stat": "str", "req": ["greatsword"],
+					 "desc": "Нужен двуручный меч. Тяжёлый удар по цели."},
+	"whirlwind":    {"name": "Вихрь клинка",    "kind": "aoe_damage", "mult": 1.4, "cast": 0.0, "cd": 6.0, "rarity": 1, "min_targets": 2, "tags": ["aoe"],
+					 "stat": "str", "req": ["greatsword"],
+					 "desc": "Нужен двуручный меч. Урон по всем врагам, если их 2+."},
+	"shield_slam":  {"name": "Удар щитом",      "kind": "stun",       "mult": 1.0, "cast": 0.0, "cd": 9.0, "dur": 1.5, "rarity": 1, "tags": ["control"],
+					 "stat": "str", "req": ["shield"],
+					 "desc": "Нужен щит. Оглушает цель на 1.5 с и сбивает каст. Боссы невосприимчивы."},
+	"shield_wall":  {"name": "Стена щитов",     "kind": "self_shield", "mult": 4.0, "cast": 0.0, "cd": 10.0, "dur": 8.0, "rarity": 0, "tags": ["tank"],
+					 "stat": "str", "req": ["shield"],
+					 "desc": "Нужен щит. Большой щит на себя, если своего щита нет."},
+	"aimed_shot":   {"name": "Прицельный выстрел", "kind": "damage",  "mult": 3.6, "cast": 1.5, "cd": 0.0, "rarity": 0, "tags": ["dps"],
+					 "stat": "agi", "req": ["bow"],
+					 "desc": "Нужен лук. Каст 1.5 с, сильный выстрел по цели."},
+	"arrow_rain":   {"name": "Дождь стрел",     "kind": "aoe_damage", "mult": 1.2, "cast": 0.0, "cd": 8.0, "rarity": 1, "min_targets": 2, "tags": ["aoe"],
+					 "stat": "agi", "req": ["bow"],
+					 "desc": "Нужен лук. Урон по всем врагам, если их 2+."},
+	"arcane_bolt":  {"name": "Чародейская стрела", "kind": "damage",  "mult": 2.2, "cast": 0.0, "cd": 0.0, "rarity": 0, "tags": ["dps"],
+					 "req": ["staff"],
+					 "desc": "Нужен посох. Мгновенный магический удар по цели."},
 
 	# --- Enemy spells ---
 	"e_smash":      {"name": "Сокрушение",      "kind": "damage",     "mult": 2.6, "cast": 1.6, "interruptible": true, "enemy": true},
@@ -255,7 +296,8 @@ static func hero_base_stats(level: int) -> Dictionary:
 	var l := level - 1
 	return {
 		"hp": 300 + 55 * l,
-		"atk": 15 + 4 * l,
+		"str": 15 + 4 * l,
+		"agi": 15 + 4 * l,
 		"power": 15 + 4 * l,
 		"armor": 10 + 2 * l,
 		"haste": 0.0,
@@ -272,17 +314,52 @@ static func xp_to_next(level: int) -> int:
 static func spell_level_mult(spell_level: int) -> float:
 	return 1.0 + 0.3 * (spell_level - 1)
 
+const STAT_LABELS := {"power": "сила заклинаний", "str": "сила", "agi": "ловкость"}
+const WEAPON_LABELS := {"sword": "меч", "greatsword": "двуручный меч", "shield": "щит", "staff": "посох",
+	"bow": "лук", "dual": "меч в каждой руке"}
+
+## The caster stat a spell scales from (enemies only have power and atk).
+static func spell_stat_value(sid: String, stats: Dictionary) -> float:
+	var stat: String = SPELLS[sid].get("stat", "power")
+	if stats.has(stat):
+		return float(stats[stat])
+	return float(stats.get("atk", stats.get("power", 0.0))) if stat != "power" else float(stats.get("power", 0.0))
+
+## True when the caster holds a weapon the spell needs (or it needs none).
+static func spell_usable(sid: String, weapons: Array) -> bool:
+	var req: Array = SPELLS[sid].get("req", [])
+	if req.is_empty():
+		return true
+	for w in req:
+		if w in weapons:
+			return true
+	return false
+
+## Weapon bonus multiplier for this spell and these weapons (1.0 = no bonus).
+static func spell_bonus(sid: String, weapons: Array) -> float:
+	var b: Dictionary = SPELLS[sid].get("bonus", {})
+	if b.is_empty():
+		return 1.0
+	if b["w"] == "dual":
+		return float(b["mult"]) if weapons.count("sword") >= 2 else 1.0
+	return float(b["mult"]) if b["w"] in weapons else 1.0
+
+## Spell amount for a caster: mult x level x stat x weapon bonus.
+static func spell_amount(sid: String, lvl: int, stats: Dictionary, weapons: Array) -> float:
+	return SPELLS[sid]["mult"] * spell_level_mult(max(1, lvl)) * spell_stat_value(sid, stats) * spell_bonus(sid, weapons)
+
 # Guild mercenary templates (concept 9: decent generic builds, clearly NPC).
 const MERC_TEMPLATES := [
-	{"sprite": "tank", "ranged": false, "role": "Танк",     "spells": ["taunt", "barrier", "strike"],     "stat": {"hp": 1.4, "armor": 1.8, "atk": 0.8, "power": 0.8}},
-	{"sprite": "healer", "ranged": true, "role": "Лекарь",   "spells": ["heal", "renew", "barrier"],       "stat": {"hp": 0.9, "power": 1.2}},
-	{"sprite": "healer", "ranged": true, "role": "Лекарь",   "spells": ["heal", "cleanse", "strike"],      "stat": {"hp": 0.9, "power": 1.15}},
-	{"sprite": "pyromancer", "ranged": true, "role": "Пиромант", "spells": ["ignite", "fireball", "strike"],   "stat": {"hp": 0.85, "power": 1.2}},
-	{"sprite": "poisoner_ally", "ranged": false, "role": "Ядовик",   "spells": ["poison_cloud", "ignite", "strike"], "stat": {"hp": 0.85, "power": 1.15}},
-	{"sprite": "fighter", "ranged": false, "role": "Боец",     "spells": ["cleave", "strike", "execute"],    "stat": {"hp": 1.1, "atk": 1.2}},
-	{"sprite": "guard", "ranged": false, "role": "Страж",    "spells": ["kick", "bash", "strike"],         "stat": {"hp": 1.1, "atk": 1.1, "armor": 1.3}},
-	{"sprite": "paladin", "ranged": false, "role": "Паладин",  "spells": ["barrier", "heal", "strike"],      "stat": {"hp": 1.2, "armor": 1.3}},
-	{"sprite": "hunter", "ranged": true, "role": "Охотник",  "spells": ["kick", "fireball", "strike"],     "stat": {"hp": 0.9, "power": 1.1, "atk": 1.1}},
+# weapons: [main hand, left hand] types the mercenary's gear is rolled with.
+	{"sprite": "tank", "ranged": false, "role": "Танк",     "spells": ["taunt", "barrier", "strike"],     "stat": {"hp": 1.4, "armor": 1.8, "str": 0.8, "power": 0.8}, "weapons": ["sword", "shield"]},
+	{"sprite": "healer", "ranged": true, "role": "Лекарь",   "spells": ["heal", "renew", "barrier"],       "stat": {"hp": 0.9, "power": 1.2}, "weapons": ["staff"]},
+	{"sprite": "healer", "ranged": true, "role": "Лекарь",   "spells": ["heal", "cleanse", "strike"],      "stat": {"hp": 0.9, "power": 1.15}, "weapons": ["staff"]},
+	{"sprite": "pyromancer", "ranged": true, "role": "Пиромант", "spells": ["ignite", "fireball", "strike"],   "stat": {"hp": 0.85, "power": 1.2}, "weapons": ["staff"]},
+	{"sprite": "poisoner_ally", "ranged": false, "role": "Ядовик",   "spells": ["poison_cloud", "ignite", "twin_strike"], "stat": {"hp": 0.85, "power": 1.15}, "weapons": ["sword", "sword"]},
+	{"sprite": "fighter", "ranged": false, "role": "Боец",     "spells": ["cleave", "mortal_strike", "execute"], "stat": {"hp": 1.1, "str": 1.2}, "weapons": ["greatsword"]},
+	{"sprite": "guard", "ranged": false, "role": "Страж",    "spells": ["kick", "shield_slam", "strike"],  "stat": {"hp": 1.1, "str": 1.1, "armor": 1.3}, "weapons": ["sword", "shield"]},
+	{"sprite": "paladin", "ranged": false, "role": "Паладин",  "spells": ["barrier", "heal", "strike"],      "stat": {"hp": 1.2, "armor": 1.3}, "weapons": ["sword", "shield"]},
+	{"sprite": "hunter", "ranged": true, "role": "Охотник",  "spells": ["kick", "aimed_shot", "arrow_rain"], "stat": {"hp": 0.9, "power": 1.1, "agi": 1.2}, "weapons": ["bow"]},
 ]
 
 const MERC_NAMES := ["Борис", "Ольга", "Тарас", "Мира", "Гордей", "Злата", "Яромир", "Вера", "Ратибор",

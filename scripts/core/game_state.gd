@@ -277,8 +277,17 @@ func set_rotation(rotation: Array) -> void:
 func move_in_party(index: int, dir: int) -> void:
 	act("move_party", {"index": index, "dir": dir})
 
-func equip(id: String) -> void:
-	act("equip", {"id": id})
+func equip(id: String, to: String = "") -> void:
+	act("equip", {"id": id, "to": to})
+
+## Hero "Мощь" if this item were put on (slot "" = its own slot).
+func power_with(it: Dictionary, slot: String = "") -> int:
+	var h: Dictionary = hero.duplicate(true)
+	Rules.place_item(h["equipped"], it.duplicate(true), slot if slot != "" else str(it["slot"]))
+	return Roster.power_score(Roster.hero_snapshot(h, collection))
+
+func power_now() -> int:
+	return Roster.power_score(hero_snapshot())
 
 func unequip(slot: String) -> void:
 	act("unequip", {"slot": slot})

@@ -178,8 +178,7 @@ func _nav_badges() -> Dictionary:
 	var ex = Game.exp_info()
 	var bag_upgrade := false
 	for it in Game.inventory:
-		var eq = Game.hero["equipped"][it["slot"]]
-		if eq == null or Loot.item_score(it) > Loot.item_score(eq):
+		if Game.power_with(it) > Game.power_now():
 			bag_upgrade = true
 			break
 	var fusable := false
@@ -533,19 +532,21 @@ func _screen_hero() -> Control:
 
 	var sc := UI.card()
 	sc.custom_minimum_size.x = 290
-	var sv := UI.vbox(10)
+	var sv := UI.vbox(6)
 	sc.add_child(sv)
 	sv.add_child(UI.title("Характеристики", 22))
 	var pw := UI.flat(Style.BG_DEEP, 10)
 	var pwh := UI.hbox(10)
 	pw.add_child(pwh)
 	pwh.add_child(UI.icon("star", 34))
-	pwh.add_child(UI.expand(UI.label("Сила", Style.FONT_BODY, Style.MUTED)))
+	pwh.add_child(UI.expand(UI.label("Мощь", Style.FONT_BODY, Style.MUTED)))
 	pwh.add_child(UI.title(str(Roster.power_score(snap)), 28, Style.PRIMARY))
 	sv.add_child(pw)
 	sv.add_child(UI.stat_row("hp", "Здоровье", "%d" % st["hp"]))
-	sv.add_child(UI.stat_row("atk", "Атака", "%d" % st["atk"]))
-	sv.add_child(UI.stat_row("power", "Магия", "%d" % st["power"]))
+	sv.add_child(UI.stat_row("atk", "Атака", "%d · %.1f с" % [st["atk"], st.get("atk_speed", 1.6) / (1.0 + st["haste"])]))
+	sv.add_child(UI.stat_row("str", "Сила", "%d" % st["str"]))
+	sv.add_child(UI.stat_row("agi", "Ловкость", "%d" % st["agi"]))
+	sv.add_child(UI.stat_row("power", "Сила заклинаний", "%d" % st["power"]))
 	sv.add_child(UI.stat_row("armor", "Броня", "%d" % st["armor"]))
 	sv.add_child(UI.stat_row("haste", "Скорость", "%d%%" % roundi(st["haste"] * 100)))
 	sv.add_child(UI.stat_row("crit", "Крит", "%d%%" % roundi(st["crit"] * 100)))
@@ -562,9 +563,9 @@ func _screen_hero() -> Control:
 	var doll := UI.hbox(20)
 	doll.alignment = BoxContainer.ALIGNMENT_CENTER
 	doll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var left_col := UI.vbox(6)
+	var left_col := UI.vbox(2)
 	left_col.alignment = BoxContainer.ALIGNMENT_CENTER
-	for slot in ["weapon", "hands", "trinket"]:
+	for slot in ["weapon", "offhand", "hands", "trinket"]:
 		left_col.add_child(_gear_slot(slot))
 	doll.add_child(left_col)
 	var stage := UI.vbox(0)
@@ -615,21 +616,26 @@ func _gear_slot(slot: String) -> Control:
 	var it = Game.hero["equipped"].get(slot)
 	var v := UI.vbox(0)
 	var t: Control
-	if it == null:
-		t = UI.tile("item_" + slot, Style.CARD_3, 56, true)
+	var label: String = Loot.SLOT_NAMES[slot]
+	var main_w = Game.hero["equipped"].get("weapon")
+	if it == null and slot == "offhand" and Loot.is_two_handed(main_w):
+		t = UI.tile(UI.item_icon(main_w), Style.CARD_3, 50, true)
+		label = "Двуручное"
+	elif it == null:
+		t = UI.tile("item_" + slot, Style.CARD_3, 50, true)
 	else:
-		t = UI.tile(UI.item_icon(it), Style.RARITY[it["rarity"]], 56)
+		t = UI.tile(UI.item_icon(it), Style.RARITY[it["rarity"]], 50)
 	t.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	UI.tap_overlay(t, _gear_popup.bind(slot))
 	v.add_child(t)
-	var l := UI.label(Loot.SLOT_NAMES[slot], Style.FONT_TINY, Style.MUTED)
+	var l := UI.label(label, Style.FONT_TINY, Style.MUTED)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(l)
 	return v
 
 func _rotation_slot(i: int, sid: String) -> Control:
-	var v := UI.vbox(4)
-	v.custom_minimum_size.x = 120
+	var v := UI.vbox(2)
+	v.custom_minimum_size.x = 160
 	var t: Control
 	if sid == "":
 		t = UI.tile("star", Style.CARD_3, 76, true)
@@ -646,10 +652,14 @@ func _rotation_slot(i: int, sid: String) -> Control:
 	var name := "Пусто"
 	if sid != "":
 		var lv: int = max(1, Roster.spell_best_level(Game.collection, sid))
-		name = "%s %s\n%s" % [Db.SPELLS[sid]["name"], UI.roman(lv), SpellInfo.short(sid, lv, Game.hero_snapshot()["stats"]["power"])]
+		name = "%s %s\n%s" % [Db.SPELLS[sid]["name"], UI.roman(lv), SpellInfo.short(sid, lv, Game.hero_snapshot())]
 	var l := UI.wrap(name, Style.FONT_TINY, Style.TEXT, true)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(l)
+	if sid != "" and not Db.spell_usable(sid, Game.hero_snapshot()["weapons"]):
+		var w := UI.label("Нет оружия", Style.FONT_TINY, Style.DANGER, true)
+		w.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(w)
 	return v
 
 func _spell_tile_button(sid: String, size_px: float, marked: bool = false) -> Control:
@@ -714,7 +724,6 @@ func _spell_popup(sid: String, caster: Dictionary = {}) -> void:
 			if sp["id"] == sid:
 				lvl = int(sp["lvl"])
 	var shown_lvl: int = max(1, lvl)
-	var power: float = snap["stats"]["power"]
 	var body := UI.vbox(10)
 	var top := UI.hbox(14)
 	top.add_child(UI.tile(UI.spell_icon(sid), Style.RARITY[d["rarity"]], 88, lvl == 0))
@@ -737,7 +746,7 @@ func _spell_popup(sid: String, caster: Dictionary = {}) -> void:
 			var cost := Game.fuse_cost(lvl)
 			ph.add_child(UI.label("Копии для %s: %d / %d" % [UI.roman(lvl + 1), copies, cost], Style.FONT_SMALL, Style.MUTED))
 			ph.add_child(UI.expand(UI.progress(min(copies, cost), cost, Style.SECONDARY, 12)))
-			ph.add_child(UI.label("%s: %s" % [UI.roman(lvl + 1), SpellInfo.short(sid, lvl + 1, power)], Style.FONT_SMALL, Style.TEXT, true))
+			ph.add_child(UI.label("%s: %s" % [UI.roman(lvl + 1), SpellInfo.short(sid, lvl + 1, snap)], Style.FONT_SMALL, Style.TEXT, true))
 			if Game.can_fuse(sid):
 				buttons.append(["Улучшить → %s" % UI.roman(lvl + 1), _fuse.bind(sid), "primary", true])
 		body.add_child(ph)
@@ -765,10 +774,15 @@ func _spell_numbers(sid: String, lvl: int, snap: Dictionary) -> Control:
 	var box := UI.flat(Style.BG_DEEP, 12)
 	var v := UI.vbox(8)
 	box.add_child(v)
-	for line in SpellInfo.effects(sid, lvl, st["power"]):
+	for line in SpellInfo.effects(sid, lvl, snap):
 		var h := UI.hbox(8)
 		h.add_child(UI.icon(line[0], 24))
 		h.add_child(UI.expand(UI.label(line[1], Style.FONT_BODY, Style.TEXT, true)))
+		v.add_child(h)
+	for line in SpellInfo.weapon_lines(sid, snap):
+		var h := UI.hbox(8)
+		h.add_child(UI.icon(line[0], 20))
+		h.add_child(UI.expand(UI.wrap(line[1], Style.FONT_SMALL, Style.SUCCESS if line[2] else Style.WARNING)))
 		v.add_child(h)
 	var th := UI.hbox(16)
 	for line in SpellInfo.timing(sid):
@@ -777,7 +791,7 @@ func _spell_numbers(sid: String, lvl: int, snap: Dictionary) -> Control:
 		h.add_child(UI.label(line[1], Style.FONT_SMALL, Style.TEXT))
 		th.add_child(h)
 	v.add_child(th)
-	var note := "Сила заклинаний %d · ход ротации каждые %.1f с" % [st["power"], SpellInfo.rotation_interval(st.get("haste", 0.0))]
+	var note := "Растёт от: %s %d · ход ротации каждые %.1f с" % [SpellInfo.stat_label(sid), roundi(Db.spell_stat_value(sid, st)), SpellInfo.rotation_interval(st.get("haste", 0.0))]
 	if Db.SPELLS[sid]["kind"] in ["damage", "aoe_damage", "execute", "interrupt", "stun", "drain"]:
 		note += " · урон до брони, без крита"
 	elif Db.SPELLS[sid]["kind"] in ["heal", "hot_all", "cleanse"]:
@@ -965,11 +979,12 @@ func _merc_popup(m: Dictionary) -> void:
 	else:
 		chips.add_child(UI.chip("Игрок", Style.PRIMARY, 14, Style.PRIMARY_TEXT))
 	tv.add_child(chips)
-	tv.add_child(UI.pill("star", "Сила %d" % Roster.power_score(m), 22, Style.BG_DEEP))
+	tv.add_child(UI.pill("star", "Мощь %d" % Roster.power_score(m), 22, Style.BG_DEEP))
 	top.add_child(UI.expand(tv))
 	body.add_child(top)
 	var stats := UI.grid(3, 8)
-	for row in [["hp", "HP", "%d" % st["hp"]], ["atk", "Атака", "%d" % st["atk"]], ["power", "Магия", "%d" % st["power"]],
+	for row in [["hp", "HP", "%d" % st["hp"]], ["atk", "Атака", "%d / %.1f с" % [st["atk"], st.get("atk_speed", 1.6)]],
+			["power", "Магия", "%d" % st["power"]], ["str", "Сила", "%d" % st.get("str", 0)], ["agi", "Ловкость", "%d" % st.get("agi", 0)],
 			["armor", "Броня", "%d" % st["armor"]], ["haste", "Скорость", "%d%%" % roundi(st.get("haste", 0.0) * 100)],
 			["crit", "Крит", "%d%%" % roundi(st.get("crit", 0.0) * 100)]]:
 		var r := UI.stat_row(row[0], row[1], row[2])
@@ -999,7 +1014,7 @@ func _merc_popup(m: Dictionary) -> void:
 		sv.add_child(t)
 		var sl := UI.vbox(0)
 		sl.add_child(UI.label("%d. %s %s" % [i + 1, Db.SPELLS[s["id"]]["name"], UI.roman(s["lvl"])], Style.FONT_TINY, Style.TEXT, true))
-		sl.add_child(UI.label(SpellInfo.short(s["id"], s["lvl"], st["power"]), Style.FONT_TINY, Style.MUTED))
+		sl.add_child(UI.label(SpellInfo.short(s["id"], s["lvl"], m), Style.FONT_TINY, Style.MUTED))
 		sv.add_child(sl)
 		rot.add_child(UI.expand(sv))
 	body.add_child(rot)
@@ -1065,10 +1080,19 @@ func _spell_card(sid: String) -> Control:
 	name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name.clip_text = true
 	v.add_child(name)
-	var num := UI.label(SpellInfo.short(sid, max(1, lvl), Game.hero_snapshot()["stats"]["power"]) +
+	var num := UI.label(SpellInfo.short(sid, max(1, lvl), Game.hero_snapshot()) +
 		(("  · кд %.0f с" % d["cd"]) if d.get("cd", 0.0) > 0.0 else ""), Style.FONT_TINY, Style.TEXT if lvl > 0 else Style.MUTED)
 	num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(num)
+	var req: Array = d.get("req", [])
+	if not req.is_empty():
+		var names := []
+		for w in req:
+			names.append(Db.WEAPON_LABELS[w])
+		var has := Db.spell_usable(sid, Game.hero_snapshot()["weapons"])
+		var rl := UI.label("Нужен " + " / ".join(names), Style.FONT_TINY, Style.SUCCESS if has else Style.WARNING)
+		rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(rl)
 	if lvl == 0:
 		var l := UI.label("Не открыто", Style.FONT_TINY, Style.MUTED)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1204,14 +1228,16 @@ func _screen_bag() -> Control:
 		rv.add_child(_item_details(sel, true))
 		rv.add_child(UI.spacer())
 		var bh := UI.hbox(8)
-		bh.add_child(UI.expand(UI.btn("Надеть", _equip.bind(sel["id"]), "primary", 22, "", 0, 58)))
+		bh.add_child(UI.expand(UI.btn("Надеть", _equip.bind(sel["id"], ""), "primary", 22, "", 0, 58)))
+		if sel.get("wtype", "") == "sword":
+			bh.add_child(UI.btn("В левую", _equip.bind(sel["id"], "offhand"), "secondary", Style.FONT_SMALL, "", 0, 58))
 		bh.add_child(UI.btn("Продать %d" % Loot.sell_price(sel), _sell.bind(sel["id"]), "danger", Style.FONT_SMALL, "gold", 0, 58))
 		rv.add_child(bh)
 	h.add_child(right)
 	return h
 
-func _equip(id: String) -> void:
-	Game.equip(id)
+func _equip(id: String, to: String) -> void:
+	Game.equip(id, to)
 	_toast("Предмет надет")
 
 func _sell(id: String) -> void:
@@ -1224,8 +1250,7 @@ func _select_item(id: String) -> void:
 
 func _item_tile(it: Dictionary) -> Control:
 	var t := UI.tile(UI.item_icon(it), Style.RARITY[it["rarity"]], 84, false, it["id"] == selected_item)
-	var eq = Game.hero["equipped"][it["slot"]]
-	if eq == null or Loot.item_score(it) > Loot.item_score(eq):
+	if Game.power_with(it) > Game.power_now():
 		var up := UI.chip("▲", Style.SUCCESS, 12, Color("#062b16"))
 		up.position = Vector2(-6, -6)
 		t.add_child(up)
@@ -1248,6 +1273,13 @@ func _item_details(it: Dictionary, compare: bool) -> Control:
 	tv.add_child(chips)
 	top.add_child(UI.expand(tv))
 	v.add_child(top)
+	if it.has("wtype"):
+		var wl := UI.wrap(Loot.weapon_text(it), Style.FONT_SMALL, Style.WARNING)
+		v.add_child(wl)
+		if Loot.is_two_handed(it):
+			v.add_child(UI.label("Двуручное: занимает обе руки", Style.FONT_TINY, Style.MUTED))
+		elif it["wtype"] == "sword":
+			v.add_child(UI.label("Можно взять в левую руку: +%d%% урона меча к каждому удару" % roundi(Loot.OFFHAND_SWORD_SHARE * 100), Style.FONT_TINY, Style.MUTED))
 	for a in it["affixes"]:
 		var row := UI.hbox(8)
 		row.add_child(UI.icon(UI.stat_icon(a["stat"]), 24))
@@ -1256,13 +1288,13 @@ func _item_details(it: Dictionary, compare: bool) -> Control:
 		v.add_child(row)
 	if compare:
 		var eq = Game.hero["equipped"][it["slot"]]
-		var diff := Loot.item_score(it) - (Loot.item_score(eq) if eq != null else 0.0)
+		var diff := Game.power_with(it) - Game.power_now()
 		var box := UI.flat(Style.BG_DEEP, 10)
 		var bv := UI.vbox(4)
 		box.add_child(bv)
 		bv.add_child(UI.label("Сейчас надето:", Style.FONT_TINY, Style.MUTED))
 		bv.add_child(UI.wrap(("%s — %s" % [UI.item_title(eq), UI.item_line(eq)]) if eq != null else "ничего", Style.FONT_SMALL, Style.TEXT))
-		bv.add_child(UI.label(("Лучше на %d" % diff) if diff > 0 else ("Хуже на %d" % -diff), Style.FONT_SMALL,
+		bv.add_child(UI.label(("Мощь героя +%d" % diff) if diff > 0 else ("Мощь героя %d" % diff), Style.FONT_SMALL,
 			Style.SUCCESS if diff > 0 else Style.DANGER, true))
 		v.add_child(box)
 	return v

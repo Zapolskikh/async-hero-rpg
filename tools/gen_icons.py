@@ -253,6 +253,57 @@ ICONS.update({
 })
 
 
+def greatsword(d):
+    d.line([(4, 12), (14, 2)], fill=C["steel"], width=3)
+    d.point((14, 1), fill=C["white"])
+    d.line([(2, 8), (8, 14)], fill=C["gold"], width=2)
+    d.line([(0, 15), (3, 12)], fill=C["wood"], width=2)
+
+
+def shield(d, col="blue"):
+    d.polygon([(2, 2), (13, 2), (13, 8), (8, 14), (2, 8)], fill=C[col])
+    d.polygon([(4, 4), (11, 4), (11, 8), (8, 11), (4, 8)], fill=C[col + "_d"])
+    d.rectangle([7, 3, 8, 12], fill=C["gold"])
+
+
+def staff(d):
+    d.line([(3, 14), (11, 5)], fill=C["wood"], width=2)
+    d.ellipse([9, 1, 15, 7], fill=C["purple"])
+    d.ellipse([11, 3, 13, 5], fill=C["cyan"])
+
+
+def bow(d):
+    d.arc([1, 1, 15, 15], 225, 405, fill=C["wood"], width=2)
+    d.line([(3, 3), (13, 13)], fill=C["white"], width=1)
+
+
+ICONS.update({
+    "str": lambda d: (d.rectangle([2, 7, 13, 12], fill=C["skin"]), d.ellipse([9, 2, 15, 9], fill=C["skin"]),
+                      d.rectangle([2, 11, 6, 14], fill=C["red"])),
+    "agi": lambda d: (d.polygon([(1, 13), (9, 5), (11, 7)], fill=C["green"]), d.polygon([(9, 1), (15, 1), (15, 7)], fill=C["green"]),
+                      d.line([(4, 8), (8, 4)], fill=C["white"])),
+    "w_sword": lambda d: sword(d),
+    "w_greatsword": greatsword,
+    "w_shield": lambda d: shield(d),
+    "w_staff": staff,
+    "w_bow": bow,
+    "item_offhand": lambda d: shield(d, "blue"),
+    "sp_twin_strike": lambda d: (d.line([(1, 12), (9, 4)], fill=C["steel"], width=2), d.line([(6, 14), (14, 6)], fill=C["steel"], width=2),
+                                 d.point((10, 3), fill=C["white"]), d.point((15, 5), fill=C["white"])),
+    "sp_mortal_strike": lambda d: (greatsword(d), d.arc([0, 0, 15, 15], 300, 30, fill=C["red"], width=2)),
+    "sp_whirlwind": lambda d: (d.arc([1, 1, 14, 14], 0, 300, fill=C["white"], width=2), d.arc([5, 5, 10, 10], 90, 360, fill=C["steel"], width=1),
+                               d.polygon([(13, 2), (15, 6), (11, 5)], fill=C["white"])),
+    "sp_shield_slam": lambda d: (shield(d, "blue"), d.polygon([(11, 0), (15, 2), (13, 5)], fill=C["yellow"]),
+                                 d.polygon([(0, 11), (3, 15), (1, 15)], fill=C["yellow"])),
+    "sp_shield_wall": lambda d: (d.rectangle([1, 3, 6, 13], fill=C["blue"]), d.rectangle([9, 3, 14, 13], fill=C["blue"]),
+                                 d.rectangle([5, 2, 10, 14], fill=C["blue_d"]), d.rectangle([7, 4, 8, 12], fill=C["gold"])),
+    "sp_aimed_shot": lambda d: (bow(d), d.ellipse([9, 9, 15, 15], outline=C["red"], width=1), d.point((12, 12), fill=C["red"])),
+    "sp_arrow_rain": lambda d: tuple(d.line([(x, y), (x - 3, y + 6)], fill=C["steel"], width=1) for x, y in ((5, 1), (10, 2), (15, 1), (8, 7), (13, 8))),
+    "sp_arcane_bolt": lambda d: (d.polygon([(1, 14), (10, 4), (12, 6)], fill=C["purple"]), d.ellipse([9, 1, 15, 7], fill=C["cyan"]),
+                                 d.point((12, 4), fill=C["white"])),
+})
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for name, fn in ICONS.items():

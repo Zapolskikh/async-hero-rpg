@@ -291,13 +291,17 @@ static func spell_icon(sid: String) -> String:
 	return "sp_" + sid
 
 static func item_icon(item: Dictionary) -> String:
+	if item.has("wtype"):
+		return "w_" + str(item["wtype"])
 	return "item_" + str(item["slot"])
 
 static func stat_icon(stat: String) -> String:
-	return {"hp": "hp", "atk": "atk", "power": "power", "armor": "armor", "haste": "haste", "crit": "crit"}.get(stat, "star")
+	return {"hp": "hp", "atk": "atk", "str": "str", "agi": "agi", "power": "power", "armor": "armor", "haste": "haste", "crit": "crit"}.get(stat, "star")
 
 static func item_line(item: Dictionary) -> String:
 	var parts := []
+	if item.has("wtype") and float(item.get("dmg", 0)) > 0.0:
+		parts.append("Урон %d" % int(item["dmg"]))
 	for a in item["affixes"]:
 		parts.append(Loot.affix_text(a))
 	return ", ".join(parts)

@@ -20,7 +20,10 @@ var ranged := false      # visual only: shoots instead of stepping forward
 var max_hp: float
 var hp: float
 var atk: float
+var atk_speed := ATTACK_INTERVAL  # seconds between basic attacks before haste (from the weapon)
 var power: float
+var stats: Dictionary = {}   # all stats (spells read str / agi / power from here)
+var weapons: Array = []      # held weapon types, e.g. ["sword", "shield"]
 var armor: float
 var haste: float
 var crit: float
@@ -60,7 +63,12 @@ func _init(p_uid: int, p_side: int, p_slot: int, snap: Dictionary) -> void:
 	max_hp = st["hp"]
 	hp = max_hp
 	atk = st["atk"]
+	atk_speed = float(st.get("atk_speed", ATTACK_INTERVAL))
+	if atk_speed <= 0.0:
+		atk_speed = ATTACK_INTERVAL
 	power = st["power"]
+	stats = st
+	weapons = snap.get("weapons", [])
 	armor = st.get("armor", 0.0)
 	haste = st.get("haste", 0.0)
 	crit = st.get("crit", 0.0)
@@ -93,7 +101,7 @@ func is_debuffed() -> bool:
 	return dots.size() > 0 or stun > 0.0
 
 func attack_interval() -> float:
-	return ATTACK_INTERVAL / (1.0 + haste)
+	return atk_speed / (1.0 + haste)
 
 func spell_interval() -> float:
 	return SPELL_INTERVAL / (1.0 + haste)
