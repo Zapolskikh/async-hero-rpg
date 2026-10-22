@@ -1,0 +1,34 @@
+name: tests
+on: [push, pull_request]
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: test
+          POSTGRES_DB: hero
+        ports: ["5432:5432"]
+        options: --health-cmd pg_isready --health-interval 5s --health-retries 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Godot 4.5.1
+        run: |
+          curl -fsSL -o godot.zip https://github.com/godotengine/godot/releases/download/4.5.1-stable/Godot_v4.5.1-stable_linux.x86_64.zip
+          unzip -q godot.zip && sudo mv Godot_v4.5.1-stable_linux.x86_64 /usr/local/bin/godot
+          godot --headless --import --path . || true
+      - name: Game tests
+        run: |
+          godot --headless --script res://tests/run_tests.gd
+          godot --headless --script res://tests/rules_tests.gd
+      - uses: actions/setup-python@v5
+        with: {python-version: "3.12"}
+      - name: Server tests
+        working-directory: server
+        env:
+          GODOT_BIN: godot
+          TEST_DATABASE_URL: postgresql+asyncpg://postgres:test@127.0.0.1:5432/hero
+        run: |
+          pip install -r requirements-dev.txt
+          python -m pytest -q tests

@@ -26,6 +26,7 @@ var watch_label: Label
 var battle_view: Control
 var popup_layer: Control
 var toast_layer: Control
+var speed_buttons: Array = []
 
 func _ready() -> void:
 	theme = Style.make_theme()
@@ -61,6 +62,7 @@ func _ready() -> void:
 
 	selected_level = min(Game.closed_level + 1, Db.level_count())
 	Game.changed.connect(_refresh)
+	Game.online_changed.connect(_refresh)
 	Game.expedition_finished.connect(_on_expedition_finished)
 	Game.report.connect(_on_report)
 	var t := Timer.new()
@@ -73,8 +75,12 @@ func _ready() -> void:
 		_show_offline_report(Game.offline_report)
 		Game.offline_report = {}
 	for a in OS.get_cmdline_user_args():
+		if a.begins_with("--online-test="):
+			add_child(load("res://tests/online_runner.gd").new())
+			break
 		if a.begins_with("--shots"):
 			add_child(load("res://tests/shot_runner.gd").new())
+			break
 
 
 # =====================================================================
@@ -122,6 +128,11 @@ func _build_top_bar() -> void:
 		h.add_child(UI.pill("loop" if ex["mode"] == "farm" else "swords", "%s · ур. %d" % [mode, ex["level"]], Style.FONT_SMALL, Style.CARD))
 	h.add_child(UI.pill("gold", str(Game.gold)))
 	h.add_child(UI.pill("box", str(Game.boxes)))
+	if Game.is_online():
+		var on := UI.pill("online", "…" if Game.busy else "Онлайн", Style.FONT_SMALL, Color("#1f4a35"))
+		h.add_child(on)
+	var gear := UI.btn("", _settings_popup, "ghost", Style.FONT_BODY, "settings", 52, 52)
+	h.add_child(gear)
 
 func _build_nav() -> void:
 	UI.clear(nav_bar)
@@ -476,12 +487,16 @@ func _build_watch_layer() -> void:
 	watch_label.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(watch_label)
 	for sp in [1.0, 2.0, 4.0]:
-		h.add_child(UI.btn("x%d" % int(sp), _set_speed.bind(sp), "ghost", Style.FONT_BODY, "", 64, 48))
+		var b := UI.btn("x%d" % int(sp), _set_speed.bind(sp), "ghost", Style.FONT_BODY, "", 64, 48)
+		speed_buttons.append(b)
+		h.add_child(b)
 
 func _set_speed(s: float) -> void:
 	Game.watch_speed = s
 
 func _open_watch() -> void:
+	for b in speed_buttons:
+		b.visible = not Game.is_online()  # online the server keeps real time
 	watch_layer.visible = true
 	watch_layer.modulate.a = 0.0
 	create_tween().tween_property(watch_layer, "modulate:a", 1.0, 0.15)
@@ -872,6 +887,8 @@ func _merc_card(m: Dictionary) -> Control:
 	var chips := UI.hbox(6)
 	chips.add_child(UI.chip(m["role"], role_col, 13))
 	chips.add_child(_tier_chip(m))
+	if not m.get("npc", true):
+		chips.add_child(UI.chip("Игрок", Style.PRIMARY, 13, Style.PRIMARY_TEXT))
 	v.add_child(chips)
 	var sp := UI.hbox(5)
 	for s in m["spells"]:
@@ -930,7 +947,10 @@ func _merc_popup(m: Dictionary) -> void:
 	chips.add_child(UI.chip(m["role"], Style.ROLE_COLORS.get(m["role"], Style.CARD_3), 14))
 	chips.add_child(_tier_chip(m))
 	chips.add_child(UI.chip("ур. %d" % m["level"], Style.CARD_3, 14))
-	chips.add_child(UI.chip("NPC гильдии", Style.CARD_3, 14))
+	if m.get("npc", true):
+		chips.add_child(UI.chip("NPC гильдии", Style.CARD_3, 14))
+	else:
+		chips.add_child(UI.chip("Игрок", Style.PRIMARY, 14, Style.PRIMARY_TEXT))
 	tv.add_child(chips)
 	tv.add_child(UI.pill("star", "Сила %d" % Roster.power_score(m), 22, Style.BG_DEEP))
 	top.add_child(UI.expand(tv))
@@ -1154,9 +1174,10 @@ func _screen_bag() -> Control:
 	for it in items:
 		g.add_child(_item_tile(it))
 	lv.add_child(UI.scroll(g))
-	var reset := UI.btn("Сбросить прогресс", _confirm_reset, "ghost", Style.FONT_TINY, "", 0, 40)
-	reset.size_flags_horizontal = Control.SIZE_SHRINK_END
-	lv.add_child(reset)
+	if not Game.is_online():
+		var reset := UI.btn("Сбросить прогресс", _confirm_reset, "ghost", Style.FONT_TINY, "", 0, 40)
+		reset.size_flags_horizontal = Control.SIZE_SHRINK_END
+		lv.add_child(reset)
 	h.add_child(left)
 
 	var right := UI.card()
@@ -1231,6 +1252,86 @@ func _item_details(it: Dictionary, compare: bool) -> Control:
 			Style.SUCCESS if diff > 0 else Style.DANGER, true))
 		v.add_child(box)
 	return v
+
+# =====================================================================
+# Settings: offline / online, server, name, leaderboard
+# =====================================================================
+
+func _line_edit(text: String, placeholder: String) -> LineEdit:
+	var e := LineEdit.new()
+	e.text = text
+	e.placeholder_text = placeholder
+	e.add_theme_font_size_override("font_size", Style.FONT_BODY)
+	e.custom_minimum_size = Vector2(0, 50)
+	e.add_theme_stylebox_override("normal", Style.box(Style.BG_DEEP, Style.RADIUS_SMALL, 10))
+	e.add_theme_stylebox_override("focus", Style.box(Style.CARD_3, Style.RADIUS_SMALL, 10))
+	return e
+
+func _settings_popup() -> void:
+	var v := UI.vbox(10)
+	var online := Game.is_online()
+	var head := UI.hbox(8)
+	head.add_child(UI.chip("Онлайн" if online else "Офлайн", Style.SUCCESS if online else Style.CARD_3, Style.FONT_SMALL,
+		Color("#062b16") if online else Style.TEXT))
+	if Game.online_status != "" and Game.online_status != "Онлайн":
+		head.add_child(UI.label(Game.online_status, Style.FONT_SMALL, Style.MUTED))
+	v.add_child(head)
+	v.add_child(UI.label("Имя героя", Style.FONT_TINY, Style.MUTED, true))
+	var name_edit := _line_edit(str(Game.hero.get("name", "Герой")), "2–16 символов")
+	name_edit.max_length = 16
+	v.add_child(name_edit)
+	v.add_child(UI.label("Адрес сервера", Style.FONT_TINY, Style.MUTED, true))
+	var url_edit := _line_edit(Game.server_url, "https://api.example.com")
+	url_edit.editable = not online
+	v.add_child(url_edit)
+	if online:
+		v.add_child(UI.label("Аккаунт: " + Game.account_id, Style.FONT_TINY, Style.MUTED))
+		var lb_box := UI.vbox(4)
+		lb_box.add_child(UI.label("Загрузка рейтинга…", Style.FONT_SMALL, Style.MUTED))
+		v.add_child(lb_box)
+		_fill_leaderboard(lb_box)
+	else:
+		v.add_child(UI.wrap("Офлайн-прогресс хранится на этом устройстве. В онлайне у вас отдельный аккаунт на сервере: ваш герой появляется в найме у других игроков, а за каждый найм вы получаете золото.", Style.FONT_TINY))
+	var buttons := [["Сохранить имя", _rename.bind(name_edit), "ghost", true]]
+	if online:
+		buttons.append(["Играть офлайн", Game.go_offline, "danger", true])
+	else:
+		buttons.append(["Подключиться", _connect.bind(url_edit, name_edit), "primary", true])
+	_modal("Настройки", v, buttons)
+
+func _rename(edit: LineEdit) -> void:
+	if Game.rename_hero(edit.text):
+		_toast("Имя сохранено")
+	else:
+		_toast("Имя: от 2 до 16 символов")
+
+func _connect(url_edit: LineEdit, name_edit: LineEdit) -> void:
+	var url := url_edit.text
+	var nm := name_edit.text
+	_toast("Подключение…")
+	var r: Dictionary = await Game.connect_online(url, nm)
+	_toast("Вы в онлайне" if r.get("ok", false) else str(r.get("error", "Ошибка")))
+
+func _fill_leaderboard(box: VBoxContainer) -> void:
+	var d: Dictionary = await Game.leaderboard()
+	if not is_instance_valid(box):
+		return
+	UI.clear(box)
+	if d.is_empty():
+		box.add_child(UI.label("Рейтинг недоступен", Style.FONT_SMALL, Style.MUTED))
+		return
+	var h := UI.hbox(8)
+	h.add_child(UI.icon("trophy", 26))
+	h.add_child(UI.label("Игроков: %d" % d.get("players", 0), Style.FONT_SMALL, Style.TEXT, true))
+	box.add_child(h)
+	var i := 0
+	for row in d.get("campaign", []).slice(0, 5):
+		i += 1
+		box.add_child(UI.label("%d. %s — уровень %d, герой %d ур." % [i, row["name"], row["closed_level"], row["level"]], Style.FONT_SMALL, Style.TEXT))
+	if not d.get("most_hired", []).is_empty():
+		box.add_child(UI.label("Чаще всех нанимают:", Style.FONT_TINY, Style.MUTED, true))
+		for row in d["most_hired"].slice(0, 3):
+			box.add_child(UI.label("%s (%s) — %d раз" % [row["name"], row["role"], row["hires"]], Style.FONT_SMALL, Style.TEXT))
 
 func _confirm_reset() -> void:
 	_modal("Сброс прогресса", UI.wrap("Удалить сохранение и начать заново?", Style.FONT_BODY, Style.TEXT),
@@ -1365,7 +1466,7 @@ func _show_rewards(r: Dictionary, title_text: String) -> void:
 		v.add_child(UI.wrap("Совет: проверьте состав (лекарь, щиты, interrupt) и порядок способностей.", Style.FONT_SMALL))
 	_modal(title_text, v, [], "Отлично")
 	var lbl: Label = gold_pill.get_child(0).get_child(1)
-	var tw2 := create_tween()
+	var tw2 := lbl.create_tween()  # bound to the label: stops if the window is closed early
 	tw2.tween_interval(0.15)
 	tw2.tween_method(_set_gold_text.bind(lbl), 0.0, float(r["gold"]), 0.6)
 
