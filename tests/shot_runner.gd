@@ -10,6 +10,7 @@ var weapons_only := false
 var meter_only := false
 var talents_only := false
 var atlas_only := false
+var doll_only := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -27,9 +28,13 @@ func _ready() -> void:
 			talents_only = true
 		if a == "--shots-atlas":
 			atlas_only = true
+		if a == "--shots-doll":
+			doll_only = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if atlas_only:
+	if doll_only:
+		_run_doll()
+	elif atlas_only:
 		_run_atlas()
 	elif talents_only:
 		_run_talents()
@@ -331,5 +336,26 @@ func _run_atlas() -> void:
 	main.content.get_child(0)._set_view("craft")
 	await _wait(0.4)
 	await _shot("34_weapon_recipes")
+	print("shots done")
+	get_tree().quit()
+
+func _run_doll() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 8
+	var p: Dictionary = Game.profile
+	for spec in [["armor", "", 0.3], ["head", "", 0.3], ["legs", "", 0.0], ["feet", "", 0.5], ["hands", "", 0.3], ["trinket", "", 0.6], ["", "shield", 0.3]]:
+		var it := Loot.roll_gear(rng, 3, spec[2], spec[0], spec[1])
+		p["inventory"].append(it)
+		Game.equip(it["id"])
+	Game.changed.emit()
+	main._switch("hero")
+	await _wait(0.5)
+	await _shot("35_doll_hero")
+	await Game.start_expedition(1, "push")
+	main._open_watch()
+	await _wait(2.5)
+	await _shot("36_doll_battle")
 	print("shots done")
 	get_tree().quit()

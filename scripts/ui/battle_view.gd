@@ -334,7 +334,12 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 	var angle := -dir * dead_k * PI / 2.0
 	draw_set_transform(pivot, angle, Vector2(dir, 1.0))
 	var rect := Rect2(Vector2(-sz.x / 2.0, -sz.y), sz)
-	if t != null:
+	if not u.look.is_empty():
+		for l in u.look:
+			var lt := tex("doll_" + str(l[0]))
+			if lt != null:
+				draw_texture_rect(lt, rect, false, tint * (Color(l[1]) if str(l[1]) != "" else Color.WHITE))
+	elif t != null:
 		draw_texture_rect(t, rect, false, tint)
 	else:
 		draw_rect(rect, u.color * tint)

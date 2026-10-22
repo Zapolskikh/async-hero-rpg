@@ -134,7 +134,9 @@ static func icon(name: String, size: float = 32.0, tint: Color = Color.WHITE) ->
 	return r
 
 ## Pixel-art portrait of a unit sprite, scaled with nearest filtering.
-static func portrait(sprite: String, height: float = 84.0, flip: bool = false) -> TextureRect:
+static func portrait(sprite: String, height: float = 84.0, flip: bool = false, look: Array = []) -> Control:
+	if not look.is_empty():
+		return doll(look, height, flip)
 	var path := "res://assets/units/%s.png" % sprite
 	var r := TextureRect.new()
 	r.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -147,11 +149,33 @@ static func portrait(sprite: String, height: float = 84.0, flip: bool = false) -
 		r.texture = load(path)
 	return r
 
+## Paper-doll portrait: doll layers stacked and tinted (Roster.look).
+static func doll(look: Array, height: float = 84.0, flip: bool = false) -> Control:
+	var holder := Control.new()
+	holder.custom_minimum_size = Vector2(height * 0.81, height)
+	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	for l in look:
+		var path := "res://assets/units/doll_%s.png" % str(l[0])
+		if not ResourceLoader.exists(path):
+			continue
+		var r := TextureRect.new()
+		r.texture = load(path)
+		r.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+		r.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+		r.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+		r.flip_h = flip
+		r.set_anchors_preset(Control.PRESET_FULL_RECT)
+		r.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		if str(l[1]) != "":
+			r.modulate = Color(l[1])
+		holder.add_child(r)
+	return holder
+
 ## Portrait on a rounded coloured square (avatar style).
-static func avatar(sprite: String, bg: Color, size: float = 96.0, flip: bool = false) -> PanelContainer:
+static func avatar(sprite: String, bg: Color, size: float = 96.0, flip: bool = false, look: Array = []) -> PanelContainer:
 	var p := flat(bg, 2, int(size * 0.18))
 	p.custom_minimum_size = Vector2(size, size)
-	p.add_child(portrait(sprite, size * 0.92, flip))
+	p.add_child(portrait(sprite, size * 0.92, flip, look))
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	return p
 

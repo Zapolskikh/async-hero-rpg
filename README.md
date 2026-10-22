@@ -76,6 +76,8 @@ tests/                      — тесты и отчёт по балансу
 
 ## Графика
 
+**Кукла героя.** Герой рисуется слоями: `assets/units/doll_body.png` и поверх по слою на каждую надетую вещь (`doll_head`, `doll_armor`, `doll_hands`, `doll_legs`, `doll_feet`, `doll_trinket`, `doll_shield`, `doll_offhand_sword`, оружие `doll_w_sword` / `doll_w_greatsword` / `doll_w_staff` / `doll_w_bow`). Все слои в одной рамке 34×42, герой смотрит вправо. Слои вещей нарисованы светло-серым и окрашиваются по редкости (`Roster.LOOK_TINTS`), оружие — своими цветами. Генератор — `tools/gen_doll.py`, любой PNG можно заменить своей картинкой того же размера и имени.
+
 Вся графика временная и генерируется скриптом `tools/gen_sprites.py` (нужен Python с Pillow):
 
 ```

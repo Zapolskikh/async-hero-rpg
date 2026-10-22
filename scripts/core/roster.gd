@@ -34,6 +34,27 @@ static func apply_gear(base: Dictionary, gear: Dictionary) -> Dictionary:
 			st[a["stat"]] = st.get(a["stat"], 0.0) + a["value"]
 	return st
 
+## Paper doll: tint of an item layer by rarity (layers are drawn in greys).
+const LOOK_TINTS := ["#8f96a3", "#5b9be8", "#b06ef0", "#f0aa40"]
+
+## Layers drawn over doll_body for this gear, back to front: [[layer, tint or ""], ...].
+static func look(gear: Dictionary) -> Array:
+	var out := []
+	var off = gear.get("offhand")
+	var main = gear.get("weapon")
+	if off != null and off.get("wtype", "") == "sword":
+		out.append(["offhand_sword", ""])
+	out.append(["body", ""])
+	for slot in ["legs", "feet", "armor", "trinket", "head", "hands"]:
+		var it = gear.get(slot)
+		if it != null:
+			out.append([slot, LOOK_TINTS[clamp(int(it["rarity"]), 0, 3)]])
+	if main != null and main.has("wtype"):
+		out.append(["w_" + str(main["wtype"]), ""])
+	if off != null and off.get("wtype", "") == "shield":
+		out.append(["shield", LOOK_TINTS[clamp(int(off["rarity"]), 0, 3)]])
+	return out
+
 static func empty_gear() -> Dictionary:
 	var g := {}
 	for slot in Loot.SLOTS:
@@ -74,6 +95,7 @@ static func hero_snapshot(hero: Dictionary, collection: Dictionary) -> Dictionar
 		"role": "Герой", "level": hero["level"], "sprite": "hero", "ranged": "bow" in Loot.weapon_types(hero["equipped"]),
 		"stats": hero_stats(hero), "spells": spells, "target": "front",
 		"weapons": Loot.weapon_types(hero["equipped"]),
+		"look": look(hero["equipped"]),
 	}
 
 static func make_merc(rng: RandomNumberGenerator, template_idx: int, level: int, tier: int = -1) -> Dictionary:
