@@ -202,3 +202,91 @@ func take_rewards() -> Dictionary:
 
 func has_rewards() -> bool:
 	return gold > 0 or xp > 0 or not items.is_empty() or boxes > 0
+
+# ---------------------------------------------------------------------------
+# Timeline model (used by Rules on client and server).
+# An expedition is simulated once when it starts; the result is a compact list
+# of cumulative reward points. Rewards at any moment are a lookup, so the server
+# never has to tick expeditions (concept 7 / 15).
+#   point = [t, gold, xp, kills, items_n, boxes, won, lost, best_wave]
+# Farm: runs are simulated for a window, beyond it rewards grow at the measured
+# rate and extra items are generated deterministically from the seed.
+# ---------------------------------------------------------------------------
+
+const FARM_WINDOW := 1200.0
+const FARM_WINDOW_MAX := 2400.0
+const FARM_MIN_RUNS := 6
+const P_T := 0
+const P_GOLD := 1
+const P_XP := 2
+const P_KILLS := 3
+const P_ITEMS := 4
+const P_BOXES := 5
+const P_WON := 6
+const P_LOST := 7
+const P_WAVE := 8
+
+func _point() -> Array:
+	return [snappedf(elapsed, 0.01), gold, xp, kills, items.size(), boxes, runs_won, runs_lost, best_wave]
+
+static func build_timeline(p_level: int, p_mode: String, p_party: Array, p_seed: int, p_first: bool) -> Dictionary:
+	var ex := Expedition.new()
+	ex.record_events = false
+	ex.start(p_level, p_mode, p_party, p_seed, p_first)
+	var pts := []
+	if p_mode == "push":
+		while not ex.finished:
+			ex.step_wave_headless()
+			pts.append(ex._point())
+		return {"mode": "push", "level": p_level, "seed": p_seed, "pts": pts, "items": ex.items.duplicate(true),
+			"t_end": snappedf(ex.elapsed, 0.01), "won": ex.runs_won > 0, "reason": ex.last_reason,
+			"waves": ex.best_wave, "total": ex.total_waves(), "closed": ex.level_closed_now}
+	var last_run := 0
+	while true:
+		ex.step_wave_headless()
+		if ex.run_index != last_run:
+			last_run = ex.run_index
+			pts.append(ex._point())
+			if (ex.elapsed >= FARM_WINDOW and ex.run_index >= FARM_MIN_RUNS) or ex.elapsed >= FARM_WINDOW_MAX:
+				break
+	var t_sim: float = pts[-1][P_T]
+	var rate := []
+	for i in pts[-1].size():
+		rate.append(0.0 if i == P_T else float(pts[-1][i]) / t_sim)
+	return {"mode": "farm", "level": p_level, "seed": p_seed, "pts": pts, "items": ex.items.duplicate(true),
+		"sim_until": t_sim, "rate": rate}
+
+## Cumulative rewards at time t (seconds since start).
+static func rewards_at(tl: Dictionary, t: float) -> Array:
+	var cur := [t, 0, 0, 0, 0, 0, 0, 0, 0]
+	for pt in tl["pts"]:
+		if float(pt[P_T]) <= t:
+			cur = pt.duplicate()
+		else:
+			break
+	if tl["mode"] == "farm" and t > float(tl["sim_until"]):
+		var last: Array = tl["pts"][-1]
+		var extra: float = t - float(tl["sim_until"])
+		cur = [t]
+		for i in range(1, last.size()):
+			cur.append(int(last[i]) + int(floor(float(tl["rate"][i]) * extra)))
+		cur[P_WAVE] = last[P_WAVE]
+	cur[P_T] = t
+	return cur
+
+## i-th dropped item of the timeline (stored ones first, then generated).
+static func item_at(tl: Dictionary, i: int) -> Dictionary:
+	var stored: Array = tl["items"]
+	if i < stored.size():
+		return stored[i]
+	var r := RandomNumberGenerator.new()
+	r.seed = hash([int(tl["seed"]), i])
+	return Loot.roll_gear(r, int(tl["level"]), 0.0)
+
+## Seconds of the expedition after which waves up to index k are done (for the live view).
+static func waves_done_at(tl: Dictionary, t: float) -> int:
+	var n := 0
+	for pt in tl["pts"]:
+		if float(pt[P_T]) <= t:
+			n += 1
+	return n

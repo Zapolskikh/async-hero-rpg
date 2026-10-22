@@ -62,6 +62,7 @@ func _ready() -> void:
 	selected_level = min(Game.closed_level + 1, Db.level_count())
 	Game.changed.connect(_refresh)
 	Game.expedition_finished.connect(_on_expedition_finished)
+	Game.report.connect(_on_report)
 	var t := Timer.new()
 	t.wait_time = 0.5
 	t.autostart = true
@@ -115,10 +116,10 @@ func _build_top_bar() -> void:
 	who.add_child(UI.progress(hero["xp"], Db.xp_to_next(hero["level"]), Style.SECONDARY, 10, 170))
 	h.add_child(who)
 	h.add_child(UI.spacer())
-	var ex: Expedition = Game.expedition
+	var ex = Game.exp_info()
 	if ex != null:
-		var mode := "Фарм" if ex.mode == "farm" else "Штурм"
-		h.add_child(UI.pill("loop" if ex.mode == "farm" else "swords", "%s · ур. %d" % [mode, ex.level], Style.FONT_SMALL, Style.CARD))
+		var mode := "Фарм" if ex["mode"] == "farm" else "Штурм"
+		h.add_child(UI.pill("loop" if ex["mode"] == "farm" else "swords", "%s · ур. %d" % [mode, ex["level"]], Style.FONT_SMALL, Style.CARD))
 	h.add_child(UI.pill("gold", str(Game.gold)))
 	h.add_child(UI.pill("box", str(Game.boxes)))
 
@@ -158,7 +159,7 @@ func _build_nav() -> void:
 
 ## Red dots: something on that screen is waiting for the player.
 func _nav_badges() -> Dictionary:
-	var ex: Expedition = Game.expedition
+	var ex = Game.exp_info()
 	var bag_upgrade := false
 	for it in Game.inventory:
 		var eq = Game.hero["equipped"][it["slot"]]
@@ -171,7 +172,7 @@ func _nav_badges() -> Dictionary:
 			if Game.can_fuse(sid, int(k)):
 				fusable = true
 	return {
-		"expedition": ex == null or (ex.mode == "farm" and ex.has_rewards()),
+		"expedition": ex == null or (ex["mode"] == "farm" and Game.has_pending()),
 		"hero": Game.hero["rotation"].size() < 3,
 		"mercs": not Game.party_ready(),
 		"spells": Game.free_box_available() or Game.boxes > 0 or fusable,
@@ -304,7 +305,8 @@ func _battle_card() -> Control:
 	bv.set_anchors_preset(Control.PRESET_FULL_RECT)
 	bv.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	holder.add_child(bv)
-	var ex: Expedition = Game.expedition
+	var ex = Game.exp_info()
+	var view: Expedition = Game.expedition
 	var top := UI.hbox(8)
 	top.position = Vector2(12, 12)
 	top.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -314,10 +316,11 @@ func _battle_card() -> Control:
 		return c
 	UI.tap_overlay(holder, _open_watch)
 	holder.add_child(top)
-	var mode := "Фарм" if ex.mode == "farm" else "Штурм"
-	top.add_child(UI.chip("%s · ур. %d · забег %d" % [mode, ex.level, ex.run_index + 1],
-		Style.SUCCESS if ex.mode == "farm" else Style.PRIMARY, Style.FONT_SMALL,
-		Color("#062b16") if ex.mode == "farm" else Style.PRIMARY_TEXT))
+	var mode := "Фарм" if ex["mode"] == "farm" else "Штурм"
+	var run_txt := (" · забег %d" % (view.run_index + 1)) if view != null and ex["mode"] == "farm" else ""
+	top.add_child(UI.chip("%s · ур. %d%s" % [mode, ex["level"], run_txt],
+		Style.SUCCESS if ex["mode"] == "farm" else Style.PRIMARY, Style.FONT_SMALL,
+		Color("#062b16") if ex["mode"] == "farm" else Style.PRIMARY_TEXT))
 	var watch := UI.btn("Смотреть", _open_watch, "secondary", Style.FONT_SMALL, "watch", 150, 46)
 	watch.set_anchors_preset(Control.PRESET_BOTTOM_RIGHT)
 	watch.offset_left = -162
@@ -406,9 +409,9 @@ func _level_card() -> Control:
 
 func _level_actions(lvl: int, closed: bool) -> Control:
 	var h := UI.hbox(8)
-	var ex: Expedition = Game.expedition
-	if ex != null and ex.level == lvl:
-		if ex.mode == "farm":
+	var ex = Game.exp_info()
+	if ex != null and int(ex["level"]) == lvl:
+		if ex["mode"] == "farm":
 			h.add_child(UI.expand(UI.btn("Забрать добычу", _collect_farm, "primary", 22, "gold", 0, 62)))
 		h.add_child(UI.btn("Стоп", _stop_expedition, "danger", 20, "", 110, 62))
 		return h
@@ -421,27 +424,34 @@ func _level_actions(lvl: int, closed: bool) -> Control:
 	return h
 
 func _collect_farm() -> void:
-	_show_rewards(Game.collect(), "Добыча фарма")
+	_show_rewards(await Game.collect(), "Добыча фарма")
 
 func _stop_expedition() -> void:
-	_show_rewards(Game.stop_expedition(), "Поход остановлен")
+	_show_rewards(await Game.stop_expedition(), "Поход остановлен")
 
 func _tick_status() -> void:
 	if exp_status == null or not is_instance_valid(exp_status):
 		return
-	var ex: Expedition = Game.expedition
+	var ex = Game.exp_info()
 	if ex == null:
 		exp_status.text = "Поход идёт и при закрытой игре (до 12 ч)."
 		return
-	exp_status.text = "Сейчас: ур. %d, волна %d/%d · накоплено %d золота, %d опыта, %d предм. · побед %d, поражений %d" % [
-		ex.level, min(ex.wave_index + 1, ex.total_waves()), ex.total_waves(), ex.gold, ex.xp,
-		ex.items.size(), ex.runs_won, ex.runs_lost]
+	var pd := Game.pending()
+	var where := ""
+	if ex["mode"] == "push":
+		where = "Штурм ур. %d, волна %d/%d" % [ex["level"], min(int(pd.get("wave", 0)) + 1, int(ex["tl"]["total"])), int(ex["tl"]["total"])]
+	else:
+		where = "Фарм ур. %d, %s" % [ex["level"], UI.format_time(pd["t"])]
+	exp_status.text = "%s · накоплено %d золота, %d опыта, %d предм. · побед %d, поражений %d" % [
+		where, pd["gold"], pd["xp"], pd["items"], pd["won"], pd["lost"]]
 
 func _start(lvl: int, mode: String) -> void:
-	if Game.expedition != null and Game.expedition.has_rewards():
-		_show_rewards(Game.stop_expedition(), "Прошлый поход завершён")
-	if Game.start_expedition(lvl, mode):
+	if Game.exp_info() != null and Game.has_pending():
+		_show_rewards(await Game.stop_expedition(), "Прошлый поход завершён")
+	if await Game.start_expedition(lvl, mode):
 		_open_watch()
+	else:
+		_toast("Не удалось начать поход")
 
 # =====================================================================
 # Watch layer (full-screen battle)
@@ -831,7 +841,7 @@ func _party_editor() -> Control:
 	return c
 
 func _reroll() -> void:
-	if Game.reroll_board():
+	if await Game.reroll_board():
 		_toast("На доске 6 новых кандидатов")
 	else:
 		_toast("Не хватает золота")
@@ -1050,7 +1060,7 @@ func _fuse(sid: String, lvl: int) -> void:
 		_toast("%s теперь %s" % [Db.SPELLS[sid]["name"], UI.roman(lvl + 1)])
 
 func _open_pack(use: String) -> void:
-	var res := Game.open_box_pack(use)
+	var res: Array = await Game.open_box_pack(use)
 	if res.is_empty():
 		_toast("Не хватает золота" if use == "gold" else "Нечего открывать")
 		return
@@ -1109,7 +1119,7 @@ func _pack_popup(res: Array) -> void:
 	_modal("Spell Box ×%d" % res.size(), v, [], "Забрать")
 
 func _open_box(use: String) -> void:
-	var r := Game.open_box(use)
+	var r: Dictionary = await Game.open_box(use)
 	if r.is_empty():
 		_toast("Нечего открывать")
 		return
@@ -1295,6 +1305,17 @@ func _place_toast(p: Control) -> void:
 	tw.tween_property(p, "modulate:a", 0.0, 0.3)
 	tw.tween_callback(p.queue_free)
 
+## Reports that are not a direct answer to a tap (assist rewards from the server, etc.).
+func _on_report(r: Dictionary) -> void:
+	match r.get("type", ""):
+		"assists":
+			var v := UI.vbox(10)
+			v.add_child(UI.wrap("Другие игроки нанимали вашего героя: %d раз." % r["hires"], Style.FONT_BODY, Style.TEXT))
+			v.add_child(UI.pill("gold", "+%d" % r["gold"], 24))
+			_modal("Вашего героя нанимали", v, [], "Отлично")
+		"rewards", "push_abort":
+			_show_rewards(r, "Добыча")
+
 func _on_expedition_finished(r: Dictionary) -> void:
 	if r.get("closed", false):
 		selected_level = min(Game.closed_level + 1, Db.level_count())
@@ -1323,6 +1344,8 @@ func _show_rewards(r: Dictionary, title_text: String) -> void:
 		v.add_child(UI.chip("Гильдия прислала 6 новых наёмников", Style.CARD_3, Style.FONT_SMALL))
 	if r.get("won", 0) + r.get("lost", 0) > 1:
 		v.add_child(UI.label("Забегов: побед %d, поражений %d, убито %d" % [r["won"], r["lost"], r["kills"]], Style.FONT_SMALL, Style.MUTED))
+	if r.get("auto_sold", 0) > 0:
+		v.add_child(UI.label("Сумка не резиновая: ещё %d предм. проданы за %d золота" % [r["auto_sold"], r["auto_sold_gold"]], Style.FONT_SMALL, Style.MUTED))
 	var items: Array = r["items"]
 	if items.size() > 0:
 		var ih := HFlowContainer.new()

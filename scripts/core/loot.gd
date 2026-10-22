@@ -47,7 +47,7 @@ static func roll_gear(rng: RandomNumberGenerator, ilvl: int, rarity_bonus: float
 		affixes.append({"stat": stat, "value": value, "q": snappedf(q, 0.01)})
 	var names: Array = BASE_NAMES[slot]
 	return {
-		"id": "%d_%d" % [Time.get_ticks_usec(), rng.randi()],
+		"id": "i%08x%08x" % [rng.randi(), rng.randi()],  # deterministic: same seed -> same item
 		"slot": slot,
 		"name": names[rng.randi_range(0, names.size() - 1)],
 		"rarity": rarity,

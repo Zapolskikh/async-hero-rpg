@@ -120,11 +120,13 @@ func _run() -> void:
 	Game.party_order = ["hero"]
 	for i in 3:
 		Game.hire(Game.board[0]["id"])
-	Game.expedition = Expedition.new()
-	Game.expedition.start(29, "push", Game.party_snapshots(), 3, true)
-	for i in 3:
-		Game.expedition.step_wave_headless()
-	Game.expedition.record_events = true
+	await Game.stop_expedition()
+	await Game.start_expedition(29, "push")
+	# jump to the boss wave: pretend the push started earlier
+	var ex = Game.exp_info()
+	ex["started_at"] = float(ex["started_at"]) - float(ex["tl"]["pts"][2][0]) - 2.0
+	Game._view_id = ""
+	Game._sync_view()
 	main._open_watch()
 	await _wait(3.0)
 	await _shot("14_two_bosses")
