@@ -92,6 +92,69 @@ body {
 		</style>
 		<link id="-gd-engine-icon" rel="icon" type="image/png" href="index.icon.png" />
 <link rel="apple-touch-icon" href="index.apple-touch-icon.png"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#171b27">
+<style>
+html, body { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; position: fixed; top: 0; left: 0;
+  background: #171b27; overscroll-behavior: none; touch-action: none; -webkit-user-select: none; user-select: none; }
+#canvas { position: fixed; top: 0; left: 0; display: block; outline: none; }
+</style>
+<script>
+/* Mobile browsers report stale window.innerHeight after rotation (and include the
+   hidden toolbar), which shifts the game down and cuts off the bottom. The canvas
+   size is managed here instead (canvas resize policy = None in the export preset):
+   it always matches the visible viewport minus the notch / home-indicator safe area. */
+(function () {
+  var probe = null, last = '';
+  function insets() {
+    if (!probe) {
+      probe = document.createElement('div');
+      probe.style.cssText = 'position:fixed;left:0;top:0;width:0;height:0;visibility:hidden;pointer-events:none;' +
+        'padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);';
+      document.body.appendChild(probe);
+    }
+    var cs = getComputedStyle(probe);
+    return { t: parseFloat(cs.paddingTop) || 0, r: parseFloat(cs.paddingRight) || 0,
+             b: parseFloat(cs.paddingBottom) || 0, l: parseFloat(cs.paddingLeft) || 0 };
+  }
+  function fit() {
+    var c = document.getElementById('canvas');
+    if (!c || !document.body) return;
+    if (window.scrollX || window.scrollY) window.scrollTo(0, 0);
+    var vv = window.visualViewport;
+    var w = vv ? vv.width : window.innerWidth;
+    var h = vv ? vv.height : window.innerHeight;
+    var ox = vv ? vv.offsetLeft : 0, oy = vv ? vv.offsetTop : 0;
+    var i = insets();
+    var cw = Math.max(1, Math.floor(w - i.l - i.r));
+    var ch = Math.max(1, Math.floor(h - i.t - i.b));
+    var dpr = Math.min(window.devicePixelRatio || 1, 2);
+    var key = [cw, ch, ox, oy, i.l, i.t, dpr].join(',');
+    if (key === last) return;
+    last = key;
+    c.style.left = (ox + i.l) + 'px';
+    c.style.top = (oy + i.t) + 'px';
+    c.style.width = cw + 'px';
+    c.style.height = ch + 'px';
+    c.width = Math.round(cw * dpr);
+    c.height = Math.round(ch * dpr);
+  }
+  function later() { fit(); setTimeout(fit, 150); setTimeout(fit, 400); setTimeout(fit, 900); }
+  window.addEventListener('resize', later);
+  window.addEventListener('orientationchange', later);
+  window.addEventListener('pageshow', later);
+  if (window.visualViewport) {
+    window.visualViewport.addEventListener('resize', later);
+    window.visualViewport.addEventListener('scroll', fit);
+  }
+  document.addEventListener('DOMContentLoaded', later);
+  setInterval(fit, 500);
+  window.__fitCanvas = fit;
+})();
+</script>
 
 	</head>
 	<body>
@@ -111,7 +174,7 @@ body {
 
 		<script src="index.js"></script>
 		<script>
-const GODOT_CONFIG = {"args":[],"canvasResizePolicy":2,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":207452,"index.wasm":38034280},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
+const GODOT_CONFIG = {"args":[],"canvasResizePolicy":0,"emscriptenPoolSize":8,"ensureCrossOriginIsolationHeaders":true,"executable":"index","experimentalVK":false,"fileSizes":{"index.pck":287732,"index.wasm":38034280},"focusCanvas":true,"gdextensionLibs":[],"godotPoolSize":4};
 const GODOT_THREADS_ENABLED = false;
 const engine = new Engine(GODOT_CONFIG);
 
