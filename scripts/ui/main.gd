@@ -10,6 +10,7 @@ const TABS := [
 	["hero", "Герой", "nav_hero"],
 	["mercs", "Наёмники", "nav_mercs"],
 	["spells", "Заклинания", "nav_spells"],
+	["crafts", "Ремёсла", "nav_crafts"],
 	["bag", "Сумка", "nav_bag"],
 ]
 
@@ -107,6 +108,10 @@ func _refresh() -> void:
 		"hero": content.add_child(_screen_hero())
 		"mercs": content.add_child(_screen_mercs())
 		"spells": content.add_child(_screen_spells())
+		"crafts":
+			var cs := CraftsScreen.new()
+			cs.main = self
+			content.add_child(cs)
 		"bag": content.add_child(_screen_bag())
 
 func _build_top_bar() -> void:
@@ -188,6 +193,7 @@ func _nav_badges() -> Dictionary:
 		"mercs": not Game.party_ready(),
 		"spells": Game.free_box_available() or Game.boxes > 0 or fusable,
 		"bag": bag_upgrade,
+		"crafts": CraftsScreen.has_ready(),
 	}
 
 # =====================================================================
@@ -557,13 +563,14 @@ func _screen_hero() -> Control:
 	var doll := UI.hbox(20)
 	doll.alignment = BoxContainer.ALIGNMENT_CENTER
 	doll.size_flags_vertical = Control.SIZE_EXPAND_FILL
-	var left_col := UI.vbox(12)
+	var left_col := UI.vbox(6)
 	left_col.alignment = BoxContainer.ALIGNMENT_CENTER
-	left_col.add_child(_gear_slot("weapon"))
+	for slot in ["weapon", "hands", "trinket"]:
+		left_col.add_child(_gear_slot(slot))
 	doll.add_child(left_col)
 	var stage := UI.vbox(0)
 	stage.alignment = BoxContainer.ALIGNMENT_END
-	var big := UI.portrait("hero", 230)
+	var big := UI.portrait("hero", 200)
 	big.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	stage.add_child(big)
 	var ped := UI.flat(Style.BG_DEEP, 0, 20)
@@ -571,10 +578,10 @@ func _screen_hero() -> Control:
 	ped.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	stage.add_child(ped)
 	doll.add_child(stage)
-	var right_col := UI.vbox(12)
+	var right_col := UI.vbox(2)
 	right_col.alignment = BoxContainer.ALIGNMENT_CENTER
-	right_col.add_child(_gear_slot("armor"))
-	right_col.add_child(_gear_slot("trinket"))
+	for slot in ["head", "armor", "legs", "feet"]:
+		right_col.add_child(_gear_slot(slot))
 	doll.add_child(right_col)
 	mv.add_child(doll)
 
@@ -606,13 +613,13 @@ func _screen_hero() -> Control:
 	return h
 
 func _gear_slot(slot: String) -> Control:
-	var it = Game.hero["equipped"][slot]
-	var v := UI.vbox(4)
+	var it = Game.hero["equipped"].get(slot)
+	var v := UI.vbox(0)
 	var t: Control
 	if it == null:
-		t = UI.tile("item_" + slot, Style.CARD_3, 84, true)
+		t = UI.tile("item_" + slot, Style.CARD_3, 56, true)
 	else:
-		t = UI.tile(UI.item_icon(it), Style.RARITY[it["rarity"]], 84)
+		t = UI.tile(UI.item_icon(it), Style.RARITY[it["rarity"]], 56)
 	t.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	UI.tap_overlay(t, _gear_popup.bind(slot))
 	v.add_child(t)
@@ -688,9 +695,10 @@ func _rot_remove(i: int) -> void:
 	Game.set_rotation(rot)
 
 func _gear_popup(slot: String) -> void:
-	var it = Game.hero["equipped"][slot]
+	var it = Game.hero["equipped"].get(slot)
 	if it == null:
-		var body := UI.wrap("Слот «%s» пуст. Предметы падают за первое прохождение уровня и иногда на фарме." % Loot.SLOT_NAMES[slot], Style.FONT_BODY, Style.TEXT)
+		var where := "Предметы падают за первое прохождение уровня и иногда на фарме." if slot in Loot.SLOTS else "Такие вещи делают кузнецы и портные во вкладке «Ремёсла»."
+		var body := UI.wrap("Слот «%s» пуст. %s" % [Loot.SLOT_NAMES[slot], where], Style.FONT_BODY, Style.TEXT)
 		_modal(Loot.SLOT_NAMES[slot], body, [["В сумку", _switch.bind("bag"), "secondary", true]])
 		return
 	_modal(UI.item_title(it), _item_details(it, false), [["Снять", Game.unequip.bind(slot), "danger", true]])
@@ -1445,6 +1453,8 @@ func _show_rewards(r: Dictionary, title_text: String) -> void:
 		v.add_child(UI.chip("Гильдия прислала 6 новых наёмников", Style.CARD_3, Style.FONT_SMALL))
 	if r.get("won", 0) + r.get("lost", 0) > 1:
 		v.add_child(UI.label("Забегов: побед %d, поражений %d, убито %d" % [r["won"], r["lost"], r["kills"]], Style.FONT_SMALL, Style.MUTED))
+	if not r.get("mats", {}).is_empty():
+		v.add_child(mats_row(r["mats"]))
 	if r.get("auto_sold", 0) > 0:
 		v.add_child(UI.label("Сумка не резиновая: ещё %d предм. проданы за %d золота" % [r["auto_sold"], r["auto_sold_gold"]], Style.FONT_SMALL, Style.MUTED))
 	var items: Array = r["items"]
@@ -1469,6 +1479,17 @@ func _show_rewards(r: Dictionary, title_text: String) -> void:
 	var tw2 := lbl.create_tween()  # bound to the label: stops if the window is closed early
 	tw2.tween_interval(0.15)
 	tw2.tween_method(_set_gold_text.bind(lbl), 0.0, float(r["gold"]), 0.6)
+
+## Row of resource pills: icon + "+N" (materials from combat, gathering, crafting).
+func mats_row(mats: Dictionary) -> Control:
+	var f := HFlowContainer.new()
+	f.add_theme_constant_override("h_separation", 8)
+	f.add_theme_constant_override("v_separation", 8)
+	for res in mats:
+		var pill := UI.pill("res_" + res, "+%d" % int(mats[res]), Style.FONT_SMALL, Style.BG_DEEP)
+		pill.tooltip_text = Prof.RESOURCES.get(res, {}).get("name", res)
+		f.add_child(pill)
+	return f
 
 func _set_gold_text(x: float, lbl: Label) -> void:
 	if is_instance_valid(lbl):

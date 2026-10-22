@@ -318,6 +318,26 @@ func collect() -> Dictionary:
 	var res: Dictionary = await act_authority("collect")
 	return res["report"] if res.get("ok", false) else {}
 
+# professions (authority actions: await them)
+
+func gather_start(prof: String, loc: String, sec: int) -> Dictionary:
+	return await act_authority("gather_start", {"prof": prof, "loc": loc, "sec": sec})
+
+func gather_claim() -> Dictionary:
+	return await act_authority("gather_claim")
+
+func gather_cancel() -> Dictionary:
+	return await act_authority("gather_cancel")
+
+func craft_start(recipe: String) -> Dictionary:
+	return await act_authority("craft_start", {"recipe": recipe})
+
+func craft_claim(prof: String) -> Dictionary:
+	return await act_authority("craft_claim", {"prof": prof})
+
+func use_item(res: String) -> Dictionary:
+	return await act_authority("use_item", {"res": res})
+
 func rename_hero(new_name: String) -> bool:
 	return act("set_name", {"name": new_name})["ok"]
 

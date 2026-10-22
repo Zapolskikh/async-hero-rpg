@@ -112,3 +112,45 @@ def test_boxes_are_server_random(client):
     r = act(client, h, "open_box", use="free")
     assert r["ok"] and len(r["result"]["boxes"]) == 1
     assert act(client, h, "open_box", use="free")["ok"] is False
+
+
+def test_professions_are_server_timed(client):
+    set_clock(client, 0)
+    d, h = guest(client, "Травник")
+    # gathering: timestamps come from the server clock, not the client
+    r = act(client, h, "gather_start", prof="herbalism", loc="green_meadow", sec=3600)
+    assert r["ok"], r
+    g = r["profile"]["gathering"]
+    assert g["ends_at"] - g["started_at"] == 3600
+    assert act(client, h, "gather_start", prof="mining", loc="abandoned_quarry", sec=900)["ok"] is False
+    set_clock(client, 1800)
+    early = act(client, h, "gather_claim")
+    assert early["ok"] is False and early["error"] == "not finished"
+    set_clock(client, 3601)
+    got = act(client, h, "gather_claim")
+    assert got["ok"], got
+    res = got["profile"]["resources"]
+    assert res.get("greenleaf", 0) >= 4 and res.get("bitterroot", 0) >= 2
+    assert got["profile"]["professions"]["herbalism"]["level"] == 2
+    again = act(client, h, "gather_claim")
+    assert again["ok"] is False and again["error"] == "nothing to claim"
+    assert again["profile"]["resources"] == res, "a double claim must not pay twice"
+    # crafting runs next to gathering and the AFK farm
+    assert act(client, h, "gather_start", prof="mining", loc="abandoned_quarry", sec=900)["ok"]
+    c = act(client, h, "craft_start", recipe="minor_strength_potion")
+    assert c["ok"], c
+    p = c["profile"]
+    assert p["resources"]["greenleaf"] == res["greenleaf"] - 4
+    assert act(client, h, "craft_claim", prof="alchemy")["error"] == "not finished"
+    set_clock(client, 3601 + 181)
+    done = act(client, h, "craft_claim", prof="alchemy")
+    assert done["ok"], done
+    assert done["profile"]["resources"]["minor_strength_potion"] == 2
+    assert act(client, h, "craft_claim", prof="alchemy")["error"] == "nothing to claim"
+    used = act(client, h, "use_item", res="minor_strength_potion")
+    assert used["ok"], used
+    assert used["profile"]["buffs"], "buff must be active"
+    # state survives a reload from the database
+    me = client.get("/v1/me", headers=h).json()["profile"]
+    assert me["resources"]["minor_strength_potion"] == 1
+    assert me["gathering"]["loc"] == "abandoned_quarry"

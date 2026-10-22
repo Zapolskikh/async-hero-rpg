@@ -144,6 +144,115 @@ ICONS = {
 }
 
 
+# ---------------------------------------------------------------- professions
+def ore(col, spark=None):
+    c = hexc_(col)
+    def f(d):
+        d.polygon([(2, 10), (4, 5), (8, 3), (12, 5), (14, 10), (11, 14), (5, 14)], fill=shade_(c, 0.8))
+        d.polygon([(4, 9), (6, 5), (9, 4), (11, 7), (9, 11), (5, 11)], fill=c)
+        d.point((7, 6), fill=(255, 255, 255))
+        if spark:
+            for x, y in ((11, 9), (5, 12), (12, 6)):
+                d.point((x, y), fill=hexc_(spark))
+    return f
+
+def herb(leaf, flower=None):
+    l = hexc_(leaf)
+    def f(d):
+        d.line([(8, 15), (8, 5)], fill=shade_(l, 0.7), width=1)
+        d.ellipse([2, 7, 8, 11], fill=l)
+        d.ellipse([8, 9, 14, 13], fill=shade_(l, 0.85))
+        if flower:
+            fc = hexc_(flower)
+            d.ellipse([5, 1, 11, 7], fill=fc)
+            d.point((8, 4), fill=(255, 240, 160))
+        else:
+            d.ellipse([6, 2, 11, 7], fill=l)
+    return f
+
+def hide(col):
+    c = hexc_(col)
+    def f(d):
+        d.polygon([(3, 2), (6, 4), (10, 4), (13, 2), (12, 7), (14, 13), (10, 12), (6, 12), (2, 13), (4, 7)], fill=c)
+        d.polygon([(6, 6), (10, 6), (10, 10), (6, 10)], fill=shade_(c, 0.85))
+    return f
+
+def leather(col):
+    c = hexc_(col)
+    def f(d):
+        d.rectangle([2, 4, 13, 12], fill=c)
+        d.ellipse([10, 4, 15, 12], fill=shade_(c, 0.8))
+        d.line([(3, 6), (11, 6)], fill=shade_(c, 0.7))
+        d.line([(3, 10), (11, 10)], fill=shade_(c, 0.7))
+    return f
+
+def cloth(col):
+    c = hexc_(col)
+    def f(d):
+        d.polygon([(2, 5), (12, 3), (14, 6), (4, 8)], fill=shade_(c, 1.1))
+        d.polygon([(2, 8), (12, 6), (14, 9), (4, 11)], fill=c)
+        d.polygon([(2, 11), (12, 9), (14, 12), (4, 14)], fill=shade_(c, 0.85))
+    return f
+
+def potion(col):
+    c = hexc_(col)
+    def f(d):
+        d.rectangle([6, 1, 9, 4], fill=(200, 200, 210))
+        d.rectangle([6, 0, 9, 1], fill=(140, 100, 60))
+        d.ellipse([2, 4, 13, 15], fill=c)
+        d.ellipse([4, 6, 7, 9], fill=(255, 255, 255))
+    return f
+
+def hexc_(h):
+    h = h.lstrip("#")
+    return tuple(int(h[i:i + 2], 16) for i in (0, 2, 4))
+
+def shade_(c, k):
+    return tuple(max(0, min(255, int(v * k))) for v in c[:3])
+
+ICONS.update({
+    "res_copper_ore": ore("#d9823b"), "res_iron_ore": ore("#9aa3ad"), "res_silver_ore": ore("#e6eef5", "#ffffff"),
+    "res_coal": ore("#3a3a42"), "res_mithril_fragment": ore("#6ae0f0", "#ffffff"),
+    "res_greenleaf": herb("#5fbf4a"), "res_bitterroot": herb("#8a6a3a"), "res_moonflower": herb("#4a8a6a", "#c0d8ff"),
+    "res_redthorn": herb("#4a7a3a", "#e04a4a"), "res_spirit_bloom": herb("#3a8a8a", "#7affe0"),
+    "res_light_hide": hide("#d8b07a"), "res_raw_leather": leather("#a86a3a"), "res_thick_hide": hide("#8a5a3a"),
+    "res_tough_leather": leather("#6a3a2a"), "res_pristine_hide": hide("#f0e0c0"),
+    "res_rough_cloth": cloth("#b8a07a"), "res_linen_cloth": cloth("#e8e0c8"), "res_fine_cloth": cloth("#8a7ae0"),
+    "res_boss_core": lambda d: (d.ellipse([1, 1, 14, 14], fill=(120, 20, 30)), d.ellipse([3, 3, 12, 12], fill=(230, 60, 40)),
+                                d.ellipse([5, 5, 10, 10], fill=(255, 200, 80)), d.point((6, 6), fill=(255, 255, 255))),
+    "res_enchanted_thread": lambda d: (d.rectangle([3, 2, 12, 3], fill=(140, 100, 60)), d.rectangle([3, 12, 12, 13], fill=(140, 100, 60)),
+                                       d.rectangle([4, 4, 11, 11], fill=(180, 110, 255)), d.line([(4, 6), (11, 6)], fill=(230, 200, 255)),
+                                       d.line([(4, 9), (11, 9)], fill=(230, 200, 255)), d.point((13, 1), fill=(255, 255, 200))),
+    "res_minor_strength_potion": potion("#e04a3a"), "res_minor_recovery_potion": potion("#3ac06a"),
+    "res_gatherers_tonic": potion("#e0c03a"), "res_greater_strength_potion": potion("#b02a6a"),
+    "prof_mining": lambda d: (d.line([(3, 14), (11, 6)], fill=(140, 100, 60), width=2),
+                              d.arc([3, 1, 15, 13], 200, 340, fill=(190, 200, 210), width=3)),
+    "prof_herbalism": lambda d: (d.arc([2, 2, 14, 14], 180, 360, fill=(200, 210, 220), width=2), d.line([(8, 8), (8, 15)], fill=(140, 100, 60), width=2),
+                                 d.ellipse([9, 9, 14, 13], fill=(95, 191, 74))),
+    "prof_skinning": lambda d: (d.polygon([(2, 12), (12, 2), (14, 4), (5, 13)], fill=(210, 215, 225)), d.rectangle([1, 12, 4, 15], fill=(140, 100, 60))),
+    "prof_blacksmithing": lambda d: (d.polygon([(1, 5), (14, 5), (12, 8), (10, 8), (10, 12), (13, 14), (3, 14), (6, 12), (6, 8), (3, 8)], fill=(110, 115, 130)),
+                                     d.rectangle([1, 5, 14, 6], fill=(170, 175, 190))),
+    "prof_tailoring": lambda d: (d.line([(2, 14), (13, 2)], fill=(210, 215, 225), width=1), d.ellipse([11, 1, 14, 4], outline=(210, 215, 225)),
+                                 d.arc([1, 3, 12, 15], 30, 300, fill=(230, 80, 80), width=1)),
+    "prof_alchemy": potion("#4ab0e0"),
+    "nav_crafts": lambda d: (d.polygon([(1, 7), (14, 7), (12, 10), (10, 10), (10, 13), (13, 15), (3, 15), (6, 13), (6, 10), (3, 10)], fill=(110, 115, 130)),
+                             d.line([(4, 5), (12, 0)], fill=(140, 100, 60), width=2), d.rectangle([9, 0, 14, 3], fill=(190, 200, 210))),
+    "hourglass": lambda d: (d.rectangle([3, 1, 12, 2], fill=(140, 100, 60)), d.rectangle([3, 13, 12, 14], fill=(140, 100, 60)),
+                            d.polygon([(4, 3), (11, 3), (8, 8)], fill=(230, 230, 240)), d.polygon([(8, 8), (4, 12), (11, 12)], fill=(230, 230, 240)),
+                            d.polygon([(6, 10), (9, 10), (10, 12), (5, 12)], fill=(240, 200, 80))),
+    "item_head": lambda d: (d.ellipse([3, 2, 12, 11], fill=(190, 200, 210)), d.rectangle([3, 7, 12, 12], fill=(190, 200, 210)),
+                            d.rectangle([5, 7, 10, 9], fill=(40, 40, 50)), d.rectangle([7, 9, 8, 12], fill=(150, 160, 170))),
+    "item_hands": lambda d: (d.rectangle([4, 7, 11, 14], fill=(170, 130, 90)), d.rectangle([4, 2, 5, 7], fill=(170, 130, 90)),
+                             d.rectangle([6, 1, 7, 7], fill=(170, 130, 90)), d.rectangle([8, 1, 9, 7], fill=(170, 130, 90)),
+                             d.rectangle([10, 3, 11, 7], fill=(170, 130, 90)), d.rectangle([12, 7, 14, 9], fill=(170, 130, 90)),
+                             d.rectangle([4, 12, 11, 14], fill=(130, 95, 60))),
+    "item_legs": lambda d: (d.rectangle([4, 1, 11, 4], fill=(110, 120, 150)), d.rectangle([4, 4, 7, 15], fill=(110, 120, 150)),
+                            d.rectangle([8, 4, 11, 15], fill=(95, 105, 135))),
+    "item_feet": lambda d: (d.rectangle([4, 2, 9, 11], fill=(130, 90, 55)), d.rectangle([4, 10, 14, 14], fill=(130, 90, 55)),
+                            d.rectangle([4, 13, 14, 14], fill=(80, 55, 35))),
+})
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for name, fn in ICONS.items():

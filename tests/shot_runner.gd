@@ -4,14 +4,20 @@ extends Node
 
 var out_dir := "user://shots"
 var main: Node
+var crafts_only := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
 		if a.begins_with("--shots="):
 			out_dir = a.substr(8)
+		if a == "--shots-crafts":
+			crafts_only = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	_run()
+	if crafts_only:
+		_run_crafts()
+	else:
+		_run()
 
 func _shot(name: String) -> void:
 	await RenderingServer.frame_post_draw
@@ -130,5 +136,53 @@ func _run() -> void:
 	main._open_watch()
 	await _wait(3.0)
 	await _shot("14_two_bosses")
+	await _run_crafts()
+	get_tree().quit()
+
+func _run_crafts() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	var p: Dictionary = Game.profile
+	for r in ["iron_ore", "copper_ore", "coal", "rough_cloth", "linen_cloth", "raw_leather", "greenleaf", "redthorn", "boss_core", "minor_strength_potion", "gatherers_tonic"]:
+		Rules._add_res(p, r, 12)
+	Game.gold += 2000
+	Game.changed.emit()
+	CraftsScreen.view = "gather"
+	main._switch("crafts")
+	await _wait(0.5)
+	await _shot("15a_gather_idle")
+	var r: Dictionary = await Game.gather_start("mining", "abandoned_quarry", 900)
+	print("gather_start ", r.get("ok"), " ", r.get("error", ""))
+	main._switch("crafts")
+	await _wait(0.5)
+	await _shot("15_gather")
+	CraftsScreen.view = "craft"
+	main._switch("crafts")
+	await _wait(0.4)
+	await _shot("16a_recipes")
+	r = await Game.craft_start("simple_iron_helmet")
+	print("craft_start ", r.get("ok"), " ", r.get("error", ""))
+	main._switch("crafts")
+	await _wait(0.4)
+	await _shot("16_craft")
+	main.content.get_child(0)._set_view("mats")
+	await _wait(0.4)
+	await _shot("17_mats")
+	p["time_warp"] = float(p.get("time_warp", 0.0)) + 20000.0
+	CraftsScreen.view = "gather"
+	main._switch("crafts")
+	await _wait(0.6)
+	await _shot("18a_gather_ready")
+	main.content.get_child(0)._gather_claim()
+	await _wait(0.6)
+	await _shot("18_gather_claim")
+	UI.clear(main.popup_layer)
+	r = await Game.craft_claim("blacksmithing")
+	print("craft_claim ", r.get("ok"), " ", r.get("error", ""))
+	if r.get("ok", false):
+		Game.equip(str(r["report"]["items"][0]["id"]))
+	main._switch("hero")
+	await _wait(0.5)
+	await _shot("19_hero_slots")
 	print("shots done")
 	get_tree().quit()
