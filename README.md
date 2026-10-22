@@ -122,7 +122,7 @@ godot --headless --script res://tests/pacing_report.gd
 
 Текущий результат: вся кампания около 2,3 ч игрового времени. Обычные уровни 1–4 мин, стены на концах глав: 10-й около 13 мин, 20-й около 20, финал 29–30 по 22–23 мин. Герой к 30-му уровню — около 40-го.
 
-Ручки настройки в `scripts/data/db.gd`: `LEVEL_SCALE` (рост врагов в 1-й главе), `HERO_AT_BREAK` и `HERO_PER_LEVEL` (под какой уровень героя растут враги после 10-го), `LATE_TOUGHNESS`, `xp_level_factor` и `xp_to_next` (скорость прокачки).
+Ручки настройки в `scripts/data/db.gd`: `XP_SLOWDOWN_FROM` и `XP_SLOWDOWN_POW` (с какого уровня героя и насколько круто дорожает опыт), `LEVEL_SCALE` (рост врагов в 1-й главе), `HERO_AT_BREAK` и `HERO_PER_LEVEL` (под какой уровень героя растут враги после 10-го), `LATE_TOUGHNESS`, `xp_level_factor` и `xp_to_next` (скорость прокачки).
 
 ## Скриншоты для разработки
 

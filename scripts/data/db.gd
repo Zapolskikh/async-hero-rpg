@@ -308,8 +308,16 @@ static func hero_base_stats(level: int) -> Dictionary:
 static func xp_level_factor(level: int) -> float:
 	return pow(level, 1.15)
 
+## Levels 1-5 are quick; after that every level costs several times more
+## (x2.3 at 6, x8.6 at 10, x28 at 20): progress needs a good build or hours of farm.
+const XP_SLOWDOWN_FROM := 6
+const XP_SLOWDOWN_POW := 1.2
+
 static func xp_to_next(level: int) -> int:
-	return int(60 * pow(level, 1.4))
+	var base := 60.0 * pow(level, 1.4)
+	if level >= XP_SLOWDOWN_FROM:
+		base *= pow(level - XP_SLOWDOWN_FROM + 2, XP_SLOWDOWN_POW)
+	return int(base)
 
 static func spell_level_mult(spell_level: int) -> float:
 	return 1.0 + 0.3 * (spell_level - 1)
