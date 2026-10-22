@@ -121,7 +121,9 @@ func test_weapons() -> void:
 	var staff := _weapon(rng, "staff")
 	var s_hi := Roster.combat_stats({"str": 10.0, "agi": 10.0, "power": 60.0, "hp": 100.0}, {"weapon": staff})
 	var s_lo := Roster.combat_stats({"str": 10.0, "agi": 10.0, "power": 10.0, "hp": 100.0}, {"weapon": staff})
-	check(b_hi["atk"] > b_lo["atk"] and s_hi["atk"] > s_lo["atk"], "bow scales with agility, staff with spell power")
+	check(b_hi["atk"] > b_lo["atk"], "bow scales with agility")
+	check(s_hi["atk"] == 0 and s_lo["atk"] == 0 and staff["affixes"][0]["stat"] == "power", "staff: no basic attack, adds spell power")
+	check(st_sw["atk_speed"] < 1.6 and st_gs["atk_speed"] >= 3.0, "one-handed sword is fast, greatsword slow")
 	# weapon spells: requirement and bonus
 	check(not Db.spell_usable("aimed_shot", ["sword"]) and Db.spell_usable("aimed_shot", ["bow"]), "aimed shot needs a bow")
 	check(Db.spell_bonus("fireball", ["staff"]) > 1.0 and Db.spell_bonus("fireball", ["sword"]) == 1.0, "fireball is stronger with a staff")
@@ -136,7 +138,7 @@ func test_weapons() -> void:
 	hero["equipped"]["weapon"] = bow
 	var u2 := BattleUnit.new(5, 0, 0, Roster.hero_snapshot(hero, {"aimed_shot": {"lvl": 1, "copies": 0}}))
 	sim.setup([u2], [{"name": "dummy", "stats": {"hp": 99999.0, "atk": 0.0, "power": 0.0}}], 1)
-	check(sim._find_spell_target(u2, "aimed_shot") != null and u2.atk_speed == 2.0, "with a bow it is used; the bow shoots every 2.0 s")
+	check(sim._find_spell_target(u2, "aimed_shot") != null and u2.atk_speed == 2.8, "with a bow it is used; the bow shoots every 2.8 s")
 	# v4 -> v5: old weapons get a type, attack becomes strength
 	var old := fresh(32)
 	old["hero"]["equipped"]["weapon"] = {"id": "x1", "slot": "weapon", "name": "Посох", "rarity": 1, "ilvl": 5,
@@ -147,10 +149,10 @@ func test_weapons() -> void:
 	var q = JSON.parse_string(JSON.stringify(old))
 	Rules.migrate(q, T0)
 	var w: Dictionary = q["hero"]["equipped"]["weapon"]
-	check(w["wtype"] == "staff" and w["dmg"] > 0 and w["affixes"][0]["stat"] == "str", "old 'Посох' became a staff, attack became strength")
+	check(w["wtype"] == "staff" and w["affixes"][0]["stat"] == "str", "old 'Посох' became a staff, attack became strength")
 	check(q["inventory"][0]["affixes"][0]["stat"] == "str" and q["hero"]["equipped"].has("offhand"), "old items lose the attack stat; left hand slot added")
 	var qs := Rules.hero_snapshot(q)
-	check(qs["weapons"] == ["staff"] and qs["stats"]["atk"] > 0, "migrated hero has a working attack")
+	check(qs["weapons"] == ["staff"] and qs["stats"]["atk"] == 0, "migrated staff hero casts instead of attacking")
 
 func test_talents() -> void:
 	print("talents")

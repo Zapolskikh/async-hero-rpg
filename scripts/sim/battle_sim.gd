@@ -168,6 +168,8 @@ func _act(u: BattleUnit) -> void:
 			u.spell_cd = u.spell_interval()
 			return
 		u.spell_cd = BattleUnit.RETRY_DELAY
+	if u.atk <= 0.0:
+		return   # no basic attacks (staff)
 	u.attack_cd -= STEP
 	if u.attack_cd <= 0.0:
 		u.attack_cd = u.attack_interval()

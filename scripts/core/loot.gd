@@ -20,19 +20,19 @@ const SLOT_WEIGHTS := {"weapon": 3.0, "offhand": 1.0, "armor": 2.0, "trinket": 2
 ##   speed: seconds between basic attacks
 ##   implicit: [stat, value per item level] every item of this type has
 const WEAPON_TYPES := {
-	"sword":      {"name": "Меч", "hands": 1, "stat": "str", "coef": 1.0, "dmg": 2.0, "speed": 1.6,
+	"sword":      {"name": "Меч", "hands": 1, "stat": "str", "coef": 0.81, "dmg": 1.63, "speed": 1.3,
 		"implicit": ["str", 1.2], "names": ["Меч", "Клинок", "Палаш", "Сабля"],
 		"affixes": ["str", "crit", "haste", "hp"]},
-	"greatsword": {"name": "Двуручный меч", "hands": 2, "stat": "str", "coef": 1.5, "dmg": 3.6, "speed": 2.6,
+	"greatsword": {"name": "Двуручный меч", "hands": 2, "stat": "str", "coef": 1.73, "dmg": 4.15, "speed": 3.0,
 		"implicit": ["str", 2.4], "names": ["Двуручник", "Цвайхандер", "Секира", "Молот"],
 		"affixes": ["str", "crit", "hp", "armor"]},
 	"shield":     {"name": "Щит", "hands": 1, "offhand": true, "stat": "", "coef": 0.0, "dmg": 0.0, "speed": 0.0,
 		"implicit": ["armor", 3.0], "names": ["Щит", "Баклер", "Павеза", "Эгида"],
 		"affixes": ["hp", "armor", "str", "power"]},
-	"staff":      {"name": "Посох", "hands": 2, "stat": "power", "coef": 0.8, "dmg": 1.4, "speed": 2.2,
-		"implicit": ["power", 2.6], "names": ["Посох", "Жезл", "Скипетр", "Шест"],
+	"staff":      {"name": "Посох", "hands": 2, "no_attack": true, "stat": "power", "coef": 0.0, "dmg": 0.0, "speed": 0.0,
+		"implicit": ["power", 3.8], "names": ["Посох", "Жезл", "Скипетр", "Шест"],
 		"affixes": ["power", "haste", "crit", "hp"]},
-	"bow":        {"name": "Лук", "hands": 2, "stat": "agi", "coef": 1.15, "dmg": 2.4, "speed": 2.0,
+	"bow":        {"name": "Лук", "hands": 2, "stat": "agi", "coef": 1.61, "dmg": 3.36, "speed": 2.8,
 		"implicit": ["agi", 2.4], "names": ["Лук", "Длинный лук", "Самострел", "Рекурсив"],
 		"affixes": ["agi", "crit", "haste", "hp"]},
 }
@@ -149,6 +149,8 @@ static func attack_of(st: Dictionary, gear: Dictionary) -> Dictionary:
 	var off = gear.get("offhand")
 	var hit := 0.0
 	var speed := float(UNARMED["speed"])
+	if main != null and WEAPON_TYPES.get(main.get("wtype", ""), {}).get("no_attack", false):
+		return {"atk": 0.0, "atk_speed": 0.0}   # staff: no basic attacks, it powers the spells
 	if main != null and main.has("wtype") and float(WEAPON_TYPES[main["wtype"]]["dmg"]) > 0.0:
 		var wt: Dictionary = WEAPON_TYPES[main["wtype"]]
 		hit = float(st.get(wt["stat"], 0.0)) * float(wt["coef"]) + float(main.get("dmg", 0.0))
@@ -165,7 +167,9 @@ static func weapon_text(item: Dictionary) -> String:
 		return ""
 	var wt: Dictionary = WEAPON_TYPES[item["wtype"]]
 	var parts := [wt["name"] + (" (двуручное)" if int(wt["hands"]) == 2 else "")]
-	if float(wt["dmg"]) > 0.0:
+	if wt.get("no_attack", false):
+		parts.append("не атакует, усиливает заклинания")
+	elif float(wt["dmg"]) > 0.0:
 		parts.append("урон %d · удар раз в %.1f с" % [int(item.get("dmg", 0)), float(wt["speed"])])
 		parts.append("растёт от %s" % {"str": "силы", "agi": "ловкости", "power": "силы заклинаний"}[wt["stat"]])
 	return " · ".join(parts)

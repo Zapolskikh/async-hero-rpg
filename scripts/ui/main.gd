@@ -628,7 +628,7 @@ func _screen_hero() -> Control:
 	pwh.add_child(UI.title(str(Roster.power_score(snap)), 28, Style.PRIMARY))
 	sv.add_child(pw)
 	sv.add_child(UI.stat_row("hp", "Здоровье", "%d" % st["hp"]))
-	sv.add_child(UI.stat_row("atk", "Атака", "%d · %.1f с" % [st["atk"], st.get("atk_speed", 1.6) / (1.0 + st["haste"])]))
+	sv.add_child(UI.stat_row("atk", "Атака", ("%d · %.1f с" % [st["atk"], st.get("atk_speed", 1.6) / (1.0 + st["haste"])]) if st["atk"] > 0 else "нет (посох)"))
 	sv.add_child(UI.stat_row("str", "Сила", "%d" % st["str"]))
 	sv.add_child(UI.stat_row("agi", "Ловкость", "%d" % st["agi"]))
 	sv.add_child(UI.stat_row("power", "Сила заклинаний", "%d" % st["power"]))
@@ -1129,7 +1129,7 @@ func _merc_popup(m: Dictionary) -> void:
 	top.add_child(UI.expand(tv))
 	body.add_child(top)
 	var stats := UI.grid(3, 8)
-	for row in [["hp", "HP", "%d" % st["hp"]], ["atk", "Атака", "%d / %.1f с" % [st["atk"], st.get("atk_speed", 1.6)]],
+	for row in [["hp", "HP", "%d" % st["hp"]], ["atk", "Атака", ("%d / %.1f с" % [st["atk"], st.get("atk_speed", 1.6)]) if st["atk"] > 0 else "нет"],
 			["power", "Магия", "%d" % st["power"]], ["str", "Сила", "%d" % st.get("str", 0)], ["agi", "Ловкость", "%d" % st.get("agi", 0)],
 			["armor", "Броня", "%d" % st["armor"]], ["haste", "Скорость", "%d%%" % roundi(st.get("haste", 0.0) * 100)],
 			["crit", "Крит", "%d%%" % roundi(st.get("crit", 0.0) * 100)]]:
