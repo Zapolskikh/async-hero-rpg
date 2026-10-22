@@ -200,6 +200,8 @@ const CHAPTERS := [
 	{"from": 26, "name": "Царство архилича"},
 ]
 
+## All gold income (kills, push clears, selling items) is multiplied by this.
+const GOLD_MULT := 0.3
 const LEVEL_SCALE := 1.25   # enemy stat growth per level for chapter 1 (levels 1-10)
 const SCALE_BREAK := 10     # after this level enemies follow the party's expected growth
 const HERO_AT_BREAK := 16.0 # hero level a typical player has when clearing SCALE_BREAK

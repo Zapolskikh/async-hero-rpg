@@ -18,7 +18,8 @@ from . import db
 from .config import Settings
 from .worker import WorkerPool
 
-LOCAL_ACTIONS = {"set_rotation", "move_party", "equip", "unequip", "sell", "hire", "fire", "replace", "fuse", "set_name"}
+LOCAL_ACTIONS = {"set_rotation", "move_party", "equip", "unequip", "sell", "hire", "fire", "replace", "fuse", "set_name",
+                 "talent_up", "talent_reset"}
 AUTHORITY_ACTIONS = {"reroll", "open_box", "open_pack", "start", "collect", "stop",
                      "gather_start", "gather_claim", "gather_cancel", "craft_start", "craft_claim", "use_item"}
 CLIENT_ACTIONS = LOCAL_ACTIONS | AUTHORITY_ACTIONS

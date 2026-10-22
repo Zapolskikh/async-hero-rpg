@@ -124,7 +124,7 @@ func _on_wave_end() -> void:
 		if u.side == 1 and not u.alive():
 			kills += 1
 			var mult := 8 if u.is_boss else 1
-			gold += int(round(5.0 * pow(sc, 0.85) * mult))
+			gold += int(round(5.0 * pow(sc, 0.85) * mult * Db.GOLD_MULT))
 			xp += int(round(6.0 * Db.xp_level_factor(level) * mult))
 			_drop_mats(u)
 	if sim.won:
@@ -154,7 +154,7 @@ func _on_run_end(cleared: bool, reason: String) -> void:
 			_add_mat(best, Prof.CLOTH_ON_CLEAR)
 		xp += int(round(30.0 * Db.xp_level_factor(level)))
 		if mode == "push":
-			gold += 40 * level
+			gold += int(round(40 * level * Db.GOLD_MULT))
 		if first_clear_pending:
 			first_clear_pending = false
 			level_closed_now = true

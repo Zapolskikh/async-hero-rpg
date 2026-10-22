@@ -189,7 +189,7 @@ static func item_score(item: Dictionary) -> float:
 	return s
 
 static func sell_price(item: Dictionary) -> int:
-	return int((5 + item["ilvl"] * 3) * [1, 3, 8, 25][item["rarity"]])
+	return max(1, int((5 + item["ilvl"] * 3) * [1, 3, 8, 25][item["rarity"]] * Db.GOLD_MULT))
 
 ## Brings an item saved by an older version up to date (v5: weapon types, str instead of atk).
 static func upgrade_item(it: Dictionary) -> void:

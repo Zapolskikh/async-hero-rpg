@@ -304,6 +304,12 @@ func fire(id: String) -> void:
 func replace_hired(old_id: String, new_id: String) -> bool:
 	return act("replace", {"old": old_id, "new": new_id})["ok"]
 
+func talent_up(id: String) -> bool:
+	return act("talent_up", {"id": id})["ok"]
+
+func talent_reset() -> void:
+	act("talent_reset")
+
 func fuse(sid: String) -> bool:
 	return act("fuse", {"sid": sid})["ok"]
 

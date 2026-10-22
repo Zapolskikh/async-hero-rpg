@@ -30,7 +30,8 @@ const MAX_ITEMS_PER_COLLECT := 30
 const REAL_SLOTS := 3            # up to 3 of 6 board places go to real players
 
 ## Actions without randomness: the client may apply them locally right away.
-const LOCAL_ACTIONS := ["set_rotation", "move_party", "equip", "unequip", "sell", "hire", "fire", "replace", "fuse", "set_name"]
+const LOCAL_ACTIONS := ["set_rotation", "move_party", "equip", "unequip", "sell", "hire", "fire", "replace", "fuse", "set_name",
+	"talent_up", "talent_reset"]
 ## Actions with randomness or rewards: only the authority (server or offline client) runs them.
 const AUTHORITY_ACTIONS := ["reroll", "open_box", "open_pack", "start", "collect", "stop",
 	"gather_start", "gather_claim", "gather_cancel", "craft_start", "craft_claim", "use_item"]
@@ -45,7 +46,7 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 	var p := {
 		"v": VERSION, "name": name, "created": now,
 		"gold": 100, "boxes": 1, "closed_level": 0,
-		"hero": {"name": name, "level": 1, "xp": 0, "rotation": ["fireball", "strike", "kick"],
+		"hero": {"name": name, "level": 1, "xp": 0, "rotation": ["fireball", "strike", "kick"], "talents": {},
 			"equipped": _empty_equipment()},
 		"collection": {}, "inventory": [], "board": [], "hired": [], "party_order": [],
 		"rerolls_today": 0, "reroll_day": "", "free_box_day": "",
@@ -85,6 +86,10 @@ static func migrate(p: Dictionary, now: float) -> void:
 	_migrate_spells(p)
 	var hero: Dictionary = p["hero"]
 	hero["level"] = int(hero["level"])
+	if typeof(hero.get("talents")) != TYPE_DICTIONARY:
+		hero["talents"] = {}
+	for k in hero["talents"].keys():
+		hero["talents"][k] = int(hero["talents"][k])
 	hero["xp"] = int(hero["xp"])
 	for slot in hero["equipped"]:
 		_fix_item(hero["equipped"][slot])
@@ -348,6 +353,8 @@ static func apply(p: Dictionary, action: String, args: Dictionary, now: float, c
 		"fire": res = _fire(p, str(args.get("id", "")))
 		"replace": res = _replace(p, str(args.get("old", "")), str(args.get("new", "")))
 		"fuse": res = _fuse(p, str(args.get("sid", "")))
+		"talent_up": res = _talent_up(p, str(args.get("id", "")))
+		"talent_reset": res = _talent_reset(p)
 		"set_name": res = _set_name(p, str(args.get("name", "")))
 		"reroll": res = _reroll(p, r, now, ctx)
 		"open_box": res = _open_box(p, r, str(args.get("use", "")), now)
@@ -490,6 +497,22 @@ static func _replace(p: Dictionary, old_id: String, new_id: String) -> Dictionar
 			p["hired"][i] = newcomer
 	var pos: int = p["party_order"].find(old_id)
 	p["party_order"][pos] = new_id
+	return _ok()
+
+static func _talent_up(p: Dictionary, id: String) -> Dictionary:
+	if not Talents.TALENTS.has(id):
+		return _err("no such talent")
+	var hero: Dictionary = p["hero"]
+	if Talents.points_free(hero) <= 0:
+		return _err("no talent points")
+	var t: Dictionary = hero["talents"]
+	if int(t.get(id, 0)) >= Talents.MAX_RANK:
+		return _err("max rank")
+	t[id] = int(t.get(id, 0)) + 1
+	return _ok()
+
+static func _talent_reset(p: Dictionary) -> Dictionary:
+	p["hero"]["talents"] = {}
 	return _ok()
 
 static func _fuse(p: Dictionary, sid: String) -> Dictionary:

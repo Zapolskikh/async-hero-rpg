@@ -52,7 +52,14 @@ static func combat_stats(base: Dictionary, gear: Dictionary) -> Dictionary:
 	return st
 
 static func hero_stats(hero: Dictionary) -> Dictionary:
-	return combat_stats(Db.hero_base_stats(hero["level"]), hero["equipped"])
+	var gear: Dictionary = hero["equipped"]
+	var talents: Dictionary = hero.get("talents", {})
+	var weapons := Loot.weapon_types(gear)
+	var st := apply_gear(Db.hero_base_stats(hero["level"]), gear)
+	Talents.apply_stats(st, talents, weapons)
+	st.merge(Loot.attack_of(st, gear), true)
+	st["atk"] = round(st["atk"] * Talents.attack_mult(talents, weapons))
+	return st
 
 static func hero_snapshot(hero: Dictionary, collection: Dictionary) -> Dictionary:
 	var spells := []

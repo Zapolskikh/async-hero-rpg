@@ -19,6 +19,7 @@ func _init() -> void:
 	test_push_finish()
 	test_spell_levels()
 	test_weapons()
+	test_talents()
 	test_boxes_and_validation()
 	test_json_roundtrip()
 	test_migrate_v1()
@@ -150,6 +151,24 @@ func test_weapons() -> void:
 	check(q["inventory"][0]["affixes"][0]["stat"] == "str" and q["hero"]["equipped"].has("offhand"), "old items lose the attack stat; left hand slot added")
 	var qs := Rules.hero_snapshot(q)
 	check(qs["weapons"] == ["staff"] and qs["stats"]["atk"] > 0, "migrated hero has a working attack")
+
+func test_talents() -> void:
+	print("talents")
+	var p := fresh(41)
+	check(Talents.points_free(p["hero"]) == 0 and not Rules.apply(p, "talent_up", {"id": "toughness"}, T0)["ok"], "no talent points before level 5")
+	p["hero"]["level"] = 7
+	check(Talents.points_free(p["hero"]) == 3, "3 points at level 7")
+	var hp0: float = Rules.hero_snapshot(p)["stats"]["hp"]
+	for i in 3:
+		Rules.apply(p, "talent_up", {"id": "toughness"}, T0)
+	check(Rules.hero_snapshot(p)["stats"]["hp"] > hp0 * 1.14, "3 ranks of toughness: +15% health")
+	check(not Rules.apply(p, "talent_up", {"id": "toughness"}, T0)["ok"], "no points left / max rank")
+	Rules.apply(p, "talent_reset", {}, T0)
+	check(Talents.points_free(p["hero"]) == 3, "reset returns the points")
+	Rules.apply(p, "talent_up", {"id": "eagle_eye"}, T0)
+	var base_agi: float = Db.hero_base_stats(7)["agi"]
+	check(Rules.hero_snapshot(p)["stats"]["agi"] == base_agi, "bow talent does nothing with a sword")
+	check(Loot.sell_price({"ilvl": 10, "rarity": 1}) < (5 + 30) * 3, "selling pays less gold now")
 
 func test_spell_levels() -> void:
 	print("spell levels")

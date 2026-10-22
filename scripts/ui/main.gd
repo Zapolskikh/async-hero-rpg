@@ -189,7 +189,7 @@ func _nav_badges() -> Dictionary:
 			fusable = true
 	return {
 		"expedition": ex == null or (ex["mode"] == "farm" and Game.has_pending()),
-		"hero": Game.hero["rotation"].size() < 3,
+		"hero": Game.hero["rotation"].size() < 3 or Talents.points_free(Game.hero) > 0,
 		"mercs": not Game.party_ready(),
 		"spells": Game.free_box_available() or Game.boxes > 0 or fusable,
 		"bag": bag_upgrade,
@@ -637,6 +637,9 @@ func _screen_hero() -> Control:
 	sv.add_child(UI.stat_row("crit", "Крит", "%d%%" % roundi(st["crit"] * 100)))
 	sv.add_child(UI.stat_row("loop", "Ход ротации", "%.1f с" % SpellInfo.rotation_interval(st["haste"])))
 	sv.add_child(UI.spacer())
+	var free := Talents.points_free(hero)
+	var tb := UI.btn("Таланты" + (" (+%d)" % free if free > 0 else ""), _talents_popup, "primary" if free > 0 else "secondary", Style.FONT_SMALL, "star", 0, 44)
+	sv.add_child(tb)
 	sv.add_child(UI.label("Опыт %d / %d" % [hero["xp"], Db.xp_to_next(hero["level"])], Style.FONT_TINY, Style.MUTED))
 	sv.add_child(UI.progress(hero["xp"], Db.xp_to_next(hero["level"]), Style.SECONDARY, 12))
 	h.add_child(sc)
@@ -787,6 +790,50 @@ func _rot_remove(i: int) -> void:
 	var rot: Array = Game.hero["rotation"].duplicate()
 	rot.remove_at(i)
 	Game.set_rotation(rot)
+
+func _talents_popup() -> void:
+	UI.clear(popup_layer)
+	var hero: Dictionary = Game.hero
+	var talents: Dictionary = hero.get("talents", {})
+	var weapons: Array = Game.hero_snapshot()["weapons"]
+	var v := UI.vbox(8)
+	var free := Talents.points_free(hero)
+	v.add_child(UI.label("Свободно очков: %d · очко за каждый уровень героя с %d-го" % [free, Talents.FIRST_LEVEL],
+		Style.FONT_SMALL, Style.SUCCESS if free > 0 else Style.MUTED, true))
+	var g := UI.grid(2, 8)
+	for br in Talents.BRANCHES:
+		for id in Talents.TALENTS:
+			var t: Dictionary = Talents.TALENTS[id]
+			if t["branch"] != br["id"]:
+				continue
+			var rank := int(talents.get(id, 0))
+			var c := UI.card(Style.CARD_2 if rank > 0 else Style.BG_DEEP, 8)
+			c.custom_minimum_size.x = 400
+			var h := UI.hbox(8)
+			c.add_child(h)
+			h.add_child(UI.tile(t["icon"], Style.CARD_3, 44, rank == 0))
+			var tv := UI.vbox(0)
+			tv.add_child(UI.label("%s · %s  %d/%d" % [br["name"], t["name"], rank, Talents.MAX_RANK], Style.FONT_SMALL, Style.TEXT, true))
+			var active: bool = not t.has("w") or (weapons.count("sword") >= 2 if t["w"] == "dual" else t["w"] in weapons)
+			tv.add_child(UI.wrap(Talents.describe(id) + ("" if active or rank == 0 else " (сейчас не действует)"), Style.FONT_TINY,
+				Style.MUTED if active or rank == 0 else Style.WARNING))
+			h.add_child(UI.expand(tv))
+			var plus := UI.btn("+", _talent_up.bind(id), "primary", Style.FONT_BODY, "", 44, 44)
+			plus.disabled = free <= 0 or rank >= Talents.MAX_RANK
+			h.add_child(plus)
+			g.add_child(c)
+	var sc := UI.scroll(g)
+	sc.custom_minimum_size = Vector2(830, 430)
+	v.add_child(sc)
+	_modal("Таланты", v, [["Сбросить", _talent_reset, "danger", Talents.points_spent(talents) > 0]])
+
+func _talent_up(id: String) -> void:
+	Game.talent_up(id)
+	_talents_popup()
+
+func _talent_reset() -> void:
+	Game.talent_reset()
+	_talents_popup()
 
 func _gear_popup(slot: String) -> void:
 	var it = Game.hero["equipped"].get(slot)

@@ -8,6 +8,7 @@ var crafts_only := false
 var spells_only := false
 var weapons_only := false
 var meter_only := false
+var talents_only := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -21,9 +22,13 @@ func _ready() -> void:
 			weapons_only = true
 		if a == "--shots-meter":
 			meter_only = true
+		if a == "--shots-talents":
+			talents_only = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if meter_only:
+	if talents_only:
+		_run_talents()
+	elif meter_only:
 		_run_meter()
 	elif weapons_only:
 		_run_weapons()
@@ -274,5 +279,22 @@ func _run_meter() -> void:
 	await _shot("28_meter_start")
 	await _wait(6.0)
 	await _shot("29_meter_fight")
+	print("shots done")
+	get_tree().quit()
+
+func _run_talents() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	Game.profile["hero"]["level"] = 10
+	Game.talent_up("toughness")
+	Game.talent_up("blade_master")
+	Game.talent_up("blade_master")
+	Game.talent_up("eagle_eye")
+	main._switch("hero")
+	await _wait(0.4)
+	await _shot("30_hero_talents_button")
+	main._talents_popup()
+	await _wait(0.5)
+	await _shot("31_talents")
 	print("shots done")
 	get_tree().quit()
