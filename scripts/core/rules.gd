@@ -12,7 +12,7 @@ extends RefCounted
 ## so a server keeps it secret by stripping it before sending the profile.
 ## `ctx` (server only): {"account": id, "real_pool": [public snapshots of other players]}
 
-const VERSION := 5
+const VERSION := 6
 const OFFLINE_CAP := 12.0 * 3600.0
 const BOX_PRICE := 150
 const BOX_PACK := 10
@@ -31,7 +31,7 @@ const REAL_SLOTS := 3            # up to 3 of 6 board places go to real players
 
 ## Actions without randomness: the client may apply them locally right away.
 const LOCAL_ACTIONS := ["set_rotation", "move_party", "equip", "unequip", "sell", "hire", "fire", "replace", "fuse", "set_name",
-	"talent_up", "talent_reset"]
+	"talent_up", "talent_reset", "set_threshold"]
 ## Actions with randomness or rewards: only the authority (server or offline client) runs them.
 const AUTHORITY_ACTIONS := ["reroll", "open_box", "open_pack", "start", "collect", "stop",
 	"gather_start", "gather_claim", "gather_cancel", "craft_start", "craft_claim", "use_item"]
@@ -46,7 +46,7 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 	var p := {
 		"v": VERSION, "name": name, "created": now,
 		"gold": 100, "boxes": 1, "closed_level": 0,
-		"hero": {"name": name, "level": 1, "xp": 0, "rotation": ["fireball", "strike", "kick"], "talents": {},
+		"hero": {"name": name, "level": 1, "xp": 0, "rotation": ["kick", "fireball", "strike"], "talents": {}, "spell_settings": {},
 			"equipped": _empty_equipment()},
 		"collection": {}, "inventory": [], "board": [], "hired": [], "party_order": [],
 		"rerolls_today": 0, "reroll_day": "", "free_box_day": "",
@@ -68,6 +68,9 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 
 ## Brings any older or JSON-parsed profile to the current shape (ints restored).
 static func migrate(p: Dictionary, now: float) -> void:
+	# v6: priority rotation; the old default order would never use strike and kick
+	if int(p.get("v", 0)) < 6 and p.has("hero") and p["hero"].get("rotation", []) == ["fireball", "strike", "kick"]:
+		p["hero"]["rotation"] = ["kick", "fireball", "strike"]
 	if not p.has("rng"):
 		p["rng"] = {"seed": str(randi()), "state": ""}
 	for k in ["gold", "boxes", "closed_level", "rerolls_today"]:
@@ -88,6 +91,8 @@ static func migrate(p: Dictionary, now: float) -> void:
 	hero["level"] = int(hero["level"])
 	if typeof(hero.get("talents")) != TYPE_DICTIONARY:
 		hero["talents"] = {}
+	if typeof(hero.get("spell_settings")) != TYPE_DICTIONARY:
+		hero["spell_settings"] = {}
 	for k in hero["talents"].keys():
 		hero["talents"][k] = int(hero["talents"][k])
 	hero["xp"] = int(hero["xp"])
@@ -355,6 +360,7 @@ static func apply(p: Dictionary, action: String, args: Dictionary, now: float, c
 		"fuse": res = _fuse(p, str(args.get("sid", "")))
 		"talent_up": res = _talent_up(p, str(args.get("id", "")))
 		"talent_reset": res = _talent_reset(p)
+		"set_threshold": res = _set_threshold(p, str(args.get("sid", "")), float(args.get("value", 0.0)))
 		"set_name": res = _set_name(p, str(args.get("name", "")))
 		"reroll": res = _reroll(p, r, now, ctx)
 		"open_box": res = _open_box(p, r, str(args.get("use", "")), now)
@@ -509,6 +515,22 @@ static func _talent_up(p: Dictionary, id: String) -> Dictionary:
 	if int(t.get(id, 0)) >= Talents.MAX_RANK:
 		return _err("max rank")
 	t[id] = int(t.get(id, 0)) + 1
+	return _ok()
+
+## Player-chosen hp threshold for a healing spell (Db.THRESHOLD_OPTIONS).
+static func _set_threshold(p: Dictionary, sid: String, value: float) -> Dictionary:
+	if not Db.SPELLS.has(sid) or not Db.SPELLS[sid]["kind"] in Db.THRESHOLD_KINDS:
+		return _err("spell has no threshold")
+	var ok := false
+	for o in Db.THRESHOLD_OPTIONS:
+		if absf(float(o) - value) < 0.001:
+			ok = true
+	if not ok:
+		return _err("bad threshold")
+	var st: Dictionary = p["hero"]["spell_settings"]
+	if not st.has(sid):
+		st[sid] = {}
+	st[sid]["threshold"] = value
 	return _ok()
 
 static func _talent_reset(p: Dictionary) -> Dictionary:

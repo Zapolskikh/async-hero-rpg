@@ -35,7 +35,7 @@ func _wins(lvl: int, hero_lvl: int, merc_templates: Array) -> int:
 	for i in TRIES:
 		var rng := RandomNumberGenerator.new()
 		rng.seed = 1000 + i
-		var hero := {"name": "Hero", "level": hero_lvl, "rotation": ["fireball", "strike", "kick"],
+		var hero := {"name": "Hero", "level": hero_lvl, "rotation": ["kick", "fireball", "strike"],
 			"equipped": {"weapon": null, "armor": null, "trinket": null}}
 		var party := [Roster.hero_snapshot(hero, {})]
 		for t in merc_templates:

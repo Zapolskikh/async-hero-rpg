@@ -307,6 +307,16 @@ func replace_hired(old_id: String, new_id: String) -> bool:
 func talent_up(id: String) -> bool:
 	return act("talent_up", {"id": id})["ok"]
 
+func set_threshold(sid: String, value: float) -> void:
+	act("set_threshold", {"sid": sid, "value": value})
+
+## Threshold the hero uses for this spell (player setting or the spell's own).
+func spell_threshold(sid: String) -> float:
+	var st: Dictionary = hero.get("spell_settings", {})
+	if st.has(sid) and st[sid].has("threshold"):
+		return float(st[sid]["threshold"])
+	return float(Db.SPELLS[sid].get("threshold", 0.7))
+
 func talent_reset() -> void:
 	act("talent_reset")
 

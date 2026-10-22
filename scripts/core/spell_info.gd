@@ -34,7 +34,10 @@ static func stat_label(sid: String) -> String:
 
 ## Main effect lines: [[icon, text], ...]
 static func effects(sid: String, lvl: int, caster: Dictionary) -> Array:
-	var s: Dictionary = Db.SPELLS[sid]
+	var s: Dictionary = Db.SPELLS[sid].duplicate()
+	for e in caster.get("spells", []):
+		if e["id"] == sid and e.has("threshold"):
+			s["threshold"] = e["threshold"]
 	var a := roundi(amount(sid, lvl, caster))
 	var dur: float = s.get("dur", 0.0)
 	var ticks := int(round(dur / DOT_TICK))
@@ -59,7 +62,8 @@ static func effects(sid: String, lvl: int, caster: Dictionary) -> Array:
 		"heal":
 			return [["hp", "Лечение %d" % a], ["star", "Цель: самый раненый ниже %d%% HP" % roundi(s.get("threshold", 0.7) * 100)]]
 		"hot_all":
-			return [["hp", "%d лечения в сек всей группе, %d с (всего %d)" % [a, ticks, a * ticks]]]
+			return [["hp", "%d лечения в сек всей группе, %d с (всего %d)" % [a, ticks, a * ticks]],
+				["star", "Если кто-то ниже %d%% HP" % roundi(s.get("threshold", 0.9) * 100)]]
 		"shield":
 			return [["sp_barrier", "Щит на %d урона, %.0f с" % [a, dur]]]
 		"taunt":

@@ -346,6 +346,10 @@ static func xp_to_next(level: int) -> int:
 		base *= pow(level - XP_SLOWDOWN_FROM + 2, XP_SLOWDOWN_POW)
 	return int(base)
 
+## Spells whose hp threshold the player can choose, and the choices.
+const THRESHOLD_KINDS := ["heal", "hot_all"]
+const THRESHOLD_OPTIONS := [0.5, 0.7, 0.9, 0.99]
+
 static func spell_level_mult(spell_level: int) -> float:
 	return 1.0 + 0.3 * (spell_level - 1)
 
@@ -391,10 +395,10 @@ const MERC_TEMPLATES := [
 	{"sprite": "healer", "ranged": true, "role": "Лекарь",   "spells": ["heal", "cleanse", "strike"],      "stat": {"hp": 0.9, "power": 1.15}, "weapons": ["staff"]},
 	{"sprite": "pyromancer", "ranged": true, "role": "Пиромант", "spells": ["ignite", "fireball", "strike"],   "stat": {"hp": 0.85, "power": 1.2}, "weapons": ["staff"]},
 	{"sprite": "poisoner_ally", "ranged": false, "role": "Ядовик",   "spells": ["poison_cloud", "ignite", "twin_strike"], "stat": {"hp": 0.85, "power": 1.15}, "weapons": ["sword", "sword"]},
-	{"sprite": "fighter", "ranged": false, "role": "Боец",     "spells": ["cleave", "mortal_strike", "execute"], "stat": {"hp": 1.1, "str": 1.2}, "weapons": ["greatsword"]},
+	{"sprite": "fighter", "ranged": false, "role": "Боец",     "spells": ["execute", "cleave", "mortal_strike"], "stat": {"hp": 1.1, "str": 1.2}, "weapons": ["greatsword"]},
 	{"sprite": "guard", "ranged": false, "role": "Страж",    "spells": ["kick", "shield_slam", "strike"],  "stat": {"hp": 1.1, "str": 1.1, "armor": 1.3}, "weapons": ["sword", "shield"]},
 	{"sprite": "paladin", "ranged": false, "role": "Паладин",  "spells": ["barrier", "heal", "strike"],      "stat": {"hp": 1.2, "armor": 1.3}, "weapons": ["sword", "shield"]},
-	{"sprite": "hunter", "ranged": true, "role": "Охотник",  "spells": ["kick", "aimed_shot", "arrow_rain"], "stat": {"hp": 0.9, "power": 1.1, "agi": 1.2}, "weapons": ["bow"]},
+	{"sprite": "hunter", "ranged": true, "role": "Охотник",  "spells": ["kick", "arrow_rain", "aimed_shot"], "stat": {"hp": 0.9, "power": 1.1, "agi": 1.2}, "weapons": ["bow"]},
 ]
 
 const MERC_NAMES := ["Борис", "Ольга", "Тарас", "Мира", "Гордей", "Злата", "Яромир", "Вера", "Ратибор",

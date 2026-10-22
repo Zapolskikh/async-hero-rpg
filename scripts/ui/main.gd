@@ -675,7 +675,7 @@ func _screen_hero() -> Control:
 
 	var rot_head := UI.hbox(8)
 	rot_head.add_child(UI.title("Ротация", 20))
-	rot_head.add_child(UI.expand(UI.label("1 → 2 → 3 → снова 1, неприменимая пропускается", Style.FONT_TINY, Style.MUTED)))
+	rot_head.add_child(UI.expand(UI.label("каждый ход: первая подходящая слева направо", Style.FONT_TINY, Style.MUTED)))
 	mv.add_child(rot_head)
 	var rot := UI.hbox(8)
 	rot.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -827,6 +827,11 @@ func _talents_popup() -> void:
 	v.add_child(sc)
 	_modal("Таланты", v, [["Сбросить", _talent_reset, "danger", Talents.points_spent(talents) > 0]])
 
+func _set_threshold(sid: String, value: float) -> void:
+	Game.set_threshold(sid, value)
+	UI.clear(popup_layer)
+	_spell_popup(sid)
+
 func _talent_up(id: String) -> void:
 	Game.talent_up(id)
 	_talents_popup()
@@ -882,6 +887,15 @@ func _spell_popup(sid: String, caster: Dictionary = {}) -> void:
 			if Game.can_fuse(sid):
 				buttons.append(["Улучшить → %s" % UI.roman(lvl + 1), _fuse.bind(sid), "primary", true])
 		body.add_child(ph)
+	if own and lvl > 0 and d["kind"] in Db.THRESHOLD_KINDS:
+		var th := UI.hbox(6)
+		th.add_child(UI.label("Лечить, если здоровье ниже:", Style.FONT_SMALL, Style.MUTED))
+		var cur := Game.spell_threshold(sid)
+		for o in Db.THRESHOLD_OPTIONS:
+			var b := UI.btn("%d%%" % roundi(float(o) * 100), _set_threshold.bind(sid, float(o)),
+				"primary" if absf(cur - float(o)) < 0.001 else "ghost", Style.FONT_SMALL, "", 64, 40)
+			th.add_child(b)
+		body.add_child(th)
 	if own:
 		var rot: Array = Game.hero["rotation"]
 		var idx := rot.find(sid)

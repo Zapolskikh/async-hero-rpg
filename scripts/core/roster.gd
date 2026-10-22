@@ -63,8 +63,12 @@ static func hero_stats(hero: Dictionary) -> Dictionary:
 
 static func hero_snapshot(hero: Dictionary, collection: Dictionary) -> Dictionary:
 	var spells := []
+	var settings: Dictionary = hero.get("spell_settings", {})
 	for sid in hero["rotation"]:
-		spells.append({"id": sid, "lvl": max(1, spell_best_level(collection, sid))})
+		var e := {"id": sid, "lvl": max(1, spell_best_level(collection, sid))}
+		if settings.has(sid) and settings[sid].has("threshold"):
+			e["threshold"] = float(settings[sid]["threshold"])
+		spells.append(e)
 	return {
 		"name": hero["name"], "color": HERO_COLOR, "npc": false, "is_hero": true,
 		"role": "Герой", "level": hero["level"], "sprite": "hero", "ranged": "bow" in Loot.weapon_types(hero["equipped"]),

@@ -69,7 +69,7 @@ func _party(hero_lvl: int, seed_value: int, templates: Array) -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
 	var spell_lvl := 1 + int(hero_lvl / 8)   # hero fuses slower than veteran mercs
-	var hero := {"name": "Hero", "level": hero_lvl, "rotation": ["fireball", "strike", "kick"],
+	var hero := {"name": "Hero", "level": hero_lvl, "rotation": ["kick", "fireball", "strike"],
 		"equipped": {"weapon": null, "armor": null, "trinket": null}}
 	var coll := {}
 	for sid in hero["rotation"]:

@@ -14,6 +14,7 @@ func check(cond: bool, msg: String) -> void:
 func _init() -> void:
 	test_determinism()
 	test_rotation_skips_invalid()
+	test_priority_rotation()
 	test_interrupt_and_execute()
 	test_push_wipe_gives_partial()
 	test_farm_fast_forward()
@@ -26,7 +27,7 @@ func _init() -> void:
 func party(level: int, templates: Array, seed_value: int = 1) -> Array:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = seed_value
-	var hero := {"name": "Hero", "level": level, "rotation": ["fireball", "strike", "kick"],
+	var hero := {"name": "Hero", "level": level, "rotation": ["kick", "fireball", "strike"],
 		"equipped": {"weapon": null, "armor": null, "trinket": null}}
 	var p := [Roster.hero_snapshot(hero, {})]
 	for t in templates:
@@ -66,6 +67,41 @@ func test_rotation_skips_invalid() -> void:
 		sim.events.clear()
 	check(not casts.has(Db.SPELLS["kick"]["name"]), "kick skipped when nobody casts")
 	check(casts.get(Db.SPELLS["strike"]["name"], 0) >= 5, "strike used instead (%d times)" % casts.get(Db.SPELLS["strike"]["name"], 0))
+
+func test_priority_rotation() -> void:
+	print("priority rotation")
+	# Heal in slot 1 with no cooldown: while an ally stays below the threshold,
+	# every step heals and strike in slot 2 is never reached.
+	var sim := BattleSim.new()
+	var healer := BattleUnit.new(0, 0, 0, {"name": "H", "stats": {"hp": 5000, "atk": 1, "power": 10, "armor": 0},
+		"spells": [{"id": "heal", "lvl": 1, "threshold": 0.99}, {"id": "strike", "lvl": 1}]})
+	var tank := BattleUnit.new(1, 0, 1, {"name": "T", "stats": {"hp": 1000000, "atk": 1, "power": 1, "armor": 0}, "spells": []})
+	tank.hp = 1000.0
+	var dummy := {"name": "D", "stats": {"hp": 100000, "atk": 0, "power": 0, "armor": 0}, "spells": []}
+	sim.setup([healer, tank], [dummy], 1)
+	var casts := {}
+	for i in 300:
+		sim.step()
+		for e in sim.events:
+			if e["t"] == "spell" and e["uid"] == 0:
+				casts[e["text"]] = casts.get(e["text"], 0) + 1
+		sim.events.clear()
+	var heals: int = casts.get(Db.SPELLS["heal"]["name"], 0)
+	check(heals >= 6 and not casts.has(Db.SPELLS["strike"]["name"]), "slot 1 heal used every step (%d), strike never" % heals)
+	# custom threshold: at 50% the 60%-hp tank is not healed, strike runs instead
+	var sim2 := BattleSim.new()
+	var h2 := BattleUnit.new(0, 0, 0, {"name": "H", "stats": {"hp": 5000, "atk": 1, "power": 10, "armor": 0},
+		"spells": [{"id": "heal", "lvl": 1, "threshold": 0.5}, {"id": "strike", "lvl": 1}]})
+	var t2 := BattleUnit.new(1, 0, 1, {"name": "T", "stats": {"hp": 1000000, "atk": 1, "power": 1, "armor": 0}, "spells": []})
+	t2.hp = 600000.0
+	sim2.setup([h2, t2], [dummy], 1)
+	check(sim2._find_spell_target(h2, "heal", 0.5) == null and sim2._find_spell_target(h2, "heal", 0.7) == t2, "threshold setting decides who gets healed")
+	var p := Rules.new_profile(3, 0.0)
+	check(Rules.apply(p, "set_threshold", {"sid": "heal", "value": 0.9}, 0.0)["ok"], "threshold can be set for heal")
+	check(not Rules.apply(p, "set_threshold", {"sid": "strike", "value": 0.9}, 0.0)["ok"] and not Rules.apply(p, "set_threshold", {"sid": "heal", "value": 0.42}, 0.0)["ok"], "only healing spells and listed values")
+	p["hero"]["rotation"] = ["heal", "kick", "strike"]
+	var sp: Array = Rules.hero_snapshot(p)["spells"]
+	check(sp[0].get("threshold", 0.0) == 0.9, "hero snapshot carries the threshold")
 
 func test_interrupt_and_execute() -> void:
 	print("interrupt")

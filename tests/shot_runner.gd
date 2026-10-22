@@ -222,6 +222,10 @@ func _run_spells() -> void:
 	main._spell_popup("fireball")
 	await _wait(0.4)
 	await _shot("21_spell_popup_upgrade")
+	UI.clear(main.popup_layer)
+	main._spell_popup("heal")
+	await _wait(0.4)
+	await _shot("21b_heal_threshold")
 	print("shots done")
 	get_tree().quit()
 

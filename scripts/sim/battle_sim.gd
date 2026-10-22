@@ -158,7 +158,7 @@ func _act(u: BattleUnit) -> void:
 			u.casting = {}
 			var target = c["target"]
 			if target is BattleUnit and not target.alive():
-				target = _find_spell_target(u, c["spell"])
+				target = _find_spell_target(u, c["spell"], float(c.get("threshold", -1.0)))
 			if target != null:
 				_cast(u, c["spell"], c["lvl"], target)
 		return
@@ -176,16 +176,16 @@ func _act(u: BattleUnit) -> void:
 			_emit({"t": "attack", "uid": u.uid, "tgt": t.uid})
 			_deal(u, t, u.atk * rng.randf_range(0.9, 1.1), true, false)
 
-## Walks Slot 1 -> 2 -> 3, starting from the current rotation position.
-## The first spell whose validity condition holds is used; invalid ones are skipped.
+## Priority rotation: every step checks Slot 1 -> 2 -> 3 from the left and uses
+## the first spell that is off cooldown and whose condition holds.
 func _try_rotation(u: BattleUnit) -> bool:
 	var n := u.spells.size()
-	for i in n:
-		var idx := (u.rot_index + i) % n
+	for idx in n:
 		var entry: Dictionary = u.spells[idx]
 		if u.cooldowns.has(entry["id"]):
 			continue
-		var target = _find_spell_target(u, entry["id"])
+		var thr: float = float(entry.get("threshold", -1.0))
+		var target = _find_spell_target(u, entry["id"], thr)
 		if target == null:
 			continue
 		u.rot_index = (idx + 1) % n
@@ -196,7 +196,7 @@ func _try_rotation(u: BattleUnit) -> bool:
 			u.casting = {
 				"spell": entry["id"], "lvl": entry.get("lvl", 1),
 				"remaining": spell["cast"], "total": spell["cast"],
-				"target": target, "interruptible": spell.get("interruptible", true),
+				"target": target, "interruptible": spell.get("interruptible", true), "threshold": thr,
 			}
 			_emit({"t": "cast", "uid": u.uid, "text": spell["name"]})
 		else:
@@ -206,8 +206,10 @@ func _try_rotation(u: BattleUnit) -> bool:
 
 ## Returns the target the spell would hit, `u` itself for group spells,
 ## or null when the spell is not valid right now.
-func _find_spell_target(u: BattleUnit, sid: String):
+## `thr` overrides the spell's hp threshold (player setting); -1 = the spell's own.
+func _find_spell_target(u: BattleUnit, sid: String, thr: float = -1.0):
 	var s: Dictionary = Db.SPELLS[sid]
+	var threshold: float = thr if thr > 0.0 else float(s.get("threshold", 0.7))
 	if not Db.spell_usable(sid, u.weapons):
 		return null   # needs a weapon this unit does not hold
 	var foes := foes_of(u)
@@ -257,12 +259,12 @@ func _find_spell_target(u: BattleUnit, sid: String):
 		"heal":
 			var best = null
 			for f in friends:
-				if f.hp_frac() < s.get("threshold", 0.7) and (best == null or f.hp_frac() < best.hp_frac()):
+				if f.hp_frac() < threshold and (best == null or f.hp_frac() < best.hp_frac()):
 					best = f
 			return best
 		"hot_all":
 			for f in friends:
-				if f.hp_frac() < s.get("threshold", 0.9) and not f.has_hot(sid):
+				if f.hp_frac() < threshold and not f.has_hot(sid):
 					return u
 			return null
 		"shield":
