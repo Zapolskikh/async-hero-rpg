@@ -26,6 +26,7 @@ var watch_layer: Control
 var watch_label: Label
 var battle_view: Control
 var meter_rows: Array = []   # [{root, bar, name, value}] damage meter in the watch screen
+var heal_rows: Array = []    # same for the healing meter
 var popup_layer: Control
 var toast_layer: Control
 var speed_buttons: Array = []
@@ -497,16 +498,20 @@ func _build_watch_layer() -> void:
 		h.add_child(b)
 	_build_meter()
 
-## Recount-style damage meter: one bar per ally, total damage (DPS), best on top.
+## Recount-style meters: one bar per ally, total (per second), best on top.
 func _build_meter() -> void:
+	meter_rows = _build_meter_panel("Урон", "всего (DPS)", 12)
+	heal_rows = _build_meter_panel("Лечение", "всего (HPS)", 464)
+
+func _build_meter_panel(title: String, hint: String, x: float) -> Array:
 	var panel := PanelContainer.new()
 	panel.add_theme_stylebox_override("panel", Style.box(Color(0.06, 0.07, 0.1, 0.85), Style.RADIUS_SMALL, 8))
 	panel.anchor_left = 0.0
 	panel.anchor_right = 0.0
 	panel.anchor_top = 1.0
 	panel.anchor_bottom = 1.0
-	panel.offset_left = 12
-	panel.offset_right = 452
+	panel.offset_left = x
+	panel.offset_right = x + 440
 	panel.offset_bottom = -12
 	panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -514,10 +519,10 @@ func _build_meter() -> void:
 	var v := UI.vbox(3)
 	panel.add_child(v)
 	var head := UI.hbox(6)
-	head.add_child(UI.expand(UI.label("Урон", Style.FONT_SMALL, Style.TEXT, true)))
-	head.add_child(UI.label("всего (DPS)", Style.FONT_TINY, Style.MUTED))
+	head.add_child(UI.expand(UI.label(title, Style.FONT_SMALL, Style.TEXT, true)))
+	head.add_child(UI.label(hint, Style.FONT_TINY, Style.MUTED))
 	v.add_child(head)
-	meter_rows.clear()
+	var rows := []
 	for i in 4:
 		var row := Control.new()
 		row.custom_minimum_size = Vector2(0, 26)
@@ -541,7 +546,8 @@ func _build_meter() -> void:
 		val.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
 		row.add_child(val)
 		v.add_child(row)
-		meter_rows.append({"root": row, "bar": bar, "name": name, "value": val})
+		rows.append({"root": row, "bar": bar, "name": name, "value": val})
+	return rows
 
 func _update_meter(ex: Expedition) -> void:
 	var allies := []
@@ -549,22 +555,28 @@ func _update_meter(ex: Expedition) -> void:
 		for u in ex.sim.units:
 			if u.side == 0:
 				allies.append(u)
-	allies.sort_custom(func(a, b): return a.dealt > b.dealt)
+	var t: float = max(1.0, ex.sim.time) if ex != null and ex.sim != null else 1.0
+	_fill_meter(meter_rows, allies, "dealt", t)
+	_fill_meter(heal_rows, allies, "healed", t)
+
+func _fill_meter(rows: Array, units: Array, field: String, t: float) -> void:
+	var allies := units.duplicate()
+	allies.sort_custom(func(a, b): return a.get(field) > b.get(field))
 	var top := 1.0
 	for u in allies:
-		top = max(top, u.dealt)
-	var t: float = max(1.0, ex.sim.time) if ex != null and ex.sim != null else 1.0
-	for i in meter_rows.size():
-		var r: Dictionary = meter_rows[i]
+		top = max(top, u.get(field))
+	for i in rows.size():
+		var r: Dictionary = rows[i]
 		r["root"].visible = i < allies.size()
 		if i >= allies.size():
 			continue
 		var u = allies[i]
 		var bar: ColorRect = r["bar"]
 		bar.color = Color(u.color, 0.75) if u.alive() else Color(0.4, 0.4, 0.45, 0.6)
-		bar.anchor_right = u.dealt / top
+		var amount: float = u.get(field)
+		bar.anchor_right = amount / top
 		r["name"].text = "%d. %s" % [i + 1, u.name]
-		r["value"].text = "%d (%d)" % [roundi(u.dealt), roundi(u.dealt / t)]
+		r["value"].text = "%d (%d)" % [roundi(amount), roundi(amount / t)]
 
 func _set_speed(s: float) -> void:
 	Game.watch_speed = s
