@@ -285,7 +285,7 @@ static func stat_row(icon_name: String, name: String, value: String) -> HBoxCont
 # ---------------- text helpers ----------------
 
 static func roman(n: int) -> String:
-	return ["", "I", "II", "III", "IV", "V", "VI"][clamp(n, 0, 6)]
+	return ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"][clamp(n, 0, 10)]
 
 static func spell_icon(sid: String) -> String:
 	return "sp_" + sid

@@ -195,20 +195,52 @@ func _screen_expedition() -> Control:
 func _campaign_path() -> Control:
 	var c := UI.card(Style.CARD, 10)
 	var h := UI.hbox(0)
-	h.alignment = BoxContainer.ALIGNMENT_CENTER
+	var focus: Control = null
 	for lvl in range(1, Db.level_count() + 1):
-		if lvl > 1:
+		var ch: Dictionary = Db.chapter_of(lvl)
+		if ch["from"] == lvl:
+			h.add_child(_chapter_marker(ch))
+		elif lvl > 1:
 			var line := ColorRect.new()
-			line.custom_minimum_size = Vector2(30, 6)
+			line.custom_minimum_size = Vector2(26, 6)
 			line.size_flags_vertical = Control.SIZE_SHRINK_CENTER
 			line.color = Style.SUCCESS if Game.level_unlocked(lvl) else Style.CARD_3
 			line.mouse_filter = Control.MOUSE_FILTER_IGNORE
 			h.add_child(line)
-		h.add_child(_path_node(lvl))
+		var node := _path_node(lvl)
+		if lvl == selected_level:
+			focus = node
+		h.add_child(node)
 	var s := UI.scroll(h, true)
 	s.custom_minimum_size.y = 92
 	c.add_child(s)
+	if focus != null:
+		_scroll_path_to.call_deferred(s, focus)
 	return c
+
+## Chapter title between two levels on the path.
+func _chapter_marker(ch: Dictionary) -> Control:
+	var m := MarginContainer.new()
+	m.add_theme_constant_override("margin_left", 10 if ch["from"] > 1 else 0)
+	m.add_theme_constant_override("margin_right", 10)
+	var p := UI.flat(Style.BG_DEEP, 8, 12)
+	p.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var v := UI.vbox(0)
+	var n := 1
+	for i in Db.CHAPTERS.size():
+		if Db.CHAPTERS[i] == ch:
+			n = i + 1
+	v.add_child(UI.label("Глава %d" % n, Style.FONT_TINY, Style.MUTED, true))
+	v.add_child(UI.label(ch["name"], Style.FONT_SMALL, Style.TEXT, true))
+	p.add_child(v)
+	m.add_child(p)
+	return m
+
+func _scroll_path_to(s: ScrollContainer, node: Control) -> void:
+	await get_tree().process_frame
+	if not is_instance_valid(s) or not is_instance_valid(node):
+		return
+	s.scroll_horizontal = int(max(0.0, node.position.x - (s.size.x - node.size.x) / 2.0))
 
 func _path_node(lvl: int) -> Control:
 	var closed := lvl <= Game.closed_level
@@ -254,10 +286,7 @@ func _select_level(lvl: int) -> void:
 	_refresh()
 
 func _is_boss_level(lvl: int) -> bool:
-	for w in Db.LEVELS[lvl - 1]["waves"]:
-		if "boss_lich" in w:
-			return true
-	return lvl % 5 == 0
+	return Db.boss_of(lvl) != ""
 
 func _battle_card() -> Control:
 	var c := UI.card(Style.BG_DEEP, 0)
@@ -304,7 +333,10 @@ func _level_card() -> Control:
 	c.add_child(v)
 
 	var head := UI.hbox(8)
-	head.add_child(UI.expand(UI.title("%d. %s" % [lvl, Db.LEVELS[lvl - 1]["name"]], 24)))
+	var hv := UI.vbox(0)
+	hv.add_child(UI.label(Db.chapter_of(lvl)["name"], Style.FONT_TINY, Style.MUTED, true))
+	hv.add_child(UI.title("%d. %s" % [lvl, Db.LEVELS[lvl - 1]["name"]], 24))
+	head.add_child(UI.expand(hv))
 	head.add_child(UI.chip("Пройден" if closed else "Новый", Style.SUCCESS if closed else Style.PRIMARY,
 		Style.FONT_TINY, Color("#062b16") if closed else Style.PRIMARY_TEXT))
 	v.add_child(head)
@@ -341,8 +373,14 @@ func _level_card() -> Control:
 	var flow := HFlowContainer.new()
 	flow.add_theme_constant_override("h_separation", 6)
 	flow.add_theme_constant_override("v_separation", 6)
-	for hnt in hints:
+	const MAX_HINTS := 5
+	var shown: Array = hints.slice(0, MAX_HINTS)
+	if hints.has("Risky") and not shown.has("Risky"):
+		shown[shown.size() - 1] = "Risky"
+	for hnt in shown:
 		flow.add_child(UI.chip(hnt, Style.DANGER if hnt == "Risky" else Style.CARD_3))
+	if hints.size() > MAX_HINTS:
+		flow.add_child(UI.chip("+%d" % (hints.size() - MAX_HINTS), Style.BG_DEEP))
 	v.add_child(flow)
 	v.add_child(UI.spacer())
 
@@ -950,9 +988,14 @@ func _screen_spells() -> Control:
 	tok.disabled = Game.boxes <= 0
 	var buy := UI.btn("%d" % Game.BOX_PRICE, _open_box.bind("gold"), "primary", Style.FONT_SMALL, "gold", 0, 52)
 	buy.disabled = Game.gold < Game.BOX_PRICE
+	var buy10 := UI.btn("×%d  %d" % [Game.BOX_PACK, Game.BOX_PACK_PRICE], _open_pack.bind("gold"), "primary", Style.FONT_SMALL, "gold", 0, 52)
+	buy10.disabled = Game.gold < Game.BOX_PACK_PRICE
 	h.add_child(free)
 	h.add_child(tok)
+	if Game.boxes > 1:
+		h.add_child(UI.btn("Открыть все" if Game.boxes <= Game.BOX_PACK else "Открыть %d" % Game.BOX_PACK, _open_pack.bind("token"), "secondary", Style.FONT_SMALL, "box", 0, 52))
 	h.add_child(buy)
+	h.add_child(buy10)
 	v.add_child(bar)
 	var g := UI.grid(5, 12)
 	for sid in Db.SPELLS:
@@ -1002,6 +1045,65 @@ func _spell_card(sid: String) -> Control:
 func _fuse(sid: String, lvl: int) -> void:
 	if Game.fuse(sid, lvl):
 		_toast("%s теперь %s" % [Db.SPELLS[sid]["name"], UI.roman(lvl + 1)])
+
+func _open_pack(use: String) -> void:
+	var res := Game.open_box_pack(use)
+	if res.is_empty():
+		_toast("Не хватает золота" if use == "gold" else "Нечего открывать")
+		return
+	_pack_popup(res)
+
+## Result of several boxes: tiles appear one by one, duplicates are grouped.
+func _pack_popup(res: Array) -> void:
+	var v := UI.vbox(12)
+	var counts := {}
+	var order := []
+	var news := {}
+	for r in res:
+		if not counts.has(r["spell"]):
+			order.append(r["spell"])
+		counts[r["spell"]] = counts.get(r["spell"], 0) + 1
+		if r["new"]:
+			news[r["spell"]] = true
+	order.sort_custom(func(a, b): return Db.SPELLS[a]["rarity"] > Db.SPELLS[b]["rarity"])
+	var g := UI.grid(5, 10)
+	var i := 0
+	for sid in order:
+		var d: Dictionary = Db.SPELLS[sid]
+		var cell := UI.vbox(4)
+		cell.custom_minimum_size.x = 104
+		var t := UI.tile(UI.spell_icon(sid), Style.RARITY[d["rarity"]], 72)
+		t.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+		if counts[sid] > 1:
+			var ch := UI.chip("×%d" % counts[sid], Style.BG_DEEP, 13)
+			ch.position = Vector2(44, 48)
+			t.add_child(ch)
+		if news.has(sid):
+			var nw := UI.chip("Новая", Style.PRIMARY, 12, Style.PRIMARY_TEXT)
+			nw.position = Vector2(-8, -8)
+			t.add_child(nw)
+		UI.tap_overlay(t, _spell_popup.bind(sid))
+		cell.add_child(t)
+		var nm := UI.wrap(d["name"], 13, Style.RARITY[d["rarity"]], true)
+		nm.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		cell.add_child(nm)
+		cell.modulate.a = 0.0
+		g.add_child(cell)
+		var tw := create_tween()
+		tw.tween_interval(0.15 + i * 0.07)
+		tw.tween_property(cell, "modulate:a", 1.0, 0.15)
+		i += 1
+	v.add_child(g)
+	var fusable := 0
+	for sid in Game.collection:
+		for k in Game.collection[sid]:
+			if Game.can_fuse(sid, int(k)):
+				fusable += 1
+	var summary := "Новых способностей: %d · копий всего: %d" % [news.size(), res.size()]
+	if fusable > 0:
+		summary += " · можно слить: %d" % fusable
+	v.add_child(UI.label(summary, Style.FONT_SMALL, Style.MUTED))
+	_modal("Spell Box ×%d" % res.size(), v, [], "Забрать")
 
 func _open_box(use: String) -> void:
 	var r := Game.open_box(use)

@@ -11,6 +11,8 @@ const SAVE_VERSION := 1
 const OFFLINE_CAP := 12.0 * 3600.0
 const AUTOSAVE_EVERY := 10.0
 const BOX_PRICE := 150
+const BOX_PACK := 10
+const BOX_PACK_PRICE := 1350     # 10 boxes for the price of 9
 const REROLL_BASE := 20
 const REROLL_GROWTH := 1.5       # each reroll today costs x1.5 more
 const MAX_HIRED := 3
@@ -269,6 +271,30 @@ func open_box(use: String) -> Dictionary:
 			if gold < BOX_PRICE:
 				return {}
 			gold -= BOX_PRICE
+	var r := _roll_box()
+	changed.emit()
+	return r
+
+## Opens several boxes at once: "gold" buys BOX_PACK at a discount,
+## "token" opens up to BOX_PACK of the boxes you already have.
+func open_box_pack(use: String) -> Array:
+	var n := 0
+	match use:
+		"gold":
+			if gold < BOX_PACK_PRICE:
+				return []
+			gold -= BOX_PACK_PRICE
+			n = BOX_PACK
+		"token":
+			n = min(boxes, BOX_PACK)
+			boxes -= n
+	var out := []
+	for i in n:
+		out.append(_roll_box())
+	changed.emit()
+	return out
+
+func _roll_box() -> Dictionary:
 	var pool := []
 	var weights := [10.0, 5.0, 2.0, 0.7]
 	var total := 0.0
@@ -284,11 +310,11 @@ func open_box(use: String) -> Dictionary:
 		if r <= 0.0:
 			pick = sid
 			break
+	var was_new := Roster.spell_best_level(collection, pick) == 0
 	if not collection.has(pick):
 		collection[pick] = {}
 	collection[pick]["1"] = int(collection[pick].get("1", 0)) + 1
-	changed.emit()
-	return {"spell": pick, "new": int(collection[pick]["1"]) == 1 and Roster.spell_best_level(collection, pick) == 1}
+	return {"spell": pick, "new": was_new}
 
 ## Fuses FUSE_COUNT copies of level L into one copy of L+1 (concept 5).
 func can_fuse(sid: String, lvl: int) -> bool:

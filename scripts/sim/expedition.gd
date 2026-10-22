@@ -77,7 +77,7 @@ static func enemy_snapshot(eid: String, lvl: int) -> Dictionary:
 		"sprite": e.get("sprite", ""), "ranged": e.get("ranged", false),
 		"stats": {
 			"hp": e["hp"] * sc, "atk": e["atk"] * sc, "power": e["power"] * sc,
-			"armor": e["armor"] * (1.0 + 0.12 * (lvl - 1)), "haste": e["haste"], "crit": 0.05,
+			"armor": e["armor"] * Db.enemy_armor_mult(lvl), "haste": e["haste"], "crit": 0.05,
 		},
 		"spells": spells,
 	}
@@ -116,7 +116,7 @@ func _on_wave_end() -> void:
 			kills += 1
 			var mult := 8 if u.is_boss else 1
 			gold += int(round(5.0 * pow(sc, 0.85) * mult))
-			xp += int(round(6.0 * level * mult))
+			xp += int(round(6.0 * Db.xp_level_factor(level) * mult))
 	if sim.won:
 		wave_index += 1
 		best_wave = max(best_wave, wave_index)
@@ -138,7 +138,7 @@ func _on_run_end(cleared: bool, reason: String) -> void:
 	run_index += 1
 	if cleared:
 		runs_won += 1
-		xp += 30 * level
+		xp += int(round(30.0 * Db.xp_level_factor(level)))
 		if mode == "push":
 			gold += 40 * level
 		if first_clear_pending:

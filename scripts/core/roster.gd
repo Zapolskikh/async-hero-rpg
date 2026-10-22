@@ -76,7 +76,7 @@ static func make_merc(rng: RandomNumberGenerator, template_idx: int, level: int,
 	for i in n_items:
 		gear[slots[i]] = Loot.roll_gear(rng, level, tr["rarity_bonus"], slots[i])
 	# spells: levels vary, weak ones sometimes have a clumsy rotation order
-	var spell_lvl := 1 + int(level / 4) + int(tr["spell"])
+	var spell_lvl := baseline_spell_level(level) + int(tr["spell"])
 	var spells := []
 	for sid in t["spells"]:
 		spells.append({"id": sid, "lvl": max(1, spell_lvl - rng.randi_range(0, 1))})
@@ -116,10 +116,14 @@ static func ensure_merc(m: Dictionary) -> void:
 	for sp in m["spells"]:
 		sp["lvl"] = int(sp["lvl"])
 
+## Spell level a typical character of this hero level has (fusion progress).
+static func baseline_spell_level(level: int) -> int:
+	return min(8, 1 + int(level / 4))
+
 ## Power a typical (normal tier, no gear) mercenary of this level would have.
 static func expected_power(level: int) -> float:
 	var st := Db.hero_base_stats(level)
-	var spell_lvl := 1 + int(level / 4)
+	var spell_lvl := baseline_spell_level(level)
 	return st["hp"] / 8.0 + st["atk"] * 2.0 + st["power"] * 2.5 + st["armor"] * 1.5 + st["crit"] * 300.0 + 30.0 * spell_lvl
 
 const ROLE_SPRITES := {"Герой": "hero", "Танк": "tank", "Лекарь": "healer", "Пиромант": "pyromancer",
@@ -178,4 +182,4 @@ static func spell_tags_text(snap: Dictionary) -> String:
 	return ", ".join(names)
 
 static func _roman(n: int) -> String:
-	return ["", "I", "II", "III", "IV", "V", "VI"][clamp(n, 0, 6)]
+	return ["", "I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"][clamp(n, 0, 10)]

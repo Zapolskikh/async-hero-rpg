@@ -22,10 +22,10 @@ func _init() -> void:
 		var line := "L%-2d %-18s" % [lvl, Db.LEVELS[lvl - 1]["name"]]
 		for pname in PARTIES:
 			var h: int = floor_lvl[pname]
-			while h <= 40 and _wins(lvl, h, PARTIES[pname]) < NEED:
+			while h <= 60 and _wins(lvl, h, PARTIES[pname]) < NEED:
 				h += 1
 			floor_lvl[pname] = h
-			line += " | %s: %s" % [pname, ("hero %d" % h) if h <= 40 else ">40"]
+			line += " | %s: %s" % [pname, ("hero %d" % h) if h <= 60 else ">60"]
 		print(line)
 	print("done in %d ms" % (Time.get_ticks_msec() - t0))
 	quit()

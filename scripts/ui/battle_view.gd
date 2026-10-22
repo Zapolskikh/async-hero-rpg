@@ -205,11 +205,14 @@ func _sprite_size(u: BattleUnit) -> Vector2:
 ## Spot on the ground where the unit stands (bottom-centre), without animation.
 func _home(u: BattleUnit) -> Vector2:
 	var mid := size.x / 2.0
-	var gap: float = min(125.0 * k(), (mid - 80.0 * k()) / 4.0)
+	var gap := _gap()
 	var depth := u.slot * 6.0 * k()   # backline stands slightly higher -> fake depth
 	if u.side == 0:
 		return Vector2(mid - 85.0 * k() - u.slot * gap, ground_y() - depth)
 	return Vector2(mid + 85.0 * k() + u.slot * gap + (30.0 * k() if u.is_boss else 0.0), ground_y() - depth)
+
+func _gap() -> float:
+	return min(125.0 * k(), (size.x / 2.0 - 80.0 * k()) / 4.0)
 
 func _center(u: BattleUnit) -> Vector2:
 	return _home(u) - Vector2(0, _sprite_size(u).y * 0.5)
@@ -357,7 +360,8 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 	# HP bar and name above the unit
 	var bar := Rect2(Vector2(home.x - 48, r.position.y - 22), Vector2(96, 11))
 	if u.is_boss:
-		bar = Rect2(Vector2(home.x - 80, r.position.y - 22), Vector2(160, 13))
+		var bw: float = min(160.0, _gap() - 10.0)
+		bar = Rect2(Vector2(home.x - bw / 2.0, r.position.y - 22), Vector2(bw, 13))
 	draw_rect(bar.grow(1.5), Color(0, 0, 0, 0.8))
 	draw_rect(Rect2(bar.position, Vector2(bar.size.x * u.hp_frac(), bar.size.y)), UI.GOOD if u.side == 0 else UI.BAD)
 	if u.shield > 0.0:

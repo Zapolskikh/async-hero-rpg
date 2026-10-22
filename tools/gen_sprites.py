@@ -231,11 +231,25 @@ UNITS = {
     "ranged":    {"tunic": "#8a7a3a", "head": "hood", "hood": "#6a5a2a", "weapon": "bow", "skin": SKIN_GREEN},
     "assassin":  {"tunic": "#2c2f3a", "head": "hood", "hood": "#1c1e26", "weapon": "dagger", "eyes_glow": "#ff4040", "cape": "#4a1a24"},
     "poisoner":  {"tunic": "#5a7a2a", "robe": True, "head": "hood", "hood": "#3a5a1a", "weapon": "flask", "skin": SKIN_GREEN},
+    "berserker": {"tunic": "#8a3a2a", "skin": SKIN_GREEN, "head": "hair", "hair": "#c86a2a", "weapon": "axe", "bulky": True, "tusk": True, "belt": True},
+    "golem":     {"tunic": "#6f6a62", "pants": "#5a564f", "skin": (150, 146, 136), "head": "hair", "hair": "#5f5b54", "weapon": "club",
+                  "bulky": True, "belt": False, "eyes_glow": "#7af0ff"},
+    "warlock":   {"tunic": "#3a1f3f", "robe": True, "head": "horns", "hair": "#1a1020", "weapon": "staff", "orb": "#ff4a8a",
+                  "skin": SKIN_GREY, "eyes_glow": "#ff4a8a", "cape": "#5a1f3a"},
+    "priest":    {"tunic": "#d8c8f0", "robe": True, "head": "hood", "hood": "#8a6ac0", "weapon": "staff", "orb": "#fff27a", "skin": SKIN_GREY},
 }
 
 BOSSES = {
     "boss_ogre": ({"tunic": "#8a3a2a", "skin": (150, 140, 90), "head": "crown", "weapon": "club", "bulky": True, "tusk": True, "beard": "#4a2a1a"}, 2),
     "boss_lich": ({"tunic": "#3a2a5a", "robe": True, "skin": BONE, "head": "crown", "weapon": "scythe", "eyes_glow": "#6af0ff", "cape": "#2a1a40"}, 2),
+    "boss_warlord": ({"tunic": "#5a1f1f", "armor": True, "skin": SKIN_GREEN, "head": "helmet", "plume": "#e8ba40", "weapon": "axe",
+                      "bulky": True, "tusk": True, "shield": "#7a2a2a", "cape": "#a02a2a"}, 2),
+    "boss_shadow": ({"tunic": "#141420", "robe": True, "skin": (90, 80, 110), "head": "hood", "hood": "#0c0c14", "weapon": "scythe",
+                     "eyes_glow": "#b04aff", "cape": "#2a0f3a"}, 2),
+    "boss_drake": ({"tunic": "#2f6a3a", "skin": (90, 150, 80), "head": "horns", "hair": "#1f4a2a", "weapon": "staff", "orb": "#ff7a2a",
+                    "bulky": True, "tusk": True, "cape": "#c0502a"}, 2),
+    "boss_archlich": ({"tunic": "#0f3a3a", "robe": True, "skin": BONE, "head": "crown", "weapon": "staff", "orb": "#6af0ff",
+                       "eyes_glow": "#7affb0", "cape": "#1a6a5a"}, 2),
 }
 
 MERC_ROLE_SPRITE = {

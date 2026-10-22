@@ -103,5 +103,30 @@ func _run() -> void:
 	main._switch("spells")
 	await _wait(0.4)
 	await _shot("11_spells")
+	Game.gold += 3000
+	main._open_pack("gold")
+	await _wait(1.4)
+	await _shot("12_pack")
+	UI.clear(main.popup_layer)
+	Game.closed_level = 22
+	main.selected_level = 23
+	main._switch("expedition")
+	await _wait(0.6)
+	await _shot("13_campaign_late")
+	Game.closed_level = 28
+	Game.hero["level"] = 36
+	Game.board = Roster.roll_board(Game.rng, 36)
+	Game.hired = []
+	Game.party_order = ["hero"]
+	for i in 3:
+		Game.hire(Game.board[0]["id"])
+	Game.expedition = Expedition.new()
+	Game.expedition.start(29, "push", Game.party_snapshots(), 3, true)
+	for i in 3:
+		Game.expedition.step_wave_headless()
+	Game.expedition.record_events = true
+	main._open_watch()
+	await _wait(3.0)
+	await _shot("14_two_bosses")
 	print("shots done")
 	get_tree().quit()
