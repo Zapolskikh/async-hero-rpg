@@ -91,7 +91,7 @@ godot --headless --script res://tests/balance_report.gd   # минимальны
 
 ## Веб-сборка
 
-Пресет `Web` в `export_presets.cfg` (без потоков, чтобы работало на GitHub Pages без особых заголовков):
+Пресет `Web` в `export_presets.cfg` (без потоков, чтобы работало на GitHub Pages без особых заголовков). Размер холста на телефонах считает скрипт из `web/head_include.html` (он же вписан в пресет): по видимой области `visualViewport` с учётом выреза и полоски «домой», поэтому после поворота экрана игра не съезжает. При изменении `web/head_include.html` нужно обновить строку `html/head_include` в пресете.
 
 ```
 godot --headless --export-release "Web" build/web/index.html

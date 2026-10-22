@@ -285,8 +285,11 @@ func _select_level(lvl: int) -> void:
 	selected_level = lvl
 	_refresh()
 
+## Skull marks the last level of each chapter (its big boss fight).
 func _is_boss_level(lvl: int) -> bool:
-	return Db.boss_of(lvl) != ""
+	if lvl == Db.level_count():
+		return true
+	return Db.chapter_of(lvl + 1)["from"] == lvl + 1
 
 func _battle_card() -> Control:
 	var c := UI.card(Style.BG_DEEP, 0)

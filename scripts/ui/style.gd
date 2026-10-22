@@ -45,12 +45,29 @@ const FONT_TITLE := 26
 const FONT_HUGE := 34
 
 static var _bold: FontVariation
+static var _symbols: Font
+
+## The default font in web builds has no arrows/stars/triangles; add a small
+## DejaVu subset (assets/fonts/symbols.ttf) as a fallback for every font.
+static func install_fonts() -> void:
+	if _symbols != null:
+		return
+	_symbols = load("res://assets/fonts/symbols.ttf")
+	var base: Font = ThemeDB.fallback_font
+	var fb: Array[Font] = []
+	fb.assign(base.fallbacks)
+	if not fb.has(_symbols):
+		fb.append(_symbols)
+	base.fallbacks = fb
 
 static func bold_font() -> Font:
 	if _bold == null:
+		install_fonts()
 		_bold = FontVariation.new()
 		_bold.base_font = ThemeDB.fallback_font
 		_bold.variation_embolden = 0.75
+		var fb: Array[Font] = [_symbols]
+		_bold.fallbacks = fb
 	return _bold
 
 static func box(color: Color, radius: int = RADIUS, pad: int = PAD) -> StyleBoxFlat:
@@ -96,6 +113,7 @@ static func button_colors(kind: String) -> Array:
 	return [CARD_3, TEXT]
 
 static func make_theme() -> Theme:
+	install_fonts()
 	var th := Theme.new()
 	th.default_font_size = FONT_BODY
 	var b := button_boxes(CARD_3)
