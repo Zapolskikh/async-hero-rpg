@@ -54,7 +54,11 @@ func start(p_level: int, p_mode: String, p_party: Array, p_seed: int, p_first_cl
 func waves() -> Array:
 	return Db.level_waves(level)
 
+## Battle time of the finished waves of the current run (damage meter: DPS per run).
+var run_time_done := 0.0
+
 func _start_run() -> void:
+	run_time_done = 0.0
 	allies.clear()
 	for i in party.size():
 		allies.append(BattleUnit.new(i, 0, i, party[i]))
@@ -65,6 +69,8 @@ func _start_wave() -> void:
 	var snaps := []
 	for eid in waves()[wave_index]:
 		snaps.append(enemy_snapshot(eid, level))
+	if sim != null and wave_index > 0:
+		run_time_done += sim.time
 	sim = BattleSim.new()
 	sim.record_events = record_events
 	sim.setup(allies, snaps, base_seed + run_index * 97 + wave_index * 13)

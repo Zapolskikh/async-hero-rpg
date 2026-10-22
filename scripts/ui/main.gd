@@ -555,7 +555,8 @@ func _update_meter(ex: Expedition) -> void:
 		for u in ex.sim.units:
 			if u.side == 0:
 				allies.append(u)
-	var t: float = max(1.0, ex.sim.time) if ex != null and ex.sim != null else 1.0
+	# one meter per run: allies are created fresh each run (each farm loop) and keep counting across waves
+	var t: float = max(1.0, ex.run_time_done + ex.sim.time) if ex != null and ex.sim != null else 1.0
 	_fill_meter(meter_rows, allies, "dealt", t)
 	_fill_meter(heal_rows, allies, "healed", t)
 
