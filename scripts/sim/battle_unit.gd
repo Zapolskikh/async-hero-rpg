@@ -27,6 +27,7 @@ var crit: float
 
 var spells: Array = []   # [{id, lvl}] in rotation order
 var rot_index := 0
+var cooldowns := {}      # spell id -> seconds left
 
 var attack_cd := 0.0
 var spell_cd := 0.0

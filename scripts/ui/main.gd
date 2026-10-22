@@ -478,6 +478,7 @@ func _screen_hero() -> Control:
 	sv.add_child(UI.stat_row("armor", "Броня", "%d" % st["armor"]))
 	sv.add_child(UI.stat_row("haste", "Скорость", "%d%%" % roundi(st["haste"] * 100)))
 	sv.add_child(UI.stat_row("crit", "Крит", "%d%%" % roundi(st["crit"] * 100)))
+	sv.add_child(UI.stat_row("loop", "Ход ротации", "%.1f с" % SpellInfo.rotation_interval(st["haste"])))
 	sv.add_child(UI.spacer())
 	sv.add_child(UI.label("Опыт %d / %d" % [hero["xp"], Db.xp_to_next(hero["level"])], Style.FONT_TINY, Style.MUTED))
 	sv.add_child(UI.progress(hero["xp"], Db.xp_to_next(hero["level"]), Style.SECONDARY, 12))
@@ -570,7 +571,10 @@ func _rotation_slot(i: int, sid: String) -> Control:
 	num.position = Vector2(-8, -8)
 	t.add_child(num)
 	v.add_child(t)
-	var name := "Пусто" if sid == "" else "%s %s" % [Db.SPELLS[sid]["name"], UI.roman(max(1, Roster.spell_best_level(Game.collection, sid)))]
+	var name := "Пусто"
+	if sid != "":
+		var lv: int = max(1, Roster.spell_best_level(Game.collection, sid))
+		name = "%s %s\n%s" % [Db.SPELLS[sid]["name"], UI.roman(lv), SpellInfo.short(sid, lv, Game.hero_snapshot()["stats"]["power"])]
 	var l := UI.wrap(name, Style.FONT_TINY, Style.TEXT, true)
 	l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	v.add_child(l)
@@ -617,46 +621,6 @@ func _rot_remove(i: int) -> void:
 	rot.remove_at(i)
 	Game.set_rotation(rot)
 
-func _spell_popup(sid: String) -> void:
-	var d: Dictionary = Db.SPELLS[sid]
-	var lvl := Roster.spell_best_level(Game.collection, sid)
-	var body := UI.vbox(10)
-	var top := UI.hbox(14)
-	top.add_child(UI.tile(UI.spell_icon(sid), Style.RARITY[d["rarity"]], 88, lvl == 0))
-	var tv := UI.vbox(6)
-	var chips := UI.hbox(6)
-	chips.add_child(UI.chip(Db.RARITY_NAMES[d["rarity"]], Style.RARITY[d["rarity"]]))
-	if lvl > 0:
-		chips.add_child(UI.chip("Уровень " + UI.roman(lvl), Style.CARD_3))
-	tv.add_child(chips)
-	tv.add_child(UI.wrap(d["desc"], Style.FONT_BODY, Style.TEXT))
-	if d.get("cast", 0.0) > 0.0:
-		tv.add_child(UI.label("Каст %.1f с" % d["cast"], Style.FONT_SMALL, Style.MUTED))
-	top.add_child(UI.expand(tv))
-	body.add_child(top)
-	if lvl > 0:
-		var copies := int(Game.collection.get(sid, {}).get(str(lvl), 0))
-		var ph := UI.hbox(8)
-		ph.add_child(UI.label("Копии %s: %d / %d" % [UI.roman(lvl), copies, Game.FUSE_COUNT], Style.FONT_SMALL, Style.MUTED))
-		ph.add_child(UI.expand(UI.progress(copies, Game.FUSE_COUNT, Style.SECONDARY, 12)))
-		body.add_child(ph)
-	var buttons := []
-	var rot: Array = Game.hero["rotation"]
-	var idx := rot.find(sid)
-	if lvl == 0:
-		body.add_child(UI.label("Ещё не открыта. Выпадает из Spell Box.", Style.FONT_SMALL, Style.MUTED))
-	elif idx >= 0:
-		buttons.append(["◀ Раньше", _rot_move.bind(idx, -1), "ghost", idx > 0])
-		buttons.append(["Позже ▶", _rot_move.bind(idx, 1), "ghost", idx < rot.size() - 1])
-		buttons.append(["Убрать", _rot_remove.bind(idx), "danger", true])
-	elif rot.size() < 3:
-		buttons.append(["В ротацию", _rot_set.bind(rot.size(), sid), "primary", true])
-	else:
-		body.add_child(UI.label("Ротация заполнена. Поставить вместо:", Style.FONT_SMALL, Style.MUTED))
-		for i in rot.size():
-			buttons.append(["%d. %s" % [i + 1, Db.SPELLS[rot[i]]["name"]], _rot_set.bind(i, sid), "secondary", true])
-	_modal(d["name"], body, buttons)
-
 func _gear_popup(slot: String) -> void:
 	var it = Game.hero["equipped"][slot]
 	if it == null:
@@ -665,6 +629,86 @@ func _gear_popup(slot: String) -> void:
 		return
 	_modal(UI.item_title(it), _item_details(it, false), [["Снять", Game.unequip.bind(slot), "danger", true]])
 
+func _spell_popup(sid: String, caster: Dictionary = {}) -> void:
+	var d: Dictionary = Db.SPELLS[sid]
+	var own := caster.is_empty()
+	var snap: Dictionary = Game.hero_snapshot() if own else caster
+	var lvl := 0
+	if own:
+		lvl = Roster.spell_best_level(Game.collection, sid)
+	else:
+		for sp in caster["spells"]:
+			if sp["id"] == sid:
+				lvl = int(sp["lvl"])
+	var shown_lvl: int = max(1, lvl)
+	var power: float = snap["stats"]["power"]
+	var body := UI.vbox(10)
+	var top := UI.hbox(14)
+	top.add_child(UI.tile(UI.spell_icon(sid), Style.RARITY[d["rarity"]], 88, lvl == 0))
+	var tv := UI.vbox(6)
+	var chips := UI.hbox(6)
+	chips.add_child(UI.chip(Db.RARITY_NAMES[d["rarity"]], Style.RARITY[d["rarity"]]))
+	chips.add_child(UI.chip("Уровень " + UI.roman(shown_lvl), Style.CARD_3))
+	tv.add_child(chips)
+	tv.add_child(UI.wrap(d["desc"], Style.FONT_SMALL, Style.MUTED))
+	top.add_child(UI.expand(tv))
+	body.add_child(top)
+	body.add_child(_spell_numbers(sid, shown_lvl, snap))
+	if own and lvl > 0:
+		var copies := int(Game.collection.get(sid, {}).get(str(lvl), 0))
+		var ph := UI.hbox(8)
+		ph.add_child(UI.label("Копии %s: %d / %d" % [UI.roman(lvl), copies, Game.FUSE_COUNT], Style.FONT_SMALL, Style.MUTED))
+		ph.add_child(UI.expand(UI.progress(copies, Game.FUSE_COUNT, Style.SECONDARY, 12)))
+		ph.add_child(UI.label("%s: %s" % [UI.roman(lvl + 1), SpellInfo.short(sid, lvl + 1, power)], Style.FONT_SMALL, Style.TEXT, true))
+		body.add_child(ph)
+	var buttons := []
+	if own:
+		var rot: Array = Game.hero["rotation"]
+		var idx := rot.find(sid)
+		if lvl == 0:
+			body.add_child(UI.label("Ещё не открыта. Выпадает из Spell Box.", Style.FONT_SMALL, Style.MUTED))
+		elif idx >= 0:
+			buttons.append(["◀ Раньше", _rot_move.bind(idx, -1), "ghost", idx > 0])
+			buttons.append(["Позже ▶", _rot_move.bind(idx, 1), "ghost", idx < rot.size() - 1])
+			buttons.append(["Убрать", _rot_remove.bind(idx), "danger", true])
+		elif rot.size() < 3:
+			buttons.append(["В ротацию", _rot_set.bind(rot.size(), sid), "primary", true])
+		else:
+			body.add_child(UI.label("Ротация заполнена. Поставить вместо:", Style.FONT_SMALL, Style.MUTED))
+			for i in rot.size():
+				buttons.append(["%d. %s" % [i + 1, Db.SPELLS[rot[i]]["name"]], _rot_set.bind(i, sid), "secondary", true])
+	var title_text: String = d["name"] if own else "%s — %s" % [d["name"], caster["name"]]
+	_modal(title_text, body, buttons)
+
+## Numbers block: effect, cast, cooldown, rotation interval for this caster.
+func _spell_numbers(sid: String, lvl: int, snap: Dictionary) -> Control:
+	var st: Dictionary = snap["stats"]
+	var box := UI.flat(Style.BG_DEEP, 12)
+	var v := UI.vbox(8)
+	box.add_child(v)
+	for line in SpellInfo.effects(sid, lvl, st["power"]):
+		var h := UI.hbox(8)
+		h.add_child(UI.icon(line[0], 24))
+		h.add_child(UI.expand(UI.label(line[1], Style.FONT_BODY, Style.TEXT, true)))
+		v.add_child(h)
+	var th := UI.hbox(16)
+	for line in SpellInfo.timing(sid):
+		var h := UI.hbox(6)
+		h.add_child(UI.icon(line[0], 20))
+		h.add_child(UI.label(line[1], Style.FONT_SMALL, Style.TEXT))
+		th.add_child(h)
+	v.add_child(th)
+	var note := "Сила заклинаний %d · ход ротации каждые %.1f с" % [st["power"], SpellInfo.rotation_interval(st.get("haste", 0.0))]
+	if Db.SPELLS[sid]["kind"] in ["damage", "aoe_damage", "execute", "interrupt", "stun", "drain"]:
+		note += " · урон до брони, без крита"
+	elif Db.SPELLS[sid]["kind"] in ["heal", "hot_all", "cleanse"]:
+		note += " · без крита"
+	v.add_child(UI.wrap(note, Style.FONT_TINY, Style.MUTED))
+	return box
+
+func _item_popup(it: Dictionary) -> void:
+	_modal(UI.item_title(it), _item_details(it, false))
+
 # =====================================================================
 # Screen: Mercenaries
 # =====================================================================
@@ -672,9 +716,21 @@ func _gear_popup(slot: String) -> void:
 func _screen_mercs() -> Control:
 	var v := UI.vbox(12)
 	v.add_child(_party_editor())
+	var head := UI.hbox(10)
+	var hv := UI.vbox(0)
+	hv.add_child(UI.title("Доска гильдии", 22))
+	hv.add_child(UI.label("Обновляется бесплатно после каждого нового пройденного уровня", Style.FONT_TINY, Style.MUTED))
+	head.add_child(UI.expand(hv))
+	var cost := Game.reroll_cost()
+	var rr := UI.btn("Новые кандидаты  %d" % cost, _reroll, "secondary", Style.FONT_SMALL, "gold", 0, 50)
+	rr.disabled = Game.gold < cost
+	head.add_child(rr)
+	v.add_child(head)
 	var g := UI.grid(3, 12)
 	for m in Game.board:
 		g.add_child(_merc_card(m))
+	if Game.board.is_empty():
+		v.add_child(UI.wrap("На доске никого не осталось. Обновите её или пройдите новый уровень.", Style.FONT_BODY))
 	v.add_child(UI.scroll(g))
 	return v
 
@@ -683,15 +739,19 @@ func _party_editor() -> Control:
 	var h := UI.hbox(10)
 	c.add_child(h)
 	var tv := UI.vbox(2)
-	tv.add_child(UI.title("Группа", 22))
+	tv.add_child(UI.title("Ваша группа", 22))
 	tv.add_child(UI.label("тыл ← → перед", Style.FONT_TINY, Style.MUTED))
+	tv.add_child(UI.label("%d / %d наёмника" % [Game.hired.size(), Game.MAX_HIRED], Style.FONT_TINY, Style.MUTED))
 	h.add_child(tv)
 	var order: Array = Game.party_order
 	for i in range(3, -1, -1):
 		if i >= order.size():
 			var empty := UI.flat(Style.CARD_2, 8)
 			empty.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-			empty.add_child(UI.label("Свободно", Style.FONT_SMALL, Style.MUTED))
+			empty.custom_minimum_size.y = 68
+			var el := UI.label("Свободно — наймите с доски", Style.FONT_SMALL, Style.MUTED)
+			el.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
+			empty.add_child(el)
 			h.add_child(empty)
 			continue
 		var id: String = order[i]
@@ -703,41 +763,54 @@ func _party_editor() -> Control:
 		slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var sh := UI.hbox(6)
 		slot.add_child(sh)
-		sh.add_child(UI.avatar(snap["sprite"], Style.ROLE_COLORS.get(snap["role"], Style.CARD_3), 52))
+		var av := UI.avatar(snap["sprite"], Style.ROLE_COLORS.get(snap["role"], Style.CARD_3), 56)
+		sh.add_child(av)
+		if id != "hero":
+			UI.tap_overlay(av, _merc_popup.bind(snap))
 		var sv := UI.vbox(0)
 		var nl := UI.label(snap["name"], Style.FONT_SMALL, Style.PRIMARY if id == "hero" else Style.TEXT, true)
 		nl.clip_text = true
 		sv.add_child(nl)
-		sv.add_child(UI.label(snap["role"], Style.FONT_TINY, Style.MUTED))
+		sv.add_child(UI.label("%s · ур. %d" % [snap["role"], snap["level"]], Style.FONT_TINY, Style.MUTED))
+		var pw := UI.label("★ %d" % Roster.power_score(snap), Style.FONT_TINY, Style.PRIMARY, true)
+		if id != "hero" and int(snap["level"]) < Game.hero["level"] - 2:
+			pw.text += "  устарел"
+			pw.add_theme_color_override("font_color", Style.DANGER)
+		sv.add_child(pw)
 		sh.add_child(UI.expand(sv))
-		var back := UI.btn("◀", Game.move_in_party.bind(i, 1), "ghost", 16, "", 40, 40)
+		var arrows := UI.vbox(4)
+		var back := UI.btn("◀", Game.move_in_party.bind(i, 1), "ghost", 14, "", 34, 30)
 		back.disabled = i >= order.size() - 1
-		var fwd := UI.btn("▶", Game.move_in_party.bind(i, -1), "ghost", 16, "", 40, 40)
+		var fwd := UI.btn("▶", Game.move_in_party.bind(i, -1), "ghost", 14, "", 34, 30)
 		fwd.disabled = i == 0
-		sh.add_child(back)
-		sh.add_child(fwd)
+		arrows.add_child(back)
+		arrows.add_child(fwd)
+		sh.add_child(arrows)
 		h.add_child(slot)
-	var cost := Game.reroll_cost()
-	var rr := UI.btn("Обновить %d" % cost, _reroll, "secondary", Style.FONT_SMALL, "gold", 0, 52)
-	rr.disabled = Game.gold < cost
-	h.add_child(rr)
 	return c
 
 func _reroll() -> void:
 	if Game.reroll_board():
-		_toast("Доска обновлена")
+		_toast("На доске 6 новых кандидатов")
 	else:
 		_toast("Не хватает золота")
 
 func _merc_card(m: Dictionary) -> Control:
-	Roster.ensure_visuals(m)
-	var hired: bool = Game.party_order.has(m["id"])
-	var c := UI.card(Style.CARD if not hired else Color("#2b4a3d"), 12)
+	Roster.ensure_merc(m)
+	var c := UI.card(Style.CARD, 12)
 	c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var h := UI.hbox(12)
 	c.add_child(h)
 	var role_col: Color = Style.ROLE_COLORS.get(m["role"], Style.CARD_3)
-	h.add_child(UI.avatar(m["sprite"], role_col, 104))
+	var left := UI.vbox(6)
+	var av := UI.avatar(m["sprite"], role_col, 100)
+	left.add_child(av)
+	UI.tap_overlay(av, _merc_popup.bind(m))
+	var gear_row := UI.hbox(4)
+	for slot in Loot.SLOTS:
+		gear_row.add_child(_small_gear_tile(m["gear"].get(slot), slot, 30))
+	left.add_child(gear_row)
+	h.add_child(left)
 	var v := UI.vbox(6)
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	h.add_child(v)
@@ -747,20 +820,113 @@ func _merc_card(m: Dictionary) -> Control:
 	v.add_child(top)
 	var chips := UI.hbox(6)
 	chips.add_child(UI.chip(m["role"], role_col, 13))
-	chips.add_child(UI.chip("NPC", Style.CARD_3, 13))
-	chips.add_child(UI.pill("star", str(Roster.power_score(m)), 15, Style.BG_DEEP))
+	chips.add_child(_tier_chip(m))
 	v.add_child(chips)
-	var sp := UI.hbox(6)
+	var sp := UI.hbox(5)
 	for s in m["spells"]:
-		var sid: String = s["id"]
-		var t := UI.tile(UI.spell_icon(sid), Style.RARITY[Db.SPELLS[sid]["rarity"]], 40)
-		UI.tap_overlay(t, _toast.bind("%s %s — %s" % [Db.SPELLS[sid]["name"], UI.roman(s["lvl"]), Db.SPELLS[sid]["desc"]]))
+		var t := UI.tile(UI.spell_icon(s["id"]), Style.RARITY[Db.SPELLS[s["id"]]["rarity"]], 44)
+		UI.tap_overlay(t, _spell_popup.bind(s["id"], m))
 		sp.add_child(t)
+	sp.add_child(UI.spacer())
+	sp.add_child(UI.pill("star", str(Roster.power_score(m)), 15, Style.BG_DEEP))
 	v.add_child(sp)
-	var b := UI.btn("Уволить" if hired else "Нанять", Game.toggle_hire.bind(m["id"]), "danger" if hired else "success", Style.FONT_SMALL, "", 0, 46)
-	b.disabled = not hired and Game.party_order.size() >= 4
+	var b: Button
+	if Game.hired.size() < Game.MAX_HIRED:
+		b = UI.btn("Нанять", _hire.bind(m["id"]), "success", Style.FONT_SMALL, "", 0, 44)
+	else:
+		b = UI.btn("Заменить…", _replace_popup.bind(m), "secondary", Style.FONT_SMALL, "", 0, 44)
 	v.add_child(b)
 	return c
+
+func _tier_chip(m: Dictionary) -> Control:
+	var t := int(m.get("tier", 1))
+	var ch := UI.chip(Roster.TIERS[t]["name"], Style.TIER_COLORS[t], 13, Style.TIER_TEXT[t])
+	ch.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	return ch
+
+func _small_gear_tile(it, slot: String, size_px: float) -> Control:
+	if it == null:
+		return UI.tile("item_" + slot, Style.CARD_3, size_px, true)
+	var t := UI.tile(UI.item_icon(it), Style.RARITY[it["rarity"]], size_px)
+	UI.tap_overlay(t, _item_popup.bind(it))
+	return t
+
+func _hire(id: String) -> void:
+	if Game.hire(id):
+		_toast("Наёмник в группе")
+
+func _replace_popup(m: Dictionary) -> void:
+	var body := UI.wrap("Группа заполнена. Кого заменить на %s (%s, ★ %d)? Уволенный уйдёт насовсем." % [
+		m["name"], m["role"], Roster.power_score(m)], Style.FONT_BODY, Style.TEXT)
+	var buttons := []
+	for h in Game.hired:
+		buttons.append(["%s · %s ★%d" % [h["name"], h["role"], Roster.power_score(h)], _do_replace.bind(h["id"], m["id"]), "secondary", true])
+	_modal("Заменить наёмника", body, buttons, "Отмена")
+
+func _do_replace(old_id: String, new_id: String) -> void:
+	if Game.replace_hired(old_id, new_id):
+		_toast("Состав обновлён")
+
+func _merc_popup(m: Dictionary) -> void:
+	Roster.ensure_merc(m)
+	var hired := Game.is_hired(m["id"])
+	var st: Dictionary = m["stats"]
+	var body := UI.vbox(12)
+	var top := UI.hbox(14)
+	top.add_child(UI.avatar(m["sprite"], Style.ROLE_COLORS.get(m["role"], Style.CARD_3), 110))
+	var tv := UI.vbox(6)
+	var chips := UI.hbox(6)
+	chips.add_child(UI.chip(m["role"], Style.ROLE_COLORS.get(m["role"], Style.CARD_3), 14))
+	chips.add_child(_tier_chip(m))
+	chips.add_child(UI.chip("ур. %d" % m["level"], Style.CARD_3, 14))
+	chips.add_child(UI.chip("NPC гильдии", Style.CARD_3, 14))
+	tv.add_child(chips)
+	tv.add_child(UI.pill("star", "Сила %d" % Roster.power_score(m), 22, Style.BG_DEEP))
+	top.add_child(UI.expand(tv))
+	body.add_child(top)
+	var stats := UI.grid(3, 8)
+	for row in [["hp", "HP", "%d" % st["hp"]], ["atk", "Атака", "%d" % st["atk"]], ["power", "Магия", "%d" % st["power"]],
+			["armor", "Броня", "%d" % st["armor"]], ["haste", "Скорость", "%d%%" % roundi(st.get("haste", 0.0) * 100)],
+			["crit", "Крит", "%d%%" % roundi(st.get("crit", 0.0) * 100)]]:
+		var r := UI.stat_row(row[0], row[1], row[2])
+		r.custom_minimum_size.x = 170
+		stats.add_child(r)
+	body.add_child(stats)
+	body.add_child(UI.label("Снаряжение", Style.FONT_SMALL, Style.MUTED, true))
+	var gear := UI.hbox(10)
+	for slot in Loot.SLOTS:
+		var it = m["gear"].get(slot)
+		var gv := UI.hbox(6)
+		gv.add_child(_small_gear_tile(it, slot, 48))
+		var gl := UI.vbox(0)
+		gl.add_child(UI.label(Loot.SLOT_NAMES[slot], Style.FONT_TINY, Style.MUTED))
+		gl.add_child(UI.label(UI.item_title(it) if it != null else "пусто", Style.FONT_TINY,
+			Style.RARITY[it["rarity"]] if it != null else Style.MUTED, true))
+		gv.add_child(gl)
+		gear.add_child(UI.expand(gv))
+	body.add_child(gear)
+	body.add_child(UI.label("Ротация", Style.FONT_SMALL, Style.MUTED, true))
+	var rot := UI.hbox(10)
+	for i in m["spells"].size():
+		var s: Dictionary = m["spells"][i]
+		var sv := UI.hbox(6)
+		var t := UI.tile(UI.spell_icon(s["id"]), Style.RARITY[Db.SPELLS[s["id"]]["rarity"]], 48)
+		UI.tap_overlay(t, _spell_popup.bind(s["id"], m))
+		sv.add_child(t)
+		var sl := UI.vbox(0)
+		sl.add_child(UI.label("%d. %s %s" % [i + 1, Db.SPELLS[s["id"]]["name"], UI.roman(s["lvl"])], Style.FONT_TINY, Style.TEXT, true))
+		sl.add_child(UI.label(SpellInfo.short(s["id"], s["lvl"], st["power"]), Style.FONT_TINY, Style.MUTED))
+		sv.add_child(sl)
+		rot.add_child(UI.expand(sv))
+	body.add_child(rot)
+	var buttons := []
+	if hired:
+		buttons.append(["Уволить", Game.fire.bind(m["id"]), "danger", true])
+	elif Game.hired.size() < Game.MAX_HIRED:
+		buttons.append(["Нанять", _hire.bind(m["id"]), "success", true])
+	else:
+		buttons.append(["Заменить…", _replace_popup.bind(m), "secondary", true])
+	_modal(m["name"], body, buttons)
 
 # =====================================================================
 # Screen: Spells (boxes + collection)
@@ -810,6 +976,10 @@ func _spell_card(sid: String) -> Control:
 	name.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	name.clip_text = true
 	v.add_child(name)
+	var num := UI.label(SpellInfo.short(sid, max(1, lvl), Game.hero_snapshot()["stats"]["power"]) +
+		(("  · кд %.0f с" % d["cd"]) if d.get("cd", 0.0) > 0.0 else ""), Style.FONT_TINY, Style.TEXT if lvl > 0 else Style.MUTED)
+	num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	v.add_child(num)
 	if lvl == 0:
 		var l := UI.label("Не открыто", Style.FONT_TINY, Style.MUTED)
 		l.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
@@ -1044,6 +1214,8 @@ func _show_rewards(r: Dictionary, title_text: String) -> void:
 	v.add_child(pills)
 	if r.get("level_ups", 0) > 0:
 		v.add_child(UI.chip("Новый уровень героя: %d" % Game.hero["level"], Style.SECONDARY, Style.FONT_SMALL))
+	if r.get("board_refreshed", false):
+		v.add_child(UI.chip("Гильдия прислала 6 новых наёмников", Style.CARD_3, Style.FONT_SMALL))
 	if r.get("won", 0) + r.get("lost", 0) > 1:
 		v.add_child(UI.label("Забегов: побед %d, поражений %d, убито %d" % [r["won"], r["lost"], r["kills"]], Style.FONT_SMALL, Style.MUTED))
 	var items: Array = r["items"]

@@ -11,7 +11,9 @@ const SAVE_VERSION := 1
 const OFFLINE_CAP := 12.0 * 3600.0
 const AUTOSAVE_EVERY := 10.0
 const BOX_PRICE := 150
-const REROLL_BASE := 30
+const REROLL_BASE := 20
+const REROLL_GROWTH := 1.5       # each reroll today costs x1.5 more
+const MAX_HIRED := 3
 const FUSE_COUNT := 5
 
 var gold := 0
@@ -20,7 +22,8 @@ var closed_level := 0            # highest fully cleared campaign level
 var hero := {}
 var collection := {}             # spell_id -> {"1": copies, "2": copies, ...}
 var inventory: Array = []        # gear not equipped
-var board: Array = []            # mercenary board candidates
+var board: Array = []            # guild board: up to 6 candidates, never includes hired ones
+var hired: Array = []            # your 3 mercenaries, kept separately from the board
 var party_order: Array = []      # 4 entries: "hero" or merc id, slot order
 var rerolls_today := 0
 var reroll_day := ""
@@ -72,27 +75,35 @@ func new_game() -> void:
 	for sid in Db.STARTER_SPELLS:
 		collection[sid] = {"1": 1}
 	inventory = []
+	hired = []
 	board = Roster.roll_board(rng, hero["level"])
 	_auto_party()
+	board = Roster.roll_board(rng, hero["level"])
 	expedition = null
 	save_game()
 	changed.emit()
 
 func _auto_party() -> void:
-	party_order = ["hero"]
-	var want := ["Танк", "Лекарь"]
-	for role in want:
+	# starter group: tank + healer + one more, from the first board
+	var picks := []
+	for role in ["Танк", "Лекарь"]:
 		for m in board:
-			if m["role"] == role and not party_order.has(m["id"]):
-				party_order.append(m["id"])
+			if m["role"] == role and not picks.has(m):
+				picks.append(m)
 				break
 	for m in board:
-		if party_order.size() >= 4:
+		if picks.size() >= MAX_HIRED:
 			break
-		if not party_order.has(m["id"]):
-			party_order.append(m["id"])
-	# tank in front, hero second
-	party_order = [party_order[1], "hero", party_order[3], party_order[2]]
+		if not picks.has(m) and not m["role"] in ["Танк", "Лекарь"]:
+			picks.append(m)
+	for m in board:
+		if picks.size() >= MAX_HIRED:
+			break
+		if not picks.has(m):
+			picks.append(m)
+	hired = picks
+	# tank in front, hero second, then the others
+	party_order = [picks[0]["id"], "hero", picks[2]["id"], picks[1]["id"]]
 
 # ---------------- hero / party ----------------
 
@@ -100,10 +111,19 @@ func hero_snapshot() -> Dictionary:
 	return Roster.hero_snapshot(hero, collection)
 
 func merc_by_id(id: String):
+	for m in hired:
+		if m["id"] == id:
+			return m
 	for m in board:
 		if m["id"] == id:
 			return m
 	return null
+
+func is_hired(id: String) -> bool:
+	for m in hired:
+		if m["id"] == id:
+			return true
+	return false
 
 func party_snapshots() -> Array:
 	var out := []
@@ -119,12 +139,44 @@ func party_snapshots() -> Array:
 func party_ready() -> bool:
 	return party_snapshots().size() == 4
 
-func toggle_hire(id: String) -> void:
-	if party_order.has(id):
-		party_order.erase(id)
-	elif party_order.size() < 4:
-		party_order.append(id)
+## Takes a candidate from the board into the group (goes to the backline).
+func hire(id: String) -> bool:
+	if hired.size() >= MAX_HIRED:
+		return false
+	for m in board:
+		if m["id"] == id:
+			board.erase(m)
+			hired.append(m)
+			party_order.append(id)
+			changed.emit()
+			return true
+	return false
+
+## Dismissed mercenaries leave for good; they do not return to the board.
+func fire(id: String) -> void:
+	for m in hired:
+		if m["id"] == id:
+			hired.erase(m)
+			party_order.erase(id)
+			changed.emit()
+			return
+
+## Board candidate takes the place (and party position) of a hired one.
+func replace_hired(old_id: String, new_id: String) -> bool:
+	var newcomer = null
+	for m in board:
+		if m["id"] == new_id:
+			newcomer = m
+	if newcomer == null or not is_hired(old_id):
+		return false
+	board.erase(newcomer)
+	for i in hired.size():
+		if hired[i]["id"] == old_id:
+			hired[i] = newcomer
+	var pos := party_order.find(old_id)
+	party_order[pos] = new_id
 	changed.emit()
+	return true
 
 func move_in_party(index: int, dir: int) -> void:
 	var j := index + dir
@@ -137,19 +189,16 @@ func move_in_party(index: int, dir: int) -> void:
 
 func reroll_cost() -> int:
 	_check_day()
-	return int(REROLL_BASE * pow(2.0, rerolls_today))
+	return int(round(REROLL_BASE * pow(REROLL_GROWTH, rerolls_today) / 5.0) * 5)
 
+## Replaces all 6 board candidates. Your hired group is not touched.
 func reroll_board() -> bool:
 	var cost := reroll_cost()
 	if gold < cost:
 		return false
 	gold -= cost
 	rerolls_today += 1
-	var keep := []
-	for id in party_order:
-		if id != "hero":
-			keep.append(merc_by_id(id))
-	board = keep + Roster.roll_board(rng, hero["level"]).slice(0, 6 - keep.size())
+	board = Roster.roll_board(rng, hero["level"])
 	changed.emit()
 	return true
 
@@ -293,14 +342,18 @@ func _apply_rewards(r: Dictionary) -> void:
 	gold += r["gold"]
 	boxes += r["boxes"]
 	r["level_ups"] = add_xp(r["xp"])
-	if r["level_ups"] > 0:
+	for it in r["items"]:
+		inventory.append(it)
+	r["board_refreshed"] = false
+	if r["closed"] and r["level"] > closed_level:
+		closed_level = r["level"]
+		# a new level is cleared: the guild sends a fresh board (free)
+		board = Roster.roll_board(rng, hero["level"])
+		r["board_refreshed"] = true
+	elif r["level_ups"] > 0:
 		for i in board.size():
 			if int(board[i]["level"]) < hero["level"] - 1:
 				board[i] = Roster.relevel(rng, board[i], hero["level"])
-	for it in r["items"]:
-		inventory.append(it)
-	if r["closed"] and r["level"] > closed_level:
-		closed_level = r["level"]
 
 func _finish_push() -> void:
 	var ex := expedition
@@ -325,7 +378,7 @@ func save_game() -> void:
 		"v": SAVE_VERSION, "time": Time.get_unix_time_from_system(),
 		"gold": gold, "boxes": boxes, "closed_level": closed_level,
 		"hero": hero, "collection": collection, "inventory": inventory,
-		"board": board, "party_order": party_order,
+		"board": board, "hired": hired, "party_order": party_order,
 		"rerolls_today": rerolls_today, "reroll_day": reroll_day, "free_box_day": free_box_day,
 		"expedition": _expedition_to_dict(),
 	}
@@ -352,6 +405,15 @@ func load_game() -> bool:
 	inventory = data["inventory"]
 	board = data["board"]
 	party_order = data["party_order"]
+	if data.has("hired"):
+		hired = data["hired"]
+	else:
+		# older saves kept the group inside the board
+		hired = []
+		for m in board:
+			if party_order.has(m["id"]):
+				hired.append(m)
+		board = []
 	rerolls_today = int(data.get("rerolls_today", 0))
 	reroll_day = data.get("reroll_day", "")
 	free_box_day = data.get("free_box_day", "")
@@ -371,11 +433,10 @@ func _fix_ints() -> void:
 		if it != null:
 			it["rarity"] = int(it["rarity"])
 			it["ilvl"] = int(it["ilvl"])
-	for m in board:
-		Roster.ensure_visuals(m)
-		m["level"] = int(m["level"])
-		for s in m["spells"]:
-			s["lvl"] = int(s["lvl"])
+	for m in board + hired:
+		Roster.ensure_merc(m)
+	if board.is_empty():
+		board = Roster.roll_board(rng, hero["level"])
 
 func _expedition_to_dict():
 	if expedition == null or expedition.finished:
@@ -393,9 +454,12 @@ func _expedition_to_dict():
 func _expedition_from_dict(d: Dictionary, away: float) -> void:
 	var party: Array = d["party"]
 	for p in party:
-		Roster.ensure_visuals(p)
-		for s in p["spells"]:
-			s["lvl"] = int(s["lvl"])
+		if p.get("npc", false):
+			Roster.ensure_merc(p)
+		else:
+			Roster.ensure_visuals(p)
+			for s in p["spells"]:
+				s["lvl"] = int(s["lvl"])
 	expedition = Expedition.new()
 	expedition.start(int(d["level"]), d["mode"], party, int(d["seed"]), d["first"])
 	expedition.gold = int(d["gold"])

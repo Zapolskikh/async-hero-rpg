@@ -17,6 +17,9 @@ func _init() -> void:
 	test_interrupt_and_execute()
 	test_push_wipe_gives_partial()
 	test_farm_fast_forward()
+	test_cooldown()
+	test_merc_tiers()
+	test_board_and_group()
 	print("FAILURES: %d" % failures)
 	quit(1 if failures > 0 else 0)
 
@@ -27,7 +30,7 @@ func party(level: int, templates: Array, seed_value: int = 1) -> Array:
 		"equipped": {"weapon": null, "armor": null, "trinket": null}}
 	var p := [Roster.hero_snapshot(hero, {})]
 	for t in templates:
-		p.append(Roster.make_merc(rng, t, level))
+		p.append(Roster.make_merc(rng, t, level, 1))
 	return p
 
 func run_push(lvl: int, p: Array, seed_value: int) -> Expedition:
@@ -103,3 +106,54 @@ func test_farm_fast_forward() -> void:
 	check(res["extrapolated"] > 0.0, "long farm is extrapolated (simulated %d s)" % int(res["simulated"]))
 	check(ex.runs_won > 50, "many farm runs credited (%d)" % ex.runs_won)
 	check(not ex.finished, "farm keeps running")
+
+func test_cooldown() -> void:
+	print("cooldown")
+	# Barrier has a cooldown: with a single-spell rotation it must not be used every step.
+	var sim := BattleSim.new()
+	var hero := BattleUnit.new(0, 0, 0, {"name": "H", "stats": {"hp": 100000, "atk": 0, "power": 10, "armor": 0},
+		"spells": [{"id": "barrier", "lvl": 1}]})
+	var dummy := {"name": "D", "stats": {"hp": 100000, "atk": 50, "power": 0, "armor": 0}, "spells": []}
+	sim.setup([hero], [dummy], 1)
+	var times := []
+	for i in 300:
+		sim.step()
+		for e in sim.events:
+			if e["t"] == "spell" and e["uid"] == 0:
+				times.append(sim.time)
+		sim.events.clear()
+	var min_gap := 999.0
+	for i in range(1, times.size()):
+		min_gap = min(min_gap, times[i] - times[i - 1])
+	check(times.size() >= 2 and min_gap >= Db.SPELLS["barrier"]["cd"] - 0.01,
+		"barrier respects %.0f s cooldown (min gap %.1f s)" % [Db.SPELLS["barrier"]["cd"], min_gap])
+
+func test_merc_tiers() -> void:
+	print("mercenary tiers")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 7
+	var weak := []
+	var elite := []
+	for i in 20:
+		weak.append(Roster.power_score(Roster.make_merc(rng, 3, 10, 0)))
+		elite.append(Roster.power_score(Roster.make_merc(rng, 3, 10, 3)))
+	var w := 0.0
+	var e := 0.0
+	for x in weak:
+		w += x
+	for x in elite:
+		e += x
+	w /= weak.size()
+	e /= elite.size()
+	check(e > w * 1.25, "elite mercs are much stronger than weak ones at the same level (%d vs %d)" % [e, w])
+	var m := Roster.make_merc(rng, 0, 5, 2)
+	var gear_items := 0
+	for slot in m["gear"]:
+		if m["gear"][slot] != null:
+			gear_items += 1
+	check(gear_items == 3 and m["stats"]["hp"] > m["base_stats"]["hp"] - 0.1, "strong merc has full gear that adds stats")
+
+func test_board_and_group() -> void:
+	print("board and group")
+	var info := SpellInfo.effects("ignite", 1, 20)
+	check(info.size() > 0 and "в сек" in info[0][1], "spell info gives numbers (%s)" % info[0][1])

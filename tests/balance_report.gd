@@ -39,7 +39,7 @@ func _wins(lvl: int, hero_lvl: int, merc_templates: Array) -> int:
 			"equipped": {"weapon": null, "armor": null, "trinket": null}}
 		var party := [Roster.hero_snapshot(hero, {})]
 		for t in merc_templates:
-			party.append(Roster.make_merc(rng, t, hero_lvl))
+			party.append(Roster.make_merc(rng, t, hero_lvl, 1))  # normal tier
 		var ex := Expedition.new()
 		ex.record_events = false
 		ex.start(lvl, "push", party, 77 + i, true)

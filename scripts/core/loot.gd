@@ -21,7 +21,7 @@ const STAT_PER_ILVL := {"hp": 28.0, "atk": 2.6, "power": 2.6, "armor": 3.0}
 const FLAT_STATS := {"haste": 0.05, "crit": 0.04}  # do not scale with ilvl
 
 ## rarity_bonus shifts the roll towards better rarities (bosses, first clears).
-static func roll_gear(rng: RandomNumberGenerator, ilvl: int, rarity_bonus: float = 0.0) -> Dictionary:
+static func roll_gear(rng: RandomNumberGenerator, ilvl: int, rarity_bonus: float = 0.0, force_slot: String = "") -> Dictionary:
 	var r := rng.randf() + rarity_bonus
 	var rarity := 0
 	if r > 0.985:
@@ -30,7 +30,7 @@ static func roll_gear(rng: RandomNumberGenerator, ilvl: int, rarity_bonus: float
 		rarity = 2
 	elif r > 0.6:
 		rarity = 1
-	var slot: String = SLOTS[rng.randi_range(0, SLOTS.size() - 1)]
+	var slot: String = force_slot if force_slot != "" else SLOTS[rng.randi_range(0, SLOTS.size() - 1)]
 	var n_affixes: int = [1, 2, 3, 3][rarity]
 	var pool: Array = AFFIXES[slot].duplicate()
 	var affixes := []

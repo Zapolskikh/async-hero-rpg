@@ -35,6 +35,7 @@ func setup(allies: Array, enemy_snaps: Array, seed_value: int) -> void:
 		units.append(e)
 	for a in allies:
 		a.casting = {}
+		a.cooldowns.clear()
 		a.attack_cd = rng.randf_range(0.1, 0.6)
 		a.spell_cd = rng.randf_range(0.5, 1.2)
 		a.rot_index = 0
@@ -122,6 +123,10 @@ func _tick_statuses(u: BattleUnit) -> void:
 		u.stun = max(0.0, u.stun - STEP)
 	if u.taunt > 0.0:
 		u.taunt = max(0.0, u.taunt - STEP)
+	for sid in u.cooldowns.keys():
+		u.cooldowns[sid] -= STEP
+		if u.cooldowns[sid] <= 0.0:
+			u.cooldowns.erase(sid)
 	if u.shield > 0.0:
 		u.shield_time -= STEP
 		if u.shield_time <= 0.0:
@@ -178,11 +183,15 @@ func _try_rotation(u: BattleUnit) -> bool:
 	for i in n:
 		var idx := (u.rot_index + i) % n
 		var entry: Dictionary = u.spells[idx]
+		if u.cooldowns.has(entry["id"]):
+			continue
 		var target = _find_spell_target(u, entry["id"])
 		if target == null:
 			continue
 		u.rot_index = (idx + 1) % n
 		var spell: Dictionary = Db.SPELLS[entry["id"]]
+		if spell.get("cd", 0.0) > 0.0:
+			u.cooldowns[entry["id"]] = spell["cd"]
 		if spell.get("cast", 0.0) > 0.0:
 			u.casting = {
 				"spell": entry["id"], "lvl": entry.get("lvl", 1),

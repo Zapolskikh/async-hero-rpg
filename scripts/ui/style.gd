@@ -22,6 +22,8 @@ const HP_ALLY := Color("#4fd27b")
 const HP_ENEMY := Color("#ef5b5b")
 
 const RARITY := [Color("#8d96a8"), Color("#3f8cff"), Color("#a65cff"), Color("#ff9f1c")]
+const TIER_COLORS := [Color("#6b4a4a"), Color("#465072"), Color("#2f9e64"), Color("#ffb630")]
+const TIER_TEXT := [Color("#f3d0d0"), Color("#f3f5fa"), Color("#f3f5fa"), Color("#3a2500")]
 const ROLE_COLORS := {
 	"Герой": Color("#3f7fd6"), "Танк": Color("#5c6f8f"), "Лекарь": Color("#3fae6b"),
 	"Пиромант": Color("#d2513a"), "Ядовик": Color("#6f9a2f"), "Боец": Color("#a8703c"),

@@ -6,6 +6,34 @@ const HERO_COLOR := "#3fa7d6"
 const MERC_COLORS := ["#e0a458", "#7bc96f", "#d36fa3", "#6fb3d3", "#c9c95b", "#9d8cff"]
 const MERC_STAT_FACTOR := 0.95   # NPCs are decent, but a good real build should beat them
 
+## Quality tiers of guild mercenaries. Same level, very different strength:
+## gear rarity, number of items, spell levels and how sensible the rotation is.
+const TIERS := [
+	{"name": "Слабый",  "chance": 0.20, "rarity_bonus": -0.45, "items": [1, 2], "stat": 0.88, "spell": -1, "shuffle": 0.5},
+	{"name": "Обычный", "chance": 0.55, "rarity_bonus": -0.15, "items": [2, 3], "stat": 0.93, "spell": 0, "shuffle": 0.15},
+	{"name": "Сильный", "chance": 0.20, "rarity_bonus": 0.15,  "items": [3, 3], "stat": 1.0,  "spell": 0, "shuffle": 0.0},
+	{"name": "Элитный", "chance": 0.05, "rarity_bonus": 0.45,  "items": [3, 3], "stat": 1.05, "spell": 1, "shuffle": 0.0},
+]
+
+static func roll_tier(rng: RandomNumberGenerator) -> int:
+	var r := rng.randf()
+	for i in TIERS.size():
+		r -= TIERS[i]["chance"]
+		if r <= 0.0:
+			return i
+	return 1
+
+## Adds gear affixes on top of base stats.
+static func apply_gear(base: Dictionary, gear: Dictionary) -> Dictionary:
+	var st := base.duplicate()
+	for slot in gear.keys():
+		var item = gear[slot]
+		if item == null:
+			continue
+		for a in item["affixes"]:
+			st[a["stat"]] = st.get(a["stat"], 0.0) + a["value"]
+	return st
+
 static func spell_best_level(collection: Dictionary, sid: String) -> int:
 	var best := 0
 	if collection.has(sid):
@@ -15,14 +43,7 @@ static func spell_best_level(collection: Dictionary, sid: String) -> int:
 	return best
 
 static func hero_stats(hero: Dictionary) -> Dictionary:
-	var st := Db.hero_base_stats(hero["level"])
-	for slot in hero["equipped"].keys():
-		var item = hero["equipped"][slot]
-		if item == null:
-			continue
-		for a in item["affixes"]:
-			st[a["stat"]] = st.get(a["stat"], 0.0) + a["value"]
-	return st
+	return apply_gear(Db.hero_base_stats(hero["level"]), hero["equipped"])
 
 static func hero_snapshot(hero: Dictionary, collection: Dictionary) -> Dictionary:
 	var spells := []
@@ -34,31 +55,72 @@ static func hero_snapshot(hero: Dictionary, collection: Dictionary) -> Dictionar
 		"stats": hero_stats(hero), "spells": spells, "target": "front",
 	}
 
-static func make_merc(rng: RandomNumberGenerator, template_idx: int, level: int) -> Dictionary:
+static func make_merc(rng: RandomNumberGenerator, template_idx: int, level: int, tier: int = -1) -> Dictionary:
 	var t: Dictionary = Db.MERC_TEMPLATES[template_idx]
-	var st := Db.hero_base_stats(level)
+	if tier < 0:
+		tier = roll_tier(rng)
+	var tr: Dictionary = TIERS[tier]
+	var base := Db.hero_base_stats(level)
 	for k in ["hp", "atk", "power", "armor"]:
-		st[k] = round(st[k] * t["stat"].get(k, 1.0) * MERC_STAT_FACTOR * rng.randf_range(0.95, 1.05))
-	st["crit"] = 0.05
-	var spell_lvl := 1 + int(level / 4)
+		base[k] = round(base[k] * t["stat"].get(k, 1.0) * MERC_STAT_FACTOR * tr["stat"] * rng.randf_range(0.95, 1.05))
+	base["crit"] = 0.05
+	# gear: some slots may stay empty for weak mercenaries
+	var gear := {"weapon": null, "armor": null, "trinket": null}
+	var n_items := rng.randi_range(tr["items"][0], tr["items"][1])
+	var slots: Array = Loot.SLOTS.duplicate()
+	for i in range(slots.size() - 1, 0, -1):
+		var j := rng.randi_range(0, i)
+		var tmp = slots[i]
+		slots[i] = slots[j]
+		slots[j] = tmp
+	for i in n_items:
+		gear[slots[i]] = Loot.roll_gear(rng, level, tr["rarity_bonus"], slots[i])
+	# spells: levels vary, weak ones sometimes have a clumsy rotation order
+	var spell_lvl := 1 + int(level / 4) + int(tr["spell"])
 	var spells := []
 	for sid in t["spells"]:
 		spells.append({"id": sid, "lvl": max(1, spell_lvl - rng.randi_range(0, 1))})
+	if rng.randf() < tr["shuffle"]:
+		spells.reverse()
 	return {
 		"name": Db.MERC_NAMES[rng.randi_range(0, Db.MERC_NAMES.size() - 1)],
 		"color": MERC_COLORS[rng.randi_range(0, MERC_COLORS.size() - 1)],
-		"npc": true, "role": t["role"], "level": level,
-		"stats": st, "spells": spells, "target": "front",
+		"npc": true, "role": t["role"], "level": level, "tier": tier,
+		"base_stats": base, "gear": gear, "stats": apply_gear(base, gear),
+		"spells": spells, "target": "front",
 		"id": "m%d" % rng.randi(), "template": template_idx,
 		"sprite": t.get("sprite", ""), "ranged": t.get("ranged", false),
 	}
 
-## Guild mercenaries grow with the hero so the board stays in the relevant range.
+## Guild mercenaries on the board grow with the hero (same build, new gear).
 static func relevel(rng: RandomNumberGenerator, merc: Dictionary, level: int) -> Dictionary:
-	var fresh := make_merc(rng, int(merc.get("template", 0)), level)
+	var fresh := make_merc(rng, int(merc.get("template", 0)), level, int(merc.get("tier", 1)))
 	for k in ["name", "color", "id"]:
 		fresh[k] = merc[k]
 	return fresh
+
+## Fills fields for mercenaries saved by older versions.
+static func ensure_merc(m: Dictionary) -> void:
+	ensure_visuals(m)
+	m["level"] = int(m["level"])
+	m["tier"] = int(m.get("tier", 1))
+	if not m.has("gear") or typeof(m["gear"]) != TYPE_DICTIONARY:
+		m["gear"] = {"weapon": null, "armor": null, "trinket": null}
+	if not m.has("base_stats"):
+		m["base_stats"] = m["stats"]
+	for slot in m["gear"]:
+		var it = m["gear"][slot]
+		if it != null:
+			it["rarity"] = int(it["rarity"])
+			it["ilvl"] = int(it["ilvl"])
+	for sp in m["spells"]:
+		sp["lvl"] = int(sp["lvl"])
+
+## Power a typical (normal tier, no gear) mercenary of this level would have.
+static func expected_power(level: int) -> float:
+	var st := Db.hero_base_stats(level)
+	var spell_lvl := 1 + int(level / 4)
+	return st["hp"] / 8.0 + st["atk"] * 2.0 + st["power"] * 2.5 + st["armor"] * 1.5 + st["crit"] * 300.0 + 30.0 * spell_lvl
 
 const ROLE_SPRITES := {"Герой": "hero", "Танк": "tank", "Лекарь": "healer", "Пиромант": "pyromancer",
 	"Ядовик": "poisoner_ally", "Боец": "fighter", "Страж": "guard", "Паладин": "paladin", "Охотник": "hunter"}
