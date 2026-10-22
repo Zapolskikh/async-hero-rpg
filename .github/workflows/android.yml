@@ -15,19 +15,20 @@ env:
 
 jobs:
   apk:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: "17"
 
-      - uses: android-actions/setup-android@v3
-
-      - name: Android SDK packages
-        run: sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34"
+      - name: Android SDK packages (SDK is preinstalled on the runner)
+        run: |
+          echo "ANDROID_SDK_ROOT=$ANDROID_HOME" >> $GITHUB_ENV
+          yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null || true
+          $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34"
 
       - name: Godot and export templates
         run: |
@@ -61,7 +62,7 @@ jobs:
           ./godot --headless --export-debug "Android" build/android/AsyncHeroRPG.apk
           ls -la build/android
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v5
         with:
           name: AsyncHeroRPG-apk
           path: build/android/AsyncHeroRPG.apk
