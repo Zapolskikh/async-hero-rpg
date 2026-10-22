@@ -21,6 +21,11 @@ func _init() -> void:
 	test_json_roundtrip()
 	test_migrate_v1()
 	test_real_players_and_assists()
+	test_gathering()
+	test_crafting_and_concurrency()
+	test_consumables()
+	test_combat_materials()
+	test_v2_migration()
 	print("FAILURES: %d" % failures)
 	quit(1 if failures > 0 else 0)
 
@@ -156,3 +161,106 @@ func test_real_players_and_assists() -> void:
 	var g0: int = owner["gold"]
 	Rules.apply(owner, "grant_assists", {"gold": 12, "hires": 3}, T0)
 	check(owner["gold"] == g0 + 12 and owner["stats"]["hired_total"] == 3 and owner["reports"].size() == 1, "assist grant adds gold, counter and a report")
+
+func test_gathering() -> void:
+	print("gathering")
+	var p := fresh(31)
+	check(not Rules.apply(p, "gather_start", {"prof": "mining", "loc": "iron_hills", "sec": 900}, T0)["ok"], "location above profession level rejected")
+	check(not Rules.apply(p, "gather_start", {"prof": "mining", "loc": "abandoned_quarry", "sec": 123}, T0)["ok"], "unknown duration rejected")
+	check(Rules.apply(p, "gather_start", {"prof": "mining", "loc": "abandoned_quarry", "sec": 3600}, T0)["ok"], "mining started (1 h)")
+	check(not Rules.apply(p, "gather_start", {"prof": "herbalism", "loc": "green_meadow", "sec": 900}, T0)["ok"], "only one gathering at a time")
+	check(not Rules.apply(p, "gather_claim", {}, T0 + 3599.0)["ok"], "cannot claim before the timer ends")
+	var r := Rules.apply(p, "gather_claim", {}, T0 + 3600.0)
+	var got: Dictionary = r["report"]["res"] if r["ok"] else {}
+	check(r["ok"] and got.get("copper_ore", 0) > 0 and got.get("iron_ore", 0) > 0, "claim gives ore %s" % str(got))
+	check(Rules.res_count(p, "iron_ore") == got.get("iron_ore", -1), "ore stored in the materials inventory")
+	check(int(p["professions"]["mining"]["level"]) == 2 and int(p["professions"]["mining"]["xp"]) == 0, "100 mining XP -> level 2")
+	var again := Rules.apply(p, "gather_claim", {}, T0 + 3700.0)
+	check(not again["ok"] and Rules.res_count(p, "iron_ore") == got["iron_ore"], "second claim gives nothing")
+	Rules.apply(p, "gather_start", {"prof": "skinning", "loc": "wild_plains", "sec": 28800}, T0)
+	Rules.apply(p, "gather_claim", {}, T0 + 28800.0)
+	check(int(p["professions"]["skinning"]["level"]) >= 3, "8 h of skinning levels the profession (level %d)" % p["professions"]["skinning"]["level"])
+	check(Rules.apply(p, "gather_start", {"prof": "skinning", "loc": "wolf_woods", "sec": 900}, T0)["ok"], "higher location unlocked by level")
+
+func give(p: Dictionary, res: Dictionary) -> void:
+	for k in res:
+		Rules._add_res(p, k, res[k])
+
+func test_crafting_and_concurrency() -> void:
+	print("crafting and concurrency")
+	var p := fresh(37)
+	check(not Rules.apply(p, "craft_start", {"recipe": "simple_iron_helmet"}, T0)["ok"], "craft without materials rejected")
+	give(p, {"iron_ore": 10, "raw_leather": 2})
+	var gold0: int = p["gold"]
+	check(Rules.apply(p, "craft_start", {"recipe": "simple_iron_helmet"}, T0)["ok"], "helmet craft started")
+	check(Rules.res_count(p, "iron_ore") == 0 and p["gold"] == gold0 - 60, "materials and gold taken at start")
+	check(not Rules.apply(p, "craft_start", {"recipe": "simple_iron_helmet"}, T0)["ok"], "one craft per profession")
+	give(p, {"rough_cloth": 10, "greenleaf": 4, "bitterroot": 2})
+	p["gold"] = 1000
+	check(Rules.apply(p, "craft_start", {"recipe": "rough_cloth_hood"}, T0)["ok"]
+		and Rules.apply(p, "craft_start", {"recipe": "minor_strength_potion"}, T0)["ok"], "three professions craft at the same time")
+	check(Rules.apply(p, "gather_start", {"prof": "herbalism", "loc": "green_meadow", "sec": 900}, T0)["ok"], "gathering runs alongside crafting")
+	p["closed_level"] = 1
+	check(Rules.apply(p, "start", {"level": 1, "mode": "farm"}, T0)["ok"], "combat farm runs alongside both")
+	check(not Rules.apply(p, "craft_claim", {"prof": "blacksmithing"}, T0 + 299.0)["ok"], "craft cannot finish early")
+	var r := Rules.apply(p, "craft_claim", {"prof": "blacksmithing"}, T0 + 300.0)
+	var it: Dictionary = r["report"]["items"][0] if r["ok"] else {}
+	check(it.get("slot", "") == "head" and it.get("crafted", false) and it["affixes"].size() == 2, "helmet in the bag: %s" % str(it.get("name", "")))
+	check(not Rules.apply(p, "craft_claim", {"prof": "blacksmithing"}, T0 + 400.0)["ok"], "craft claimed only once")
+	check(int(p["professions"]["blacksmithing"]["xp"]) == 40, "blacksmithing XP awarded")
+	var pr := Rules.apply(p, "craft_claim", {"prof": "alchemy"}, T0 + 180.0)
+	check(pr["ok"] and Rules.res_count(p, "minor_strength_potion") == 2, "potions crafted (2)")
+	check(Rules.apply(p, "equip", {"id": it["id"]}, T0)["ok"] and p["hero"]["equipped"]["head"] != null, "crafted helmet equipped in the new head slot")
+	var stats: Dictionary = Rules.hero_snapshot(p)["stats"]
+	check(stats["armor"] > Db.hero_base_stats(1)["armor"], "helmet adds armor")
+	var boss := Rules.can_craft(p, "boss_forged_chestguard")
+	check(not boss["ok"], "rare recipe locked behind level and boss core")
+
+func test_consumables() -> void:
+	print("consumables")
+	var p := fresh(41)
+	give(p, {"minor_strength_potion": 1, "gatherers_tonic": 1})
+	check(Rules.apply(p, "use_item", {"res": "minor_strength_potion"}, T0)["ok"], "strength potion used")
+	check(Rules.res_count(p, "minor_strength_potion") == 0 and not Rules.apply(p, "use_item", {"res": "minor_strength_potion"}, T0)["ok"], "potion consumed")
+	Rules.apply(p, "start", {"level": 1, "mode": "push"}, T0 + 60.0)
+	check(is_equal_approx(float(p["expedition"]["party"][0]["stats"].get("dmg_mult", 1.0)), 1.1), "expedition started under the buff gets +10% damage")
+	Rules.apply(p, "stop", {}, T0 + 61.0)
+	Rules.apply(p, "start", {"level": 1, "mode": "push"}, T0 + 7300.0)
+	check(not p["expedition"]["party"][0]["stats"].has("dmg_mult"), "buff expires after 2 h")
+	Rules.apply(p, "use_item", {"res": "gatherers_tonic"}, T0)
+	Rules.apply(p, "gather_start", {"prof": "mining", "loc": "abandoned_quarry", "sec": 900}, T0)
+	check(p["gathering"]["tonic"] and not Rules.active_buffs(p, T0).has("gather_yield"), "tonic applies to the next gathering and is used up")
+
+func test_combat_materials() -> void:
+	print("combat materials")
+	var p := fresh(43)
+	Rules.apply(p, "start", {"level": 1, "mode": "push"}, T0)
+	var t_end: float = p["expedition"]["tl"]["t_end"]
+	var out := Rules.tick(p, T0 + t_end + 1.0)
+	var mats: Dictionary = out["reports"][0].get("mats", {})
+	check(p["closed_level"] == 1 and mats.get("boss_core", 0) == 1, "first clear: the boss drops a Boss Core %s" % str(mats))
+	check(mats.get("rough_cloth", 0) > 0, "combat drops cloth")
+	Rules.apply(p, "start", {"level": 1, "mode": "farm"}, T0 + 100.0)
+	var r := Rules.apply(p, "collect", {}, T0 + 100.0 + 3600.0)
+	var cloth: int = r["report"]["mats"].get("rough_cloth", 0)
+	check(cloth >= 15 and cloth <= 60, "1 h of farming gives a sensible amount of cloth (%d)" % cloth)
+	var r2 := Rules.apply(p, "collect", {}, T0 + 100.0 + 3600.0)
+	check(r2["report"]["mats"].is_empty(), "materials collected once")
+	var tbl: Dictionary = Prof.cloth_table(20)
+	check(tbl.has("fine_cloth") and not tbl.has("rough_cloth"), "late levels drop linen and fine cloth")
+	for res in Prof.LOCATIONS:
+		for y in Prof.LOCATIONS[res]["yields"].keys() + Prof.LOCATIONS[res]["rare"].keys():
+			if Prof.RESOURCES[y]["cat"] in ["cloth", "special"]:
+				check(false, "gathering must not give %s" % y)
+
+func test_v2_migration() -> void:
+	print("v2 -> v3 migration")
+	var p := fresh(47)
+	for k in ["resources", "professions", "gathering", "crafting", "buffs"]:
+		p.erase(k)
+	p["hero"]["equipped"] = {"weapon": null, "armor": null, "trinket": null}
+	p["v"] = 2
+	var q = JSON.parse_string(JSON.stringify(p))
+	Rules.migrate(q, T0)
+	check(q["v"] == 3 and q["professions"].size() == 6 and q["hero"]["equipped"].has("feet"), "old profile gets professions and new slots")
+	check(Rules.apply(q, "gather_start", {"prof": "herbalism", "loc": "green_meadow", "sec": 900}, T0)["ok"], "migrated profile can gather")

@@ -12,7 +12,7 @@ extends RefCounted
 ## so a server keeps it secret by stripping it before sending the profile.
 ## `ctx` (server only): {"account": id, "real_pool": [public snapshots of other players]}
 
-const VERSION := 2
+const VERSION := 3
 const OFFLINE_CAP := 12.0 * 3600.0
 const BOX_PRICE := 150
 const BOX_PACK := 10
@@ -28,7 +28,8 @@ const REAL_SLOTS := 3            # up to 3 of 6 board places go to real players
 ## Actions without randomness: the client may apply them locally right away.
 const LOCAL_ACTIONS := ["set_rotation", "move_party", "equip", "unequip", "sell", "hire", "fire", "replace", "fuse", "set_name"]
 ## Actions with randomness or rewards: only the authority (server or offline client) runs them.
-const AUTHORITY_ACTIONS := ["reroll", "open_box", "open_pack", "start", "collect", "stop"]
+const AUTHORITY_ACTIONS := ["reroll", "open_box", "open_pack", "start", "collect", "stop",
+	"gather_start", "gather_claim", "gather_cancel", "craft_start", "craft_claim", "use_item"]
 ## Server-internal actions, never accepted from a client.
 const INTERNAL_ACTIONS := ["grant_assists"]
 
@@ -41,10 +42,11 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 		"v": VERSION, "name": name, "created": now,
 		"gold": 100, "boxes": 1, "closed_level": 0,
 		"hero": {"name": name, "level": 1, "xp": 0, "rotation": ["fireball", "strike", "kick"],
-			"equipped": {"weapon": null, "armor": null, "trinket": null}},
+			"equipped": _empty_equipment()},
 		"collection": {}, "inventory": [], "board": [], "hired": [], "party_order": [],
 		"rerolls_today": 0, "reroll_day": "", "free_box_day": "",
 		"expedition": null, "reports": [], "stats": {"hired_total": 0, "assist_gold_total": 0},
+		"resources": {}, "professions": _fresh_professions(), "gathering": null, "crafting": {}, "buffs": {},
 		"rng": {"seed": str(seed_value), "state": ""},
 	}
 	var r := _rng(p)
@@ -72,6 +74,7 @@ static func migrate(p: Dictionary, now: float) -> void:
 		p["stats"] = {"hired_total": 0, "assist_gold_total": 0}
 	if not p.has("hired"):
 		p["hired"] = []
+	_migrate_professions(p)
 	var hero: Dictionary = p["hero"]
 	hero["level"] = int(hero["level"])
 	hero["xp"] = int(hero["xp"])
@@ -99,6 +102,54 @@ static func migrate(p: Dictionary, now: float) -> void:
 	p.erase("v")
 	p["v"] = VERSION
 
+static func _empty_equipment() -> Dictionary:
+	var e := {}
+	for slot in Loot.ALL_SLOTS:
+		e[slot] = null
+	return e
+
+static func _fresh_professions() -> Dictionary:
+	var d := {}
+	for id in Prof.PROFESSIONS:
+		d[id] = {"level": 1, "xp": 0}
+	return d
+
+## v3: professions, resources, crafting, buffs, more equipment slots, materials in timelines.
+static func _migrate_professions(p: Dictionary) -> void:
+	for slot in Loot.ALL_SLOTS:
+		if not p["hero"]["equipped"].has(slot):
+			p["hero"]["equipped"][slot] = null
+	if typeof(p.get("resources")) != TYPE_DICTIONARY:
+		p["resources"] = {}
+	for res in p["resources"].keys():
+		p["resources"][res] = int(p["resources"][res])
+	if typeof(p.get("professions")) != TYPE_DICTIONARY:
+		p["professions"] = {}
+	for id in Prof.PROFESSIONS:
+		if not p["professions"].has(id):
+			p["professions"][id] = {"level": 1, "xp": 0}
+		p["professions"][id]["level"] = int(p["professions"][id]["level"])
+		p["professions"][id]["xp"] = int(p["professions"][id]["xp"])
+	if not p.has("gathering"):
+		p["gathering"] = null
+	if p["gathering"] != null:
+		p["gathering"]["sec"] = int(p["gathering"]["sec"])
+	if typeof(p.get("crafting")) != TYPE_DICTIONARY:
+		p["crafting"] = {}
+	if typeof(p.get("buffs")) != TYPE_DICTIONARY:
+		p["buffs"] = {}
+	if p["buffs"].has("gather_yield"):
+		p["buffs"]["gather_yield"]["charges"] = int(p["buffs"]["gather_yield"]["charges"])
+
+static func _fix_point(pt: Array) -> void:
+	for i in range(1, min(pt.size(), Expedition.P_MATS)):
+		pt[i] = int(pt[i])
+	if pt.size() <= Expedition.P_MATS:
+		pt.append({})
+	var m: Dictionary = pt[Expedition.P_MATS]
+	for res in m.keys():
+		m[res] = int(m[res])
+
 static func _fix_item(it) -> void:
 	if it == null:
 		return
@@ -112,11 +163,10 @@ static func _fix_expedition(ex: Dictionary) -> void:
 	tl["level"] = int(tl["level"])
 	tl["seed"] = int(tl["seed"])
 	for pt in tl["pts"]:
-		for i in range(1, pt.size()):
-			pt[i] = int(pt[i])
-	var c: Array = ex["collected"]
-	for i in range(1, c.size()):
-		c[i] = int(c[i])
+		_fix_point(pt)
+	_fix_point(ex["collected"])
+	if tl.has("rate") and tl["rate"].size() <= Expedition.P_MATS:
+		tl["rate"].append({})
 	for it in tl["items"]:
 		_fix_item(it)
 	for m in ex["party"]:
@@ -221,12 +271,13 @@ static func expedition_time(ex: Dictionary, now: float) -> float:
 static func pending(p: Dictionary, now: float) -> Dictionary:
 	var ex = p.get("expedition")
 	if ex == null:
-		return {"gold": 0, "xp": 0, "kills": 0, "items": 0, "boxes": 0, "won": 0, "lost": 0, "t": 0.0}
+		return {"gold": 0, "xp": 0, "kills": 0, "items": 0, "boxes": 0, "won": 0, "lost": 0, "t": 0.0, "mats": {}}
 	var t := expedition_time(ex, now)
 	var tot := Expedition.rewards_at(ex["tl"], t)
 	var c: Array = ex["collected"]
 	return {"gold": tot[1] - c[1], "xp": tot[2] - c[2], "kills": tot[3] - c[3], "items": tot[4] - c[4],
-		"boxes": tot[5] - c[5], "won": tot[6] - c[6], "lost": tot[7] - c[7], "t": t, "wave": tot[8]}
+		"boxes": tot[5] - c[5], "won": tot[6] - c[6], "lost": tot[7] - c[7], "t": t, "wave": tot[8],
+		"mats": Expedition.mats_diff(tot[Expedition.P_MATS], c[Expedition.P_MATS] if c.size() > Expedition.P_MATS else {})}
 
 static func push_finished(p: Dictionary, now: float) -> bool:
 	var ex = p.get("expedition")
@@ -257,6 +308,12 @@ static func apply(p: Dictionary, action: String, args: Dictionary, now: float, c
 		"collect": res = _collect(p, r, now, ctx, false)
 		"stop": res = _collect(p, r, now, ctx, true)
 		"grant_assists": res = _grant_assists(p, int(args.get("gold", 0)), int(args.get("hires", 0)))
+		"gather_start": res = _gather_start(p, str(args.get("prof", "")), str(args.get("loc", "")), int(args.get("sec", 0)), now)
+		"gather_claim": res = _gather_claim(p, r, now)
+		"gather_cancel": res = _gather_cancel(p)
+		"craft_start": res = _craft_start(p, str(args.get("recipe", "")), now)
+		"craft_claim": res = _craft_claim(p, r, str(args.get("prof", "")), now)
+		"use_item": res = _use_item(p, str(args.get("res", "")), now)
 		_: res = _err("unknown action")
 	_save_rng(p, r)
 	return res
@@ -471,6 +528,11 @@ static func _start(p: Dictionary, r: RandomNumberGenerator, level: int, mode: St
 	if p.get("expedition") != null:
 		prev = _collect(p, r, now, ctx, true)
 	var party := party_snapshots(p).duplicate(true)
+	var buffs := active_buffs(p, now)
+	for m in party:
+		for eff in ["dmg_mult", "heal_mult"]:
+			if buffs.has(eff):
+				m["stats"][eff] = float(buffs[eff]["value"])
 	p["expedition"] = _make_expedition(level, mode, party, r.randi(), level > int(p["closed_level"]), now)
 	var out := _ok({"expedition": p["expedition"]["id"]})
 	if not prev.is_empty():
@@ -481,7 +543,7 @@ static func _start(p: Dictionary, r: RandomNumberGenerator, level: int, mode: St
 static func _make_expedition(level: int, mode: String, party: Array, seed_value: int, first: bool, now: float) -> Dictionary:
 	var tl := Expedition.build_timeline(level, mode, party, seed_value, first)
 	return {"id": "%d_%d" % [seed_value, int(now)], "level": level, "mode": mode, "seed": seed_value, "first": first,
-		"party": party, "started_at": now, "tl": tl, "collected": [0.0, 0, 0, 0, 0, 0, 0, 0, 0]}
+		"party": party, "started_at": now, "tl": tl, "collected": Expedition.zero_point()}
 
 ## Collects pending rewards. With `finish` the expedition ends (stop / push over).
 static func _collect(p: Dictionary, r: RandomNumberGenerator, now: float, ctx: Dictionary, finish: bool) -> Dictionary:
@@ -493,7 +555,8 @@ static func _collect(p: Dictionary, r: RandomNumberGenerator, now: float, ctx: D
 	var c: Array = ex["collected"]
 	var rep := {"type": "rewards", "level": ex["level"], "mode": ex["mode"],
 		"gold": tot[1] - c[1], "xp": tot[2] - c[2], "kills": tot[3] - c[3], "boxes": tot[5] - c[5],
-		"won": tot[6] - c[6], "lost": tot[7] - c[7], "items": [], "auto_sold": 0, "auto_sold_gold": 0}
+		"won": tot[6] - c[6], "lost": tot[7] - c[7], "items": [], "auto_sold": 0, "auto_sold_gold": 0,
+		"mats": Expedition.mats_diff(tot[Expedition.P_MATS], c[Expedition.P_MATS] if c.size() > Expedition.P_MATS else {})}
 	for i in range(int(c[4]), int(tot[4])):
 		var it := Expedition.item_at(ex["tl"], i)
 		if rep["items"].size() < MAX_ITEMS_PER_COLLECT:
@@ -530,6 +593,8 @@ static func _apply_rewards(p: Dictionary, r: RandomNumberGenerator, rep: Diction
 	rep["level_ups"] = _add_xp(p, int(rep["xp"]))
 	for it in rep["items"]:
 		p["inventory"].append(it)
+	for res in rep.get("mats", {}):
+		_add_res(p, res, int(rep["mats"][res]))
 	rep["board_refreshed"] = false
 	if rep.get("closed", false) and int(rep["level"]) > int(p["closed_level"]):
 		p["closed_level"] = int(rep["level"])
@@ -560,6 +625,163 @@ static func _grant_assists(p: Dictionary, gold: int, hires: int) -> Dictionary:
 	p["stats"]["assist_gold_total"] = int(p["stats"].get("assist_gold_total", 0)) + gold
 	p["reports"].append({"type": "assists", "gold": gold, "hires": hires})
 	return _ok()
+
+# =====================================================================
+# Professions: gathering, crafting, consumables (Prof data)
+# All timers use the authority's clock; claims are idempotent: the activity is
+# removed when its reward is granted, so a second claim finds nothing.
+# =====================================================================
+
+static func prof_level(p: Dictionary, prof: String) -> int:
+	return int(p["professions"].get(prof, {}).get("level", 1))
+
+static func res_count(p: Dictionary, res: String) -> int:
+	return int(p["resources"].get(res, 0))
+
+static func _add_res(p: Dictionary, res: String, n: int) -> void:
+	p["resources"][res] = res_count(p, res) + n
+	if int(p["resources"][res]) <= 0:
+		p["resources"].erase(res)
+
+static func _add_prof_xp(p: Dictionary, prof: String, amount: int) -> int:
+	var pr: Dictionary = p["professions"][prof]
+	var ups := 0
+	if int(pr["level"]) >= Prof.MAX_LEVEL:
+		return 0
+	pr["xp"] = int(pr["xp"]) + amount
+	while int(pr["level"]) < Prof.MAX_LEVEL and int(pr["xp"]) >= Prof.xp_to_next(int(pr["level"])):
+		pr["xp"] = int(pr["xp"]) - Prof.xp_to_next(int(pr["level"]))
+		pr["level"] = int(pr["level"]) + 1
+		ups += 1
+	if int(pr["level"]) >= Prof.MAX_LEVEL:
+		pr["xp"] = 0
+	return ups
+
+## Buffs that are active right now: effect -> {value, until | charges}
+static func active_buffs(p: Dictionary, now: float) -> Dictionary:
+	var out := {}
+	for eff in p.get("buffs", {}):
+		var b: Dictionary = p["buffs"][eff]
+		if b.has("until") and float(b["until"]) > now:
+			out[eff] = b
+		elif b.has("charges") and int(b["charges"]) > 0:
+			out[eff] = b
+	return out
+
+static func can_craft(p: Dictionary, recipe_id: String) -> Dictionary:
+	if not Prof.RECIPES.has(recipe_id):
+		return {"ok": false, "error": "no such recipe"}
+	var r: Dictionary = Prof.RECIPES[recipe_id]
+	if prof_level(p, r["prof"]) < int(r["req"]):
+		return {"ok": false, "error": "profession level too low"}
+	if p["crafting"].has(r["prof"]):
+		return {"ok": false, "error": "already crafting"}
+	if int(p["gold"]) < int(r["gold"]):
+		return {"ok": false, "error": "not enough gold"}
+	for res in r["ingredients"]:
+		if res_count(p, res) < int(r["ingredients"][res]):
+			return {"ok": false, "error": "missing " + res}
+	return {"ok": true}
+
+static func _gather_start(p: Dictionary, prof: String, loc: String, sec: int, now: float) -> Dictionary:
+	if not prof in Prof.GATHERING:
+		return _err("not a gathering profession")
+	if not Prof.LOCATIONS.has(loc) or Prof.LOCATIONS[loc]["prof"] != prof:
+		return _err("bad location")
+	if prof_level(p, prof) < int(Prof.LOCATIONS[loc]["req"]):
+		return _err("profession level too low")
+	if Prof.duration(sec).is_empty():
+		return _err("bad duration")
+	if p["gathering"] != null:
+		return _err("already gathering")
+	var tonic := false
+	var b = p["buffs"].get("gather_yield")
+	if b != null and int(b.get("charges", 0)) > 0:
+		tonic = true
+		b["charges"] = int(b["charges"]) - 1
+		if b["charges"] <= 0:
+			p["buffs"].erase("gather_yield")
+	p["gathering"] = {"prof": prof, "loc": loc, "sec": sec, "started_at": now, "ends_at": now + sec, "tonic": tonic}
+	return _ok({"ends_at": now + sec})
+
+static func _gather_claim(p: Dictionary, r: RandomNumberGenerator, now: float) -> Dictionary:
+	var g = p.get("gathering")
+	if g == null:
+		return _err("nothing to claim")
+	if now < float(g["ends_at"]):
+		return _err("not finished")
+	var loc: Dictionary = Prof.LOCATIONS[g["loc"]]
+	var sec: int = int(g["sec"])
+	var mult := Prof._yield_mult(loc, sec, prof_level(p, g["prof"]), bool(g.get("tonic", false)))
+	var got := {}
+	for res in loc["yields"]:
+		var n := int(round(float(loc["yields"][res]) * mult * r.randf_range(1.0 - Prof.YIELD_SPREAD, 1.0 + Prof.YIELD_SPREAD)))
+		if n > 0:
+			got[res] = n
+	for res in loc["rare"]:
+		var expect := float(loc["rare"][res]) * sec / 3600.0 * (float(Prof.CONSUMABLES["gatherers_tonic"]["value"]) if g.get("tonic", false) else 1.0)
+		var n := int(floor(expect)) + (1 if r.randf() < expect - floor(expect) else 0)
+		if n > 0:
+			got[res] = n
+	for res in got:
+		_add_res(p, res, got[res])
+	var xp := Prof.gather_xp(g["loc"], sec)
+	var ups := _add_prof_xp(p, g["prof"], xp)
+	p["gathering"] = null
+	return _ok({"report": {"type": "gather", "prof": g["prof"], "loc": g["loc"], "res": got, "xp": xp, "level_ups": ups,
+		"tonic": g.get("tonic", false)}})
+
+static func _gather_cancel(p: Dictionary) -> Dictionary:
+	if p.get("gathering") == null:
+		return _err("nothing to cancel")
+	p["gathering"] = null
+	return _ok()
+
+static func _craft_start(p: Dictionary, recipe_id: String, now: float) -> Dictionary:
+	var chk := can_craft(p, recipe_id)
+	if not chk["ok"]:
+		return chk
+	var r: Dictionary = Prof.RECIPES[recipe_id]
+	p["gold"] -= int(r["gold"])
+	for res in r["ingredients"]:
+		_add_res(p, res, -int(r["ingredients"][res]))
+	p["crafting"][r["prof"]] = {"recipe": recipe_id, "started_at": now, "ends_at": now + float(r["time"])}
+	return _ok({"ends_at": now + float(r["time"])})
+
+static func _craft_claim(p: Dictionary, rng: RandomNumberGenerator, prof: String, now: float) -> Dictionary:
+	var c = p["crafting"].get(prof)
+	if c == null:
+		return _err("nothing to claim")
+	if now < float(c["ends_at"]):
+		return _err("not finished")
+	var r: Dictionary = Prof.RECIPES[c["recipe"]]
+	var rep := {"type": "craft", "prof": prof, "recipe": c["recipe"], "items": [], "res": {}}
+	if r.has("item"):
+		var it := Prof.make_item(c["recipe"], "c%08x%08x" % [rng.randi(), rng.randi()])
+		p["inventory"].append(it)
+		rep["items"].append(it)
+	for res in r.get("output", {}):
+		_add_res(p, res, int(r["output"][res]))
+		rep["res"][res] = int(r["output"][res])
+	rep["xp"] = int(r["xp"])
+	rep["level_ups"] = _add_prof_xp(p, prof, int(r["xp"]))
+	p["crafting"].erase(prof)
+	return _ok({"report": rep})
+
+static func _use_item(p: Dictionary, res: String, now: float) -> Dictionary:
+	if not Prof.CONSUMABLES.has(res):
+		return _err("not usable")
+	if res_count(p, res) <= 0:
+		return _err("none left")
+	var c: Dictionary = Prof.CONSUMABLES[res]
+	_add_res(p, res, -1)
+	if c.has("duration"):
+		p["buffs"][c["effect"]] = {"value": float(c["value"]), "until": now + float(c["duration"]), "res": res}
+	else:
+		var b: Dictionary = p["buffs"].get(c["effect"], {"value": float(c["value"]), "charges": 0, "res": res})
+		b["charges"] = int(b.get("charges", 0)) + int(c.get("charges", 1))
+		p["buffs"][c["effect"]] = b
+	return _ok({"buff": c["effect"]})
 
 # =====================================================================
 # Board

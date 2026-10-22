@@ -348,7 +348,7 @@ func _interrupt(src: BattleUnit, t: BattleUnit) -> void:
 func _deal(src: BattleUnit, t: BattleUnit, amount: float, can_crit: bool, is_dot: bool) -> float:
 	if not t.alive():
 		return 0.0
-	var dmg := amount
+	var dmg := amount * src.dmg_mult
 	if not is_dot:
 		dmg *= 100.0 / (100.0 + t.armor)
 	var crit := can_crit and rng.randf() < src.crit
@@ -377,7 +377,7 @@ func _deal(src: BattleUnit, t: BattleUnit, amount: float, can_crit: bool, is_dot
 func _heal(src: BattleUnit, t: BattleUnit, amount: float, can_crit: bool) -> void:
 	if not t.alive():
 		return
-	var h := amount
+	var h := amount * src.heal_mult
 	var crit := can_crit and rng.randf() < src.crit
 	if crit:
 		h *= 2.0

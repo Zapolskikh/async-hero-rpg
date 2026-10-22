@@ -24,6 +24,8 @@ var power: float
 var armor: float
 var haste: float
 var crit: float
+var dmg_mult := 1.0      # potion buffs (Prof.CONSUMABLES)
+var heal_mult := 1.0
 
 var spells: Array = []   # [{id, lvl}] in rotation order
 var rot_index := 0
@@ -62,6 +64,8 @@ func _init(p_uid: int, p_side: int, p_slot: int, snap: Dictionary) -> void:
 	armor = st.get("armor", 0.0)
 	haste = st.get("haste", 0.0)
 	crit = st.get("crit", 0.0)
+	dmg_mult = st.get("dmg_mult", 1.0)
+	heal_mult = st.get("heal_mult", 1.0)
 	spells = snap.get("spells", []).duplicate(true)
 
 func alive() -> bool:

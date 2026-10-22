@@ -3,7 +3,10 @@ extends RefCounted
 ## Gear generation: slot, rarity, random affixes with quality rolls (concept 6).
 
 const SLOTS := ["weapon", "armor", "trinket"]
-const SLOT_NAMES := {"weapon": "Оружие", "armor": "Броня", "trinket": "Амулет"}
+const SLOT_NAMES := {"weapon": "Оружие", "armor": "Тело", "trinket": "Амулет",
+	"head": "Голова", "hands": "Руки", "legs": "Ноги", "feet": "Ступни"}
+## All equipment slots of a character. Combat loot only drops SLOTS; the rest is crafted.
+const ALL_SLOTS := ["weapon", "head", "armor", "hands", "legs", "feet", "trinket"]
 const BASE_NAMES := {
 	"weapon": ["Клинок", "Посох", "Секира", "Жезл", "Молот"],
 	"armor": ["Кираса", "Мантия", "Кольчуга", "Доспех", "Куртка"],

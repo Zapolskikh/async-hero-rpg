@@ -34,9 +34,11 @@ var runs_won := 0
 var runs_lost := 0
 var best_wave := 0
 var level_closed_now := false  # set when a push clears the level for the first time
+var mats := {}                 # crafting materials (cloth, boss materials) earned so far
 var last_reason := ""
 
 var rng := RandomNumberGenerator.new()
+var mat_rng := RandomNumberGenerator.new()   # separate stream: material drops do not shift gear drops
 var record_events := true
 
 func start(p_level: int, p_mode: String, p_party: Array, p_seed: int, p_first_clear: bool) -> void:
@@ -46,6 +48,7 @@ func start(p_level: int, p_mode: String, p_party: Array, p_seed: int, p_first_cl
 	base_seed = p_seed
 	first_clear_pending = p_first_clear
 	rng.seed = p_seed
+	mat_rng.seed = hash([p_seed, "mats"])
 	_start_run()
 
 func waves() -> Array:
@@ -117,6 +120,7 @@ func _on_wave_end() -> void:
 			var mult := 8 if u.is_boss else 1
 			gold += int(round(5.0 * pow(sc, 0.85) * mult))
 			xp += int(round(6.0 * Db.xp_level_factor(level) * mult))
+			_drop_mats(u)
 	if sim.won:
 		wave_index += 1
 		best_wave = max(best_wave, wave_index)
@@ -138,6 +142,10 @@ func _on_run_end(cleared: bool, reason: String) -> void:
 	run_index += 1
 	if cleared:
 		runs_won += 1
+		if mode == "push":
+			var table := Prof.cloth_table(level)
+			var best: String = table.keys()[-1]
+			_add_mat(best, Prof.CLOTH_ON_CLEAR)
 		xp += int(round(30.0 * Db.xp_level_factor(level)))
 		if mode == "push":
 			gold += 40 * level
@@ -154,6 +162,23 @@ func _on_run_end(cleared: bool, reason: String) -> void:
 		finished = true
 	else:
 		_start_run()
+
+## Cloth from every kill, special materials from bosses (spec 9-10, 20).
+func _drop_mats(u: BattleUnit) -> void:
+	var table := Prof.cloth_table(level)
+	for res in table:
+		if mat_rng.randf() < float(table[res]):
+			_add_mat(res, mat_rng.randi_range(Prof.CLOTH_PER_DROP[0], Prof.CLOTH_PER_DROP[1]))
+	if u.is_boss and Prof.BOSS_DROPS.has(u.sprite):
+		var drops: Dictionary = Prof.BOSS_DROPS[u.sprite]
+		var first := true
+		for res in drops:
+			if (first and mode == "push" and first_clear_pending) or mat_rng.randf() < float(drops[res]):
+				_add_mat(res, 1)
+			first = false
+
+func _add_mat(res: String, n: int) -> void:
+	mats[res] = int(mats.get(res, 0)) + n
 
 func total_waves() -> int:
 	return waves().size()
@@ -189,7 +214,7 @@ func fast_forward(seconds: float, sim_budget: float = 1200.0) -> Dictionary:
 
 func take_rewards() -> Dictionary:
 	var r := {"gold": gold, "xp": xp, "kills": kills, "items": items.duplicate(), "boxes": boxes,
-		"won": runs_won, "lost": runs_lost, "closed": level_closed_now}
+		"won": runs_won, "lost": runs_lost, "closed": level_closed_now, "mats": mats.duplicate()}
 	gold = 0
 	xp = 0
 	kills = 0
@@ -198,6 +223,7 @@ func take_rewards() -> Dictionary:
 	runs_won = 0
 	runs_lost = 0
 	level_closed_now = false
+	mats.clear()
 	return r
 
 func has_rewards() -> bool:
@@ -225,9 +251,10 @@ const P_BOXES := 5
 const P_WON := 6
 const P_LOST := 7
 const P_WAVE := 8
+const P_MATS := 9   # Dictionary resource -> cumulative count
 
 func _point() -> Array:
-	return [snappedf(elapsed, 0.01), gold, xp, kills, items.size(), boxes, runs_won, runs_lost, best_wave]
+	return [snappedf(elapsed, 0.01), gold, xp, kills, items.size(), boxes, runs_won, runs_lost, best_wave, mats.duplicate()]
 
 static func build_timeline(p_level: int, p_mode: String, p_party: Array, p_seed: int, p_first: bool) -> Dictionary:
 	var ex := Expedition.new()
@@ -251,28 +278,52 @@ static func build_timeline(p_level: int, p_mode: String, p_party: Array, p_seed:
 				break
 	var t_sim: float = pts[-1][P_T]
 	var rate := []
-	for i in pts[-1].size():
+	for i in P_MATS:
 		rate.append(0.0 if i == P_T else float(pts[-1][i]) / t_sim)
+	var mat_rate := {}
+	for res in pts[-1][P_MATS]:
+		mat_rate[res] = float(pts[-1][P_MATS][res]) / t_sim
+	rate.append(mat_rate)
 	return {"mode": "farm", "level": p_level, "seed": p_seed, "pts": pts, "items": ex.items.duplicate(true),
 		"sim_until": t_sim, "rate": rate}
 
 ## Cumulative rewards at time t (seconds since start).
 static func rewards_at(tl: Dictionary, t: float) -> Array:
-	var cur := [t, 0, 0, 0, 0, 0, 0, 0, 0]
+	var cur := zero_point()
 	for pt in tl["pts"]:
 		if float(pt[P_T]) <= t:
-			cur = pt.duplicate()
+			cur = pt.duplicate(true)
 		else:
 			break
 	if tl["mode"] == "farm" and t > float(tl["sim_until"]):
 		var last: Array = tl["pts"][-1]
 		var extra: float = t - float(tl["sim_until"])
 		cur = [t]
-		for i in range(1, last.size()):
+		for i in range(1, P_MATS):
 			cur.append(int(last[i]) + int(floor(float(tl["rate"][i]) * extra)))
 		cur[P_WAVE] = last[P_WAVE]
+		var m := {}
+		var last_m: Dictionary = last[P_MATS] if last.size() > P_MATS else {}
+		var rate_m: Dictionary = tl["rate"][P_MATS] if tl["rate"].size() > P_MATS else {}
+		for res in last_m:
+			m[res] = int(last_m[res]) + int(floor(float(rate_m.get(res, 0.0)) * extra))
+		cur.append(m)
+	if cur.size() <= P_MATS:
+		cur.append({})
 	cur[P_T] = t
 	return cur
+
+static func zero_point() -> Array:
+	return [0.0, 0, 0, 0, 0, 0, 0, 0, 0, {}]
+
+## a - b for material dictionaries
+static func mats_diff(a: Dictionary, b: Dictionary) -> Dictionary:
+	var out := {}
+	for res in a:
+		var n := int(a[res]) - int(b.get(res, 0))
+		if n > 0:
+			out[res] = n
+	return out
 
 ## i-th dropped item of the timeline (stored ones first, then generated).
 static func item_at(tl: Dictionary, i: int) -> Dictionary:
