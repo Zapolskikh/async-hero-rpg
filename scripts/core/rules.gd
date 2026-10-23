@@ -14,9 +14,11 @@ extends RefCounted
 
 const VERSION := 6
 const OFFLINE_CAP := 12.0 * 3600.0
-const BOX_PRICE := 150
+const BOX_PRICE := 300
 const BOX_PACK := 10
-const BOX_PACK_PRICE := 1350
+const BOX_PACK_PRICE := 2700
+## Spell boxes bought for gold per day (packs count as 10). Crystals have no limit.
+const GOLD_BOXES_PER_DAY := 10
 ## Spell Box odds by spell rarity (common, rare, epic, legendary), per spell.
 const BOX_RARITY_WEIGHTS := [10.0, 3.0, 0.8, 0.25]
 const REROLL_BASE := 20
@@ -31,10 +33,11 @@ const REAL_SLOTS := 3            # up to 3 of 6 board places go to real players
 
 ## Actions without randomness: the client may apply them locally right away.
 const LOCAL_ACTIONS := ["set_rotation", "move_party", "equip", "unequip", "sell", "hire", "fire", "replace", "fuse", "set_name",
-	"talent_up", "talent_reset", "set_threshold"]
+	"talent_up", "talent_reset", "set_threshold", "set_cosmetic"]
 ## Actions with randomness or rewards: only the authority (server or offline client) runs them.
 const AUTHORITY_ACTIONS := ["reroll", "open_box", "open_pack", "start", "collect", "stop",
-	"gather_start", "gather_claim", "gather_cancel", "craft_start", "craft_claim", "use_item"]
+	"gather_start", "gather_claim", "gather_cancel", "craft_start", "craft_claim", "use_item",
+	"fake_purchase", "buy_cosmetic", "rush", "buy_boost", "upgrade_item"]
 ## Server-internal actions, never accepted from a client.
 const INTERNAL_ACTIONS := ["grant_assists"]
 
@@ -46,12 +49,12 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 	var p := {
 		"v": VERSION, "name": name, "created": now,
 		"gold": 100, "boxes": 1, "closed_level": 0,
-		"hero": {"name": name, "level": 1, "xp": 0, "rotation": ["kick", "fireball", "strike"], "talents": {}, "spell_settings": {},
+		"hero": {"name": name, "level": 1, "xp": 0, "rotation": ["kick", "fireball", "strike"], "talents": {}, "spell_settings": {}, "cosmetics": {},
 			"equipped": _empty_equipment()},
 		"collection": {}, "inventory": [], "board": [], "hired": [], "party_order": [],
 		"rerolls_today": 0, "reroll_day": "", "free_box_day": "",
 		"expedition": null, "reports": [], "stats": {"hired_total": 0, "assist_gold_total": 0},
-		"resources": {}, "recipes_known": [], "professions": _fresh_professions(), "gathering": null, "crafting": {}, "buffs": {},
+		"resources": {}, "recipes_known": [], "crystals": 0, "cosmetics_owned": [], "gold_box_day": "", "gold_boxes_today": 0, "professions": _fresh_professions(), "gathering": null, "crafting": {}, "buffs": {},
 		"rng": {"seed": str(seed_value), "state": ""},
 	}
 	var r := _rng(p)
@@ -95,6 +98,13 @@ static func migrate(p: Dictionary, now: float) -> void:
 		hero["spell_settings"] = {}
 	if typeof(p.get("recipes_known")) != TYPE_ARRAY:
 		p["recipes_known"] = []
+	p["crystals"] = int(p.get("crystals", 0))
+	p["gold_boxes_today"] = int(p.get("gold_boxes_today", 0))
+	p["gold_box_day"] = str(p.get("gold_box_day", ""))
+	if typeof(p.get("cosmetics_owned")) != TYPE_ARRAY:
+		p["cosmetics_owned"] = []
+	if typeof(p["hero"].get("cosmetics")) != TYPE_DICTIONARY:
+		p["hero"]["cosmetics"] = {}
 	for k in hero["talents"].keys():
 		hero["talents"][k] = int(hero["talents"][k])
 	hero["xp"] = int(hero["xp"])
@@ -363,10 +373,16 @@ static func apply(p: Dictionary, action: String, args: Dictionary, now: float, c
 		"talent_up": res = _talent_up(p, str(args.get("id", "")))
 		"talent_reset": res = _talent_reset(p)
 		"set_threshold": res = _set_threshold(p, str(args.get("sid", "")), float(args.get("value", 0.0)))
+		"set_cosmetic": res = _set_cosmetic(p, str(args.get("slot", "")), str(args.get("id", "")))
+		"fake_purchase": res = _fake_purchase(p, str(args.get("pack", "")))
+		"buy_cosmetic": res = _buy_cosmetic(p, str(args.get("id", "")))
+		"rush": res = _rush(p, str(args.get("what", "")), str(args.get("prof", "")), now)
+		"buy_boost": res = _buy_boost(p, now)
+		"upgrade_item": res = _upgrade_item(p, str(args.get("id", "")), str(args.get("pay", "gold")))
 		"set_name": res = _set_name(p, str(args.get("name", "")))
 		"reroll": res = _reroll(p, r, now, ctx)
 		"open_box": res = _open_box(p, r, str(args.get("use", "")), now)
-		"open_pack": res = _open_pack(p, r, str(args.get("use", "")))
+		"open_pack": res = _open_pack(p, r, str(args.get("use", "")), now)
 		"start": res = _start(p, r, int(args.get("level", 0)), str(args.get("mode", "")), now, ctx)
 		"collect": res = _collect(p, r, now, ctx, false)
 		"stop": res = _collect(p, r, now, ctx, true)
@@ -535,6 +551,104 @@ static func _set_threshold(p: Dictionary, sid: String, value: float) -> Dictiona
 	st[sid]["threshold"] = value
 	return _ok()
 
+# ---------------- crystals ----------------
+
+## Share of the real-time span [t0, t1] covered by the farm boost.
+static func _boost_share(p: Dictionary, t0: float, t1: float) -> float:
+	var b = p.get("buffs", {}).get("farm_x2")
+	if b == null or t1 <= t0:
+		return 0.0
+	var overlap: float = min(t1, float(b["until"])) - max(t0, float(b["from"]))
+	return clamp(overlap / (t1 - t0), 0.0, 1.0)
+
+static func _fake_purchase(p: Dictionary, pack: String) -> Dictionary:
+	for pk in Shop.PACKS:
+		if pk["id"] == pack:
+			p["crystals"] = int(p["crystals"]) + int(pk["crystals"])
+			return _ok({"crystals": pk["crystals"]})
+	return _err("no such pack")
+
+static func _spend_crystals(p: Dictionary, n: int) -> bool:
+	if int(p["crystals"]) < n:
+		return false
+	p["crystals"] = int(p["crystals"]) - n
+	return true
+
+static func _buy_cosmetic(p: Dictionary, id: String) -> Dictionary:
+	if not Shop.COSMETICS.has(id):
+		return _err("no such cosmetic")
+	if id in p["cosmetics_owned"]:
+		return _err("already owned")
+	if not _spend_crystals(p, int(Shop.COSMETICS[id]["price"])):
+		return _err("not enough crystals")
+	p["cosmetics_owned"].append(id)
+	p["hero"]["cosmetics"][Shop.COSMETICS[id]["slot"]] = id
+	return _ok()
+
+## id "" takes the cosmetic off.
+static func _set_cosmetic(p: Dictionary, slot: String, id: String) -> Dictionary:
+	if not Shop.COSMETIC_SLOTS.has(slot):
+		return _err("bad slot")
+	if id == "":
+		p["hero"]["cosmetics"].erase(slot)
+		return _ok()
+	if not id in p["cosmetics_owned"] or Shop.COSMETICS[id]["slot"] != slot:
+		return _err("not owned")
+	p["hero"]["cosmetics"][slot] = id
+	return _ok()
+
+## Finish the current gathering ("gather") or a profession's craft ("craft") now.
+static func _rush(p: Dictionary, what: String, prof: String, now: float) -> Dictionary:
+	var job = p.get("gathering") if what == "gather" else p["crafting"].get(prof)
+	if job == null:
+		return _err("nothing to rush")
+	var left: float = float(job["ends_at"]) - now
+	if left <= 0.0:
+		return _err("already done")
+	if not _spend_crystals(p, Shop.rush_cost(left)):
+		return _err("not enough crystals")
+	job["ends_at"] = now
+	return _ok()
+
+static func _buy_boost(p: Dictionary, now: float) -> Dictionary:
+	if not _spend_crystals(p, Shop.BOOST_PRICE):
+		return _err("not enough crystals")
+	var b = p["buffs"].get("farm_x2")
+	if b != null and float(b["until"]) > now:
+		b["until"] = float(b["until"]) + Shop.BOOST_SECONDS   # stacks: extends the running boost
+	else:
+		p["buffs"]["farm_x2"] = {"from": now, "until": now + Shop.BOOST_SECONDS, "value": Shop.BOOST_MULT}
+	return _ok()
+
+## Raises an item (bag or worn) to the hero's level. pay: "gold" (gold + ore) or "crystals".
+static func _upgrade_item(p: Dictionary, id: String, pay: String) -> Dictionary:
+	var it = null
+	for x in p["inventory"]:
+		if x["id"] == id:
+			it = x
+	for slot in p["hero"]["equipped"]:
+		var e = p["hero"]["equipped"][slot]
+		if e != null and e["id"] == id:
+			it = e
+	if it == null:
+		return _err("no such item")
+	var to: int = int(p["hero"]["level"])
+	var cost := Shop.upgrade_cost(it, to)
+	if cost.is_empty():
+		return _err("already at hero level")
+	if pay == "crystals":
+		if not _spend_crystals(p, int(cost["crystals"])):
+			return _err("not enough crystals")
+	else:
+		if int(p["gold"]) < int(cost["gold"]):
+			return _err("not enough gold")
+		if res_count(p, cost["ore"]) < int(cost["ore_n"]):
+			return _err("missing " + str(cost["ore"]))
+		p["gold"] -= int(cost["gold"])
+		_add_res(p, cost["ore"], -int(cost["ore_n"]))
+	Loot.rescale(it, to)
+	return _ok({"ilvl": to})
+
 static func _talent_reset(p: Dictionary) -> Dictionary:
 	p["hero"]["talents"] = {}
 	return _ok()
@@ -582,20 +696,45 @@ static func _open_box(p: Dictionary, r: RandomNumberGenerator, use: String, now:
 				return _err("no boxes")
 			p["boxes"] -= 1
 		"gold":
+			if gold_boxes_left(p, now) < 1:
+				return _err("gold box limit")
 			if int(p["gold"]) < BOX_PRICE:
 				return _err("not enough gold")
 			p["gold"] -= BOX_PRICE
+			_count_gold_boxes(p, now, 1)
+		"crystals":
+			if int(p["crystals"]) < Shop.BOX_CRYSTALS:
+				return _err("not enough crystals")
+			p["crystals"] -= Shop.BOX_CRYSTALS
 		_:
 			return _err("bad box source")
 	return _ok({"boxes": [_roll_box(p, r)]})
 
-static func _open_pack(p: Dictionary, r: RandomNumberGenerator, use: String) -> Dictionary:
+static func gold_boxes_left(p: Dictionary, now: float) -> int:
+	var used: int = int(p.get("gold_boxes_today", 0)) if p.get("gold_box_day", "") == day_of(now) else 0
+	return max(0, GOLD_BOXES_PER_DAY - used)
+
+static func _count_gold_boxes(p: Dictionary, now: float, n: int) -> void:
+	if p.get("gold_box_day", "") != day_of(now):
+		p["gold_box_day"] = day_of(now)
+		p["gold_boxes_today"] = 0
+	p["gold_boxes_today"] = int(p["gold_boxes_today"]) + n
+
+static func _open_pack(p: Dictionary, r: RandomNumberGenerator, use: String, now: float) -> Dictionary:
 	var n := 0
 	match use:
 		"gold":
+			if gold_boxes_left(p, now) < BOX_PACK:
+				return _err("gold box limit")
 			if int(p["gold"]) < BOX_PACK_PRICE:
 				return _err("not enough gold")
 			p["gold"] -= BOX_PACK_PRICE
+			_count_gold_boxes(p, now, BOX_PACK)
+			n = BOX_PACK
+		"crystals":
+			if int(p["crystals"]) < Shop.BOX_PACK_CRYSTALS:
+				return _err("not enough crystals")
+			p["crystals"] -= Shop.BOX_PACK_CRYSTALS
 			n = BOX_PACK
 		"token":
 			n = min(int(p["boxes"]), BOX_PACK)
@@ -695,6 +834,13 @@ static func _collect(p: Dictionary, r: RandomNumberGenerator, now: float, ctx: D
 			rep["type"] = "push_abort" if finish else "rewards"
 	else:
 		rep["closed"] = false
+	if ex["mode"] == "farm":
+		var frac := _boost_share(p, float(ex["started_at"]) + float(c[0]), float(ex["started_at"]) + t)
+		if frac > 0.0:
+			rep["boost_gold"] = int(round(rep["gold"] * frac * (Shop.BOOST_MULT - 1.0)))
+			rep["boost_xp"] = int(round(rep["xp"] * frac * (Shop.BOOST_MULT - 1.0)))
+			rep["gold"] += rep["boost_gold"]
+			rep["xp"] += rep["boost_xp"]
 	ex["collected"] = tot
 	_apply_rewards(p, r, rep, ctx)
 	var assists := []
@@ -717,6 +863,9 @@ static func _apply_rewards(p: Dictionary, r: RandomNumberGenerator, rep: Diction
 	rep["board_refreshed"] = false
 	if rep.get("closed", false) and int(rep["level"]) > int(p["closed_level"]):
 		p["closed_level"] = int(rep["level"])
+		if int(rep["level"]) % Shop.CRYSTALS_FIRST_CLEAR_EVERY == 0:
+			p["crystals"] = int(p["crystals"]) + Shop.CRYSTALS_FIRST_CLEAR
+			rep["crystals"] = Shop.CRYSTALS_FIRST_CLEAR
 		p["board"] = roll_board(p, r, ctx)
 		rep["board_refreshed"] = true
 	elif rep["level_ups"] > 0:

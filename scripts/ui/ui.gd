@@ -152,9 +152,9 @@ static func icon(name: String, size: float = 32.0, tint: Color = Color.WHITE) ->
 	return r
 
 ## Pixel-art portrait of a unit sprite, scaled with nearest filtering.
-static func portrait(sprite: String, height: float = 84.0, flip: bool = false, look: Array = []) -> Control:
+static func portrait(sprite: String, height: float = 84.0, flip: bool = false, look: Array = [], glow: String = "") -> Control:
 	if not look.is_empty():
-		return doll(look, height, flip)
+		return doll(look, height, flip, glow)
 	var path := "res://assets/units/%s.png" % sprite
 	var r := TextureRect.new()
 	r.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -168,10 +168,25 @@ static func portrait(sprite: String, height: float = 84.0, flip: bool = false, l
 	return r
 
 ## Paper-doll portrait: doll layers stacked and tinted (Roster.look).
-static func doll(look: Array, height: float = 84.0, flip: bool = false) -> Control:
+static func doll(look: Array, height: float = 84.0, flip: bool = false, glow: String = "") -> Control:
 	var holder := Control.new()
 	holder.custom_minimum_size = Vector2(height * 0.81, height)
 	holder.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	if glow != "":
+		for l in look:
+			var gp := "res://assets/units/doll_%s_glow.png" % str(l[0])
+			if not ResourceLoader.exists(gp):
+				continue
+			var gr := TextureRect.new()
+			gr.texture = load(gp)
+			gr.texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
+			gr.expand_mode = TextureRect.EXPAND_IGNORE_SIZE
+			gr.stretch_mode = TextureRect.STRETCH_KEEP_ASPECT_CENTERED
+			gr.flip_h = flip
+			gr.set_anchors_preset(Control.PRESET_FULL_RECT)
+			gr.mouse_filter = Control.MOUSE_FILTER_IGNORE
+			gr.modulate = Color(glow)
+			holder.add_child(gr)
 	for l in look:
 		var path := "res://assets/units/doll_%s.png" % str(l[0])
 		if not ResourceLoader.exists(path):

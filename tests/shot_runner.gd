@@ -11,6 +11,7 @@ var meter_only := false
 var talents_only := false
 var atlas_only := false
 var doll_only := false
+var shop_only := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -30,9 +31,13 @@ func _ready() -> void:
 			atlas_only = true
 		if a == "--shots-doll":
 			doll_only = true
+		if a == "--shots-shop":
+			shop_only = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if doll_only:
+	if shop_only:
+		_run_shop()
+	elif doll_only:
 		_run_doll()
 	elif atlas_only:
 		_run_atlas()
@@ -365,5 +370,39 @@ func _run_doll() -> void:
 	main._open_watch()
 	await _wait(2.5)
 	await _shot("36_doll_battle")
+	print("shots done")
+	get_tree().quit()
+
+func _run_shop() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	await Game.fake_purchase("c1200")
+	await Game.buy_cosmetic("glow_gold")
+	await Game.buy_cosmetic("aura_fire")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 8
+	for spec in [["armor", "", 0.3], ["head", "", 0.3], ["legs", "", 0.0], ["feet", "", 0.5], ["", "shield", 0.3]]:
+		var it := Loot.roll_gear(rng, 1, spec[2], spec[0], spec[1])
+		Game.profile["inventory"].append(it)
+		Game.equip(it["id"])
+	Game.profile["hero"]["level"] = 9
+	var old := Loot.roll_gear(rng, 2, 0.95, "", "greatsword")
+	Game.profile["inventory"].append(old)
+	main.selected_item = old["id"]
+	Game.changed.emit()
+	main._shop_popup()
+	await _wait(0.5)
+	await _shot("37_shop")
+	UI.clear(main.popup_layer)
+	main._switch("bag")
+	await _wait(0.5)
+	await _shot("38_bag_upgrade")
+	main._switch("spells")
+	await _wait(0.5)
+	await _shot("39_spells_buy")
+	await Game.start_expedition(1, "push")
+	main._open_watch()
+	await _wait(2.0)
+	await _shot("40_aura_glow")
 	print("shots done")
 	get_tree().quit()

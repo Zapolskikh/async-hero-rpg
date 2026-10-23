@@ -21,6 +21,7 @@ func _init() -> void:
 	test_weapons()
 	test_talents()
 	test_rare_loot_and_mods()
+	test_crystals()
 	test_boxes_and_validation()
 	test_json_roundtrip()
 	test_migrate_v1()
@@ -155,6 +156,58 @@ func test_weapons() -> void:
 	var qs := Rules.hero_snapshot(q)
 	check(qs["weapons"] == ["staff"] and qs["stats"]["atk"] == 0, "migrated staff hero casts instead of attacking")
 
+func test_crystals() -> void:
+	print("crystals")
+	var p := fresh(61)
+	check(int(p["crystals"]) == 0 and Rules.apply(p, "fake_purchase", {"pack": "c550"}, T0)["ok"] and int(p["crystals"]) == 550, "test purchase grants crystals")
+	check(not Rules.apply(p, "fake_purchase", {"pack": "nope"}, T0)["ok"], "unknown pack rejected")
+	# boxes: gold limited per day, crystals not
+	p["gold"] = 100000
+	check(Rules.apply(p, "open_pack", {"use": "gold"}, T0)["ok"] and not Rules.apply(p, "open_box", {"use": "gold"}, T0)["ok"], "10 gold boxes a day, then the limit")
+	check(Rules.apply(p, "open_box", {"use": "gold"}, T0 + 86400.0)["ok"], "gold limit resets next day")
+	var c0 := int(p["crystals"])
+	for i in 3:
+		Rules.apply(p, "open_pack", {"use": "crystals"}, T0)
+	check(int(p["crystals"]) == c0 - 3 * Shop.BOX_PACK_CRYSTALS, "crystal packs have no daily limit")
+	# cosmetics
+	p["crystals"] = int(p["crystals"]) + 1000
+	check(Rules.apply(p, "buy_cosmetic", {"id": "aura_fire"}, T0)["ok"] and p["hero"]["cosmetics"]["aura"] == "aura_fire", "cosmetic bought and worn")
+	check(Rules.hero_snapshot(p)["cosmetics"]["aura"] == Shop.COSMETICS["aura_fire"]["color"], "snapshot carries the aura colour")
+	check(not Rules.apply(p, "buy_cosmetic", {"id": "aura_fire"}, T0)["ok"], "cannot buy twice")
+	Rules.apply(p, "set_cosmetic", {"slot": "aura", "id": ""}, T0)
+	check(not p["hero"]["cosmetics"].has("aura") and not Rules.apply(p, "set_cosmetic", {"slot": "glow", "id": "glow_gold"}, T0)["ok"], "take off; cannot wear what you do not own")
+	# rush
+	Rules.apply(p, "gather_start", {"prof": "mining", "loc": "abandoned_quarry", "sec": 3600}, T0)
+	var cr := int(p["crystals"])
+	check(Rules.apply(p, "rush", {"what": "gather"}, T0 + 60.0)["ok"] and int(p["crystals"]) == cr - 6, "rush: 59 min left costs 6 crystals")
+	check(Rules.apply(p, "gather_claim", {}, T0 + 61.0)["ok"], "rushed gathering can be claimed")
+	# farm boost: only gold and xp, only while active
+	var q := fresh(62)
+	q["crystals"] = 500
+	q["closed_level"] = 1
+	var a := fresh(62)
+	a["closed_level"] = 1
+	Rules.apply(q, "start", {"level": 1, "mode": "farm"}, T0)
+	Rules.apply(a, "start", {"level": 1, "mode": "farm"}, T0)
+	Rules.apply(q, "buy_boost", {}, T0)
+	var rq: Dictionary = Rules.apply(q, "collect", {}, T0 + 3600.0)["report"]
+	var ra: Dictionary = Rules.apply(a, "collect", {}, T0 + 3600.0)["report"]
+	check(rq["gold"] == ra["gold"] * 2 or absi(rq["gold"] - ra["gold"] * 2) <= 1, "boost doubles farm gold (%d vs %d)" % [rq["gold"], ra["gold"]])
+	check(rq["items"].size() == ra["items"].size(), "boost does not add items")
+	# item upgrade
+	var it := Loot.roll_gear(RandomNumberGenerator.new(), 3, 0.9, "", "sword")
+	var u := fresh(63)
+	u["hero"]["level"] = 13
+	u["inventory"].append(it)
+	var str0: float = it["affixes"][0]["value"]
+	var dmg0: float = it["dmg"]
+	check(not Rules.apply(u, "upgrade_item", {"id": it["id"], "pay": "gold"}, T0)["ok"], "gold path needs gold and ore")
+	u["gold"] = 100000
+	Rules._add_res(u, Shop.upgrade_cost(it, 13)["ore"], 50)
+	check(Rules.apply(u, "upgrade_item", {"id": it["id"], "pay": "gold"}, T0)["ok"] and it["ilvl"] == 13, "item raised to hero level")
+	check(it["affixes"][0]["value"] > str0 * 3.5 and it["dmg"] > dmg0 * 3.0, "stats and damage scale with the level")
+	check(not Rules.apply(u, "upgrade_item", {"id": it["id"], "pay": "crystals"}, T0)["ok"], "nothing to do at hero level")
+
 func test_rare_loot_and_mods() -> void:
 	print("rare loot, weapon recipes, enemy modifiers")
 	var sw := Prof.make_item("iron_sword", "x")
@@ -250,7 +303,7 @@ func test_spell_levels() -> void:
 func test_boxes_and_validation() -> void:
 	print("boxes and validation")
 	var p := fresh(13)
-	p["gold"] = 2000
+	p["gold"] = 3000
 	var copies_before := 0
 	for sid in p["collection"]:
 		copies_before += 1 + int(p["collection"][sid]["copies"])
@@ -258,7 +311,7 @@ func test_boxes_and_validation() -> void:
 	var copies_after := 0
 	for sid in p["collection"]:
 		copies_after += 1 + int(p["collection"][sid]["copies"])
-	check(r["ok"] and r["boxes"].size() == 10 and p["gold"] == 650 and copies_after == copies_before + 10, "pack of 10 for 1350 gold")
+	check(r["ok"] and r["boxes"].size() == 10 and p["gold"] == 300 and copies_after == copies_before + 10, "pack of 10 for 2700 gold")
 	check(not Rules.apply(p, "open_pack", {"use": "gold"}, T0)["ok"], "cannot buy without gold")
 	check(Rules.apply(p, "open_box", {"use": "free"}, T0)["ok"] and not Rules.apply(p, "open_box", {"use": "free"}, T0 + 60)["ok"], "one free box per day")
 	check(Rules.apply(p, "open_box", {"use": "free"}, T0 + 86400.0)["ok"], "free box again next day")

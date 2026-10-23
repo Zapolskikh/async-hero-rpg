@@ -184,6 +184,16 @@ static func weapon_text(item: Dictionary) -> String:
 		parts.append("растёт от %s" % {"str": "силы", "agi": "ловкости", "power": "силы заклинаний"}[wt["stat"]])
 	return " · ".join(parts)
 
+## Raises (or lowers) an item to another item level: stats and weapon damage scale, rolls stay.
+static func rescale(it: Dictionary, new_ilvl: int) -> void:
+	var old: int = max(1, int(it["ilvl"]))
+	for a in it["affixes"]:
+		if not FLAT_STATS.has(a["stat"]):
+			a["value"] = round(float(a["value"]) * new_ilvl / old)
+	if it.has("dmg"):
+		it["dmg"] = round(float(it["dmg"]) * (new_ilvl + 1) / (old + 1))
+	it["ilvl"] = new_ilvl
+
 static func affix_text(a: Dictionary) -> String:
 	var stat: String = a["stat"]
 	if FLAT_STATS.has(stat):

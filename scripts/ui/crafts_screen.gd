@@ -175,6 +175,10 @@ func _active_gather(g: Dictionary) -> Control:
 	claim.disabled = not done
 	col.add_child(claim)
 	if not done:
+		var cost := Shop.rush_cost(float(g["ends_at"]) - Game.now())
+		var rb := UI.btn("Сейчас  %d" % cost, _rush.bind("gather", ""), "secondary", Style.FONT_TINY, "crystal", 140, 36)
+		rb.disabled = Game.crystals < cost
+		col.add_child(rb)
 		col.add_child(UI.btn("Отменить", _gather_cancel, "ghost", Style.FONT_TINY, "", 140, 36))
 	h.add_child(col)
 	return c
@@ -285,7 +289,14 @@ func _active_craft(prof: String, c: Dictionary) -> Control:
 	h.add_child(v)
 	var claim := UI.btn("Забрать", _craft_claim.bind(prof), "primary", Style.FONT_BODY, "", 140, 50)
 	claim.disabled = Game.now() < float(c["ends_at"])
-	h.add_child(claim)
+	var col := UI.vbox(6)
+	col.add_child(claim)
+	if Game.now() < float(c["ends_at"]):
+		var cost := Shop.rush_cost(float(c["ends_at"]) - Game.now())
+		var rb := UI.btn("Сейчас  %d" % cost, _rush.bind("craft", prof), "secondary", Style.FONT_TINY, "crystal", 140, 36)
+		rb.disabled = Game.crystals < cost
+		col.add_child(rb)
+	h.add_child(col)
 	return card
 
 func _output_tile(rid: String, size_px: float) -> Control:
@@ -439,6 +450,11 @@ func _res_cell(res: String) -> Control:
 		v.add_child(UI.btn("Использовать", _use.bind(res), "success", Style.FONT_TINY, "", 0, 36))
 	h.add_child(v)
 	return h
+
+func _rush(what: String, prof: String) -> void:
+	var r: Dictionary = await Game.rush(what, prof)
+	main._toast("Готово — можно забирать" if r.get("ok", false) else "Не хватает кристаллов")
+	_rebuild()
 
 func _use(res: String) -> void:
 	var r: Dictionary = await Game.use_item(res)

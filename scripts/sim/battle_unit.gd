@@ -17,6 +17,7 @@ var target_rule := "front"
 var sprite := ""         # visual only: assets/units/<sprite>.png
 var ranged := false      # visual only: shoots instead of stepping forward
 var look: Array = []     # visual only: paper-doll layers (Roster.look), empty = use `sprite`
+var cosmetics: Dictionary = {}  # visual only: {"glow": hex, "aura": hex}
 
 var max_hp: float
 var hp: float
@@ -62,6 +63,7 @@ func _init(p_uid: int, p_side: int, p_slot: int, snap: Dictionary) -> void:
 	sprite = snap.get("sprite", "")
 	ranged = snap.get("ranged", false)
 	look = snap.get("look", [])
+	cosmetics = snap.get("cosmetics", {})
 	var st: Dictionary = snap["stats"]
 	max_hp = st["hp"]
 	hp = max_hp

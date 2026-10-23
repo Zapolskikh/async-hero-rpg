@@ -26,6 +26,8 @@ class Settings:
     snapshot_max_age_days: int = int(os.getenv("SNAPSHOT_MAX_AGE_DAYS", "14"))
     rate_per_sec: float = float(os.getenv("RATE_PER_SEC", "8"))
     rate_burst: int = int(os.getenv("RATE_BURST", "30"))
+    # prototype: "Купить (тест)" grants crystals for free. Set ALLOW_FAKE_PURCHASES=0 before real payments.
+    allow_fake_purchases: bool = os.getenv("ALLOW_FAKE_PURCHASES", "1") == "1"
 
 
 settings = Settings()

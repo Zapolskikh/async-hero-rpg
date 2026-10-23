@@ -329,12 +329,37 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 		col.a = 0.35 + 0.2 * sin(clock * 10.0)
 		_ellipse(home, Vector2(sz.x * 0.55, 14), col)
 
+	# cosmetic aura under the feet
+	if u.alive() and u.cosmetics.has("aura"):
+		var ac := Color(u.cosmetics["aura"])
+		for i in 3:
+			var ph := fmod(clock * 0.8 + i / 3.0, 1.0)
+			var col := ac
+			col.a = 0.8 * (1.0 - ph)
+			_ellipse(home, Vector2(sz.x * (0.3 + 0.5 * ph), 9.0 + 12.0 * ph), col, false, 4.0)
+		var core := ac
+		core.a = 0.4 + 0.12 * sin(clock * 3.0)
+		_ellipse(home, Vector2(sz.x * 0.5, 15), core)
+		for i in 4:   # rising sparks
+			var st := fmod(clock * 0.6 + i * 0.25, 1.0)
+			var sp := ac
+			sp.a = 0.9 * (1.0 - st)
+			var sx := sin(i * 2.1 + clock) * sz.x * 0.35
+			draw_rect(Rect2(home + Vector2(sx, -st * sz.y * 0.7), Vector2(4, 4) * k()), sp)
+
 	# sprite: rotate to fall over when dead, mirror for enemies
 	var pivot := home + offset
 	var angle := -dir * dead_k * PI / 2.0
 	draw_set_transform(pivot, angle, Vector2(dir, 1.0))
 	var rect := Rect2(Vector2(-sz.x / 2.0, -sz.y), sz)
 	if not u.look.is_empty():
+		if u.cosmetics.has("glow") and u.alive():
+			var gc := Color(u.cosmetics["glow"])
+			gc.a = 0.7 + 0.25 * sin(clock * 4.0)
+			for l in u.look:
+				var gt := tex("doll_" + str(l[0]) + "_glow")
+				if gt != null:
+					draw_texture_rect(gt, rect, false, gc)
 		for l in u.look:
 			var lt := tex("doll_" + str(l[0]))
 			if lt != null:

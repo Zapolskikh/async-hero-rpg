@@ -317,6 +317,30 @@ func spell_threshold(sid: String) -> float:
 		return float(st[sid]["threshold"])
 	return float(Db.SPELLS[sid].get("threshold", 0.7))
 
+var crystals: int:
+	get: return int(profile.get("crystals", 0))
+
+func gold_boxes_left() -> int:
+	return Rules.gold_boxes_left(profile, now())
+
+func set_cosmetic(slot: String, id: String) -> void:
+	act("set_cosmetic", {"slot": slot, "id": id})
+
+func fake_purchase(pack: String) -> Dictionary:
+	return await act_authority("fake_purchase", {"pack": pack})
+
+func buy_cosmetic(id: String) -> Dictionary:
+	return await act_authority("buy_cosmetic", {"id": id})
+
+func rush(what: String, prof: String = "") -> Dictionary:
+	return await act_authority("rush", {"what": what, "prof": prof})
+
+func buy_boost() -> Dictionary:
+	return await act_authority("buy_boost", {})
+
+func upgrade_item(id: String, pay: String) -> Dictionary:
+	return await act_authority("upgrade_item", {"id": id, "pay": pay})
+
 func talent_reset() -> void:
 	act("talent_reset")
 

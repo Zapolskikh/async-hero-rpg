@@ -19,9 +19,10 @@ from .config import Settings
 from .worker import WorkerPool
 
 LOCAL_ACTIONS = {"set_rotation", "move_party", "equip", "unequip", "sell", "hire", "fire", "replace", "fuse", "set_name",
-                 "talent_up", "talent_reset", "set_threshold"}
+                 "talent_up", "talent_reset", "set_threshold", "set_cosmetic"}
 AUTHORITY_ACTIONS = {"reroll", "open_box", "open_pack", "start", "collect", "stop",
-                     "gather_start", "gather_claim", "gather_cancel", "craft_start", "craft_claim", "use_item"}
+                     "gather_start", "gather_claim", "gather_cancel", "craft_start", "craft_claim", "use_item",
+                     "fake_purchase", "buy_cosmetic", "rush", "buy_boost", "upgrade_item"}
 CLIENT_ACTIONS = LOCAL_ACTIONS | AUTHORITY_ACTIONS
 
 
@@ -86,6 +87,8 @@ class GameService:
     async def action(self, account_id: str, action: str, args: dict) -> dict:
         if action not in CLIENT_ACTIONS:
             raise GameError(400, "unknown action")
+        if action == "fake_purchase" and not self.s.allow_fake_purchases:
+            raise GameError(403, "test purchases are disabled")
         return await self._run(account_id, action, args or {})
 
     async def _run(self, account_id: str, action: str | None, args: dict) -> dict:

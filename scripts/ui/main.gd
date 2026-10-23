@@ -134,6 +134,9 @@ func _build_top_bar() -> void:
 		var mode := "Фарм" if ex["mode"] == "farm" else "Штурм"
 		h.add_child(UI.pill("loop" if ex["mode"] == "farm" else "swords", "%s · ур. %d" % [mode, ex["level"]], Style.FONT_SMALL, Style.CARD))
 	h.add_child(UI.pill("gold", str(Game.gold)))
+	var cr := UI.pill("crystal", "%d  +" % Game.crystals, Style.FONT_BODY, Color("#3a2f5a"))
+	UI.tap_overlay(cr, _shop_popup)
+	h.add_child(cr)
 	h.add_child(UI.pill("box", str(Game.boxes)))
 	if Game.is_online():
 		var on := UI.pill("online", "…" if Game.busy else "Онлайн", Style.FONT_SMALL, Color("#1f4a35"))
@@ -665,7 +668,7 @@ func _screen_hero() -> Control:
 	doll.add_child(left_col)
 	var stage := UI.vbox(0)
 	stage.alignment = BoxContainer.ALIGNMENT_END
-	var big := UI.portrait("hero", 200, false, Game.hero_snapshot()["look"])
+	var big := UI.portrait("hero", 200, false, Game.hero_snapshot()["look"], Game.hero_snapshot()["cosmetics"].get("glow", ""))
 	big.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	stage.add_child(big)
 	var ped := UI.flat(Style.BG_DEEP, 0, 20)
@@ -861,6 +864,86 @@ func _atlas_popup(lvl: int) -> void:
 	sc.custom_minimum_size = Vector2(780, 420 - 36 * mods.size())
 	v.add_child(sc)
 	_modal("Атлас врагов · %d. %s" % [lvl, Db.LEVELS[lvl - 1]["name"]], v)
+
+# =====================================================================
+# Shop (crystals). Prototype: purchases are test grants.
+# =====================================================================
+
+func _shop_popup() -> void:
+	UI.clear(popup_layer)
+	var v := UI.vbox(10)
+	v.add_child(UI.wrap("Прототип: покупки тестовые, деньги не списываются.", Style.FONT_TINY, Style.WARNING))
+	var packs := UI.hbox(8)
+	for pk in Shop.PACKS:
+		var c := UI.card(Style.BG_DEEP, 8)
+		var cv := UI.vbox(4)
+		c.add_child(cv)
+		cv.add_child(UI.pill("crystal", str(pk["crystals"]), Style.FONT_BODY, Color("#3a2f5a")))
+		cv.add_child(UI.btn("%s (тест)" % pk["price"], _shop_buy_pack.bind(pk["id"]), "primary", Style.FONT_SMALL, "", 0, 44))
+		packs.add_child(c)
+	v.add_child(packs)
+	# boost
+	var bh := UI.hbox(8)
+	var b = Game.profile.get("buffs", {}).get("farm_x2")
+	var left: float = float(b["until"]) - Game.now() if b != null else 0.0
+	bh.add_child(UI.icon("loop", 32))
+	var bv := UI.vbox(0)
+	bv.add_child(UI.label("Ускорение фарма ×2 на 2 ч", Style.FONT_BODY, Style.TEXT, true))
+	bv.add_child(UI.label(("Активно ещё %s · " % UI.format_time(left) if left > 0.0 else "") + "золото и опыт с фарма ×2 (вещи и редкий дроп — нет)", Style.FONT_TINY, Style.MUTED))
+	bh.add_child(UI.expand(bv))
+	var bb := UI.btn("%d" % Shop.BOOST_PRICE, _shop_boost, "secondary", Style.FONT_SMALL, "crystal", 0, 44)
+	bb.disabled = Game.crystals < Shop.BOOST_PRICE
+	bh.add_child(bb)
+	v.add_child(bh)
+	# cosmetics
+	v.add_child(UI.label("Косметика — только внешний вид", Style.FONT_SMALL, Style.MUTED, true))
+	var g := UI.grid(2, 8)
+	var worn: Dictionary = Game.hero.get("cosmetics", {})
+	var owned: Array = Game.profile.get("cosmetics_owned", [])
+	for id in Shop.COSMETICS:
+		var cm: Dictionary = Shop.COSMETICS[id]
+		var c := UI.card(Style.BG_DEEP, 8)
+		c.custom_minimum_size.x = 380
+		var ch := UI.hbox(8)
+		c.add_child(ch)
+		var sw := UI.flat(Color(cm["color"]), 0, 18)
+		sw.custom_minimum_size = Vector2(36, 36)
+		ch.add_child(sw)
+		var cv := UI.vbox(0)
+		cv.add_child(UI.label(cm["name"], Style.FONT_SMALL, Style.TEXT, true))
+		cv.add_child(UI.label(Shop.COSMETIC_SLOTS[cm["slot"]], Style.FONT_TINY, Style.MUTED))
+		ch.add_child(UI.expand(cv))
+		if worn.get(cm["slot"], "") == id:
+			ch.add_child(UI.btn("Снять", _shop_wear.bind(cm["slot"], ""), "ghost", Style.FONT_SMALL, "", 0, 40))
+		elif id in owned:
+			ch.add_child(UI.btn("Надеть", _shop_wear.bind(cm["slot"], id), "primary", Style.FONT_SMALL, "", 0, 40))
+		else:
+			var buy := UI.btn("%d" % cm["price"], _shop_cosmetic.bind(id), "secondary", Style.FONT_SMALL, "crystal", 0, 40)
+			buy.disabled = Game.crystals < int(cm["price"])
+			ch.add_child(buy)
+		g.add_child(c)
+	var sc := UI.scroll(g)
+	sc.custom_minimum_size = Vector2(780, 230)
+	v.add_child(sc)
+	_modal("Магазин · кристаллов: %d" % Game.crystals, v)
+
+func _shop_buy_pack(id: String) -> void:
+	await Game.fake_purchase(id)
+	_shop_popup()
+
+func _shop_boost() -> void:
+	var r: Dictionary = await Game.buy_boost()
+	_toast("Фарм ×2 включён" if r.get("ok", false) else "Не хватает кристаллов")
+	_shop_popup()
+
+func _shop_cosmetic(id: String) -> void:
+	var r: Dictionary = await Game.buy_cosmetic(id)
+	_toast("Куплено и надето" if r.get("ok", false) else "Не хватает кристаллов")
+	_shop_popup()
+
+func _shop_wear(slot: String, id: String) -> void:
+	Game.set_cosmetic(slot, id)
+	_shop_popup()
 
 func _talents_popup() -> void:
 	UI.clear(popup_layer)
@@ -1264,17 +1347,29 @@ func _screen_spells() -> Control:
 		UI.badge(free)
 	var tok := UI.btn("Открыть (%d)" % Game.boxes, _open_box.bind("token"), "secondary", Style.FONT_SMALL, "box", 0, 52)
 	tok.disabled = Game.boxes <= 0
+	var left := Game.gold_boxes_left()
 	var buy := UI.btn("%d" % Game.BOX_PRICE, _open_box.bind("gold"), "primary", Style.FONT_SMALL, "gold", 0, 52)
-	buy.disabled = Game.gold < Game.BOX_PRICE
+	buy.disabled = Game.gold < Game.BOX_PRICE or left < 1
 	var buy10 := UI.btn("×%d  %d" % [Game.BOX_PACK, Game.BOX_PACK_PRICE], _open_pack.bind("gold"), "primary", Style.FONT_SMALL, "gold", 0, 52)
-	buy10.disabled = Game.gold < Game.BOX_PACK_PRICE
+	buy10.disabled = Game.gold < Game.BOX_PACK_PRICE or left < Game.BOX_PACK
+	var cb := UI.btn("%d" % Shop.BOX_CRYSTALS, _open_box.bind("crystals"), "secondary", Style.FONT_SMALL, "crystal", 0, 52)
+	cb.disabled = Game.crystals < Shop.BOX_CRYSTALS
+	var cb10 := UI.btn("×%d  %d" % [Game.BOX_PACK, Shop.BOX_PACK_CRYSTALS], _open_pack.bind("crystals"), "secondary", Style.FONT_SMALL, "crystal", 0, 52)
+	cb10.disabled = Game.crystals < Shop.BOX_PACK_CRYSTALS
 	h.add_child(free)
 	h.add_child(tok)
 	if Game.boxes > 1:
 		h.add_child(UI.btn("Открыть все" if Game.boxes <= Game.BOX_PACK else "Открыть %d" % Game.BOX_PACK, _open_pack.bind("token"), "secondary", Style.FONT_SMALL, "box", 0, 52))
-	h.add_child(buy)
-	h.add_child(buy10)
 	v.add_child(bar)
+	var buy_row := UI.hbox(8)
+	buy_row.add_child(UI.label("Купить за золото (сегодня ещё %d):" % left, Style.FONT_SMALL, Style.MUTED))
+	buy_row.add_child(buy)
+	buy_row.add_child(buy10)
+	buy_row.add_child(UI.spacer())
+	buy_row.add_child(UI.label("за кристаллы, без лимита:", Style.FONT_SMALL, Style.MUTED))
+	buy_row.add_child(cb)
+	buy_row.add_child(cb10)
+	v.add_child(buy_row)
 	var g := UI.grid(5, 12)
 	for sid in Db.SPELLS:
 		if Db.SPELLS[sid].get("enemy", false):
@@ -1338,7 +1433,7 @@ func _fuse(sid: String) -> void:
 func _open_pack(use: String) -> void:
 	var res: Array = await Game.open_box_pack(use)
 	if res.is_empty():
-		_toast("Не хватает золота" if use == "gold" else "Нечего открывать")
+		_toast({"gold": "Не хватает золота или дневной лимит", "crystals": "Не хватает кристаллов"}.get(use, "Нечего открывать"))
 		return
 	_pack_popup(res)
 
@@ -1396,7 +1491,7 @@ func _pack_popup(res: Array) -> void:
 func _open_box(use: String) -> void:
 	var r: Dictionary = await Game.open_box(use)
 	if r.is_empty():
-		_toast("Нечего открывать")
+		_toast({"gold": "Не хватает золота или дневной лимит", "crystals": "Не хватает кристаллов"}.get(use, "Нечего открывать"))
 		return
 	_box_animation(r)
 
@@ -1445,8 +1540,7 @@ func _screen_bag() -> Control:
 	if sel == null:
 		rv.add_child(UI.wrap("Выберите предмет, чтобы увидеть свойства.", Style.FONT_BODY))
 	else:
-		rv.add_child(_item_details(sel, true))
-		rv.add_child(UI.spacer())
+		rv.add_child(UI.scroll(_item_details(sel, true)))
 		var bh := UI.hbox(8)
 		bh.add_child(UI.expand(UI.btn("Надеть", _equip.bind(sel["id"], ""), "primary", 22, "", 0, 58)))
 		if sel.get("wtype", "") == "sword":
@@ -1504,6 +1598,12 @@ func _drink(res: String) -> void:
 	_toast(("%s: эффект активен" % Prof.RESOURCES[res]["name"]) if r.get("ok", false) else "Не получилось")
 	_refresh()
 
+func _upgrade(id: String, pay: String) -> void:
+	var r: Dictionary = await Game.upgrade_item(id, pay)
+	_toast(("Вещь теперь %d уровня" % int(r["ilvl"])) if r.get("ok", false) else "Не хватает ресурсов")
+	UI.clear(popup_layer)
+	_refresh()
+
 func _equip(id: String, to: String) -> void:
 	Game.equip(id, to)
 	_toast("Предмет надет")
@@ -1554,6 +1654,23 @@ func _item_details(it: Dictionary, compare: bool) -> Control:
 		row.add_child(UI.expand(UI.label(Loot.affix_text(a), Style.FONT_BODY, Style.TEXT, true)))
 		row.add_child(UI.label("ролл %d%%" % roundi(float(a["q"]) * 100), Style.FONT_TINY, Style.MUTED))
 		v.add_child(row)
+	var up := Shop.upgrade_cost(it, int(Game.hero["level"]))
+	if not up.is_empty():
+		var ub := UI.flat(Style.BG_DEEP, 10)
+		var uv := UI.vbox(6)
+		ub.add_child(uv)
+		uv.add_child(UI.label("Подтянуть до уровня героя: %d → %d" % [it["ilvl"], Game.hero["level"]], Style.FONT_SMALL, Style.TEXT, true))
+		var uh := UI.hbox(8)
+		var have_ore := Rules.res_count(Game.profile, up["ore"])
+		var gb := UI.btn("%d  +  %s %d/%d" % [up["gold"], Prof.RESOURCES[up["ore"]]["name"], have_ore, up["ore_n"]],
+			_upgrade.bind(it["id"], "gold"), "primary", Style.FONT_TINY, "gold", 0, 40)
+		gb.disabled = Game.gold < int(up["gold"]) or have_ore < int(up["ore_n"])
+		uh.add_child(gb)
+		var cb := UI.btn("%d" % up["crystals"], _upgrade.bind(it["id"], "crystals"), "secondary", Style.FONT_TINY, "crystal", 0, 40)
+		cb.disabled = Game.crystals < int(up["crystals"])
+		uh.add_child(cb)
+		uv.add_child(uh)
+		v.add_child(ub)
 	if compare:
 		var eq = Game.hero["equipped"][it["slot"]]
 		var diff := Game.power_with(it) - Game.power_now()
@@ -1752,7 +1869,11 @@ func _show_rewards(r: Dictionary, title_text: String) -> void:
 	pills.add_child(UI.pill("xp", "+%d" % r["xp"], 24))
 	if r.get("boxes", 0) > 0:
 		pills.add_child(UI.pill("box", "+%d" % r["boxes"], 24))
+	if r.get("crystals", 0) > 0:
+		pills.add_child(UI.pill("crystal", "+%d" % r["crystals"], 24, Color("#3a2f5a")))
 	v.add_child(pills)
+	if r.get("boost_gold", 0) > 0:
+		v.add_child(UI.label("Из них ускорение ×2: +%d золота, +%d опыта" % [r["boost_gold"], r.get("boost_xp", 0)], Style.FONT_SMALL, Style.SUCCESS))
 	if r.get("level_ups", 0) > 0:
 		v.add_child(UI.chip("Новый уровень героя: %d" % Game.hero["level"], Style.SECONDARY, Style.FONT_SMALL))
 	if r.get("board_refreshed", false):

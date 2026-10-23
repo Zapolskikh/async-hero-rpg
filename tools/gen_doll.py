@@ -185,10 +185,32 @@ def compose(layers):
     return img
 
 
+def glow_mask(img):
+    """White silhouette of a layer grown by 1 px: tinted by the game for the glow cosmetic."""
+    a = img.split()[3]
+    out = Image.new("RGBA", img.size, (0, 0, 0, 0))
+    src = a.load()
+    op = out.load()
+    for y in range(img.height):
+        for x in range(img.width):
+            hit = False
+            for dx in (-1, 0, 1):
+                for dy in (-1, 0, 1):
+                    xx, yy = x + dx, y + dy
+                    if 0 <= xx < img.width and 0 <= yy < img.height and src[xx, yy] > 0:
+                        hit = True
+            if hit:
+                op[x, y] = (255, 255, 255, 255 if src[x, y] == 0 else 140)
+    return out
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for name, fn in LAYERS.items():
-        layer(fn).save(OUT / f"doll_{name}.png")
+        img = layer(fn)
+        img.save(OUT / f"doll_{name}.png")
+        if name != "body":
+            glow_mask(img).save(OUT / f"doll_{name}_glow.png")
     looks = [
         [("body", "")],
         [("body", ""), ("w_sword", "")],

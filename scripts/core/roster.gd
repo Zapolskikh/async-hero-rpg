@@ -55,6 +55,14 @@ static func look(gear: Dictionary) -> Array:
 		out.append(["shield", LOOK_TINTS[clamp(int(off["rarity"]), 0, 3)]])
 	return out
 
+## Worn cosmetics as colours for the views: {"glow": "#hex", "aura": "#hex"}.
+static func cosmetic_colors(cos: Dictionary) -> Dictionary:
+	var out := {}
+	for slot in cos:
+		if Shop.COSMETICS.has(cos[slot]):
+			out[slot] = Shop.COSMETICS[cos[slot]]["color"]
+	return out
+
 static func empty_gear() -> Dictionary:
 	var g := {}
 	for slot in Loot.SLOTS:
@@ -96,6 +104,7 @@ static func hero_snapshot(hero: Dictionary, collection: Dictionary) -> Dictionar
 		"stats": hero_stats(hero), "spells": spells, "target": "front",
 		"weapons": Loot.weapon_types(hero["equipped"]),
 		"look": look(hero["equipped"]),
+		"cosmetics": cosmetic_colors(hero.get("cosmetics", {})),
 	}
 
 static func make_merc(rng: RandomNumberGenerator, template_idx: int, level: int, tier: int = -1) -> Dictionary:
