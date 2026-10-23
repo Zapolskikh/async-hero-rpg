@@ -40,10 +40,6 @@ const BOOST_MULT := 2.0
 const BOX_CRYSTALS := 20
 const BOX_PACK_CRYSTALS := 180
 
-## Hero slots: 1 free, up to 3 in total; each extra slot costs crystals.
-const MAX_HEROES := 3
-const HERO_SLOT_PRICE := 500
-
 ## Item upgrade to the hero's level. Main path: gold + ore; crystals instead.
 const UPGRADE_RARITY_MULT := [1, 2, 4, 8]
 const UPGRADE_ORE := ["copper_ore", "iron_ore", "silver_ore", "mithril_fragment"]

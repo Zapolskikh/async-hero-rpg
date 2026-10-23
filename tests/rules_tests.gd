@@ -22,7 +22,6 @@ func _init() -> void:
 	test_talents()
 	test_rare_loot_and_mods()
 	test_crystals()
-	test_heroes()
 	test_boxes_and_validation()
 	test_json_roundtrip()
 	test_migrate_v1()
@@ -156,40 +155,6 @@ func test_weapons() -> void:
 	check(q["inventory"][0]["affixes"][0]["stat"] == "str" and q["hero"]["equipped"].has("offhand"), "old items lose the attack stat; left hand slot added")
 	var qs := Rules.hero_snapshot(q)
 	check(qs["weapons"] == ["staff"] and qs["stats"]["atk"] == 0, "migrated staff hero casts instead of attacking")
-
-func test_heroes() -> void:
-	print("several heroes")
-	var p := fresh(71)
-	check(not Rules.apply(p, "create_hero", {"name": "Второй"}, T0)["ok"], "no free slot at start")
-	p["crystals"] = 2000
-	check(Rules.apply(p, "buy_hero_slot", {}, T0)["ok"] and Rules.apply(p, "buy_hero_slot", {}, T0)["ok"], "two slots bought")
-	check(not Rules.apply(p, "buy_hero_slot", {}, T0)["ok"] and int(p["crystals"]) == 1000, "three heroes max, 500 each")
-	var first_id: String = p["hero"]["id"]
-	p["hero"]["level"] = 12
-	p["professions"]["mining"]["level"] = 5
-	Rules._add_res(p, "iron_ore", 7)
-	check(Rules.apply(p, "create_hero", {"name": "Травница"}, T0)["ok"] and p["hero"]["name"] == "Травница", "new hero created and active")
-	check(int(p["hero"]["level"]) == 1 and int(p["professions"]["mining"]["level"]) == 1, "new hero: own level and professions")
-	check(Rules.res_count(p, "iron_ore") == 7 and p["hero"]["equipped"]["weapon"] != null, "bag and resources shared; starter sword")
-	check(Rules.apply(p, "gather_start", {"prof": "herbalism", "loc": "green_meadow", "sec": 900}, T0)["ok"], "second hero gathers")
-	Rules.apply(p, "switch_hero", {"id": first_id}, T0)
-	check(int(p["hero"]["level"]) == 12 and int(p["professions"]["mining"]["level"]) == 5 and p["gathering"] == null, "switching brings the first hero back with his professions")
-	check(Rules.apply(p, "gather_start", {"prof": "mining", "loc": "abandoned_quarry", "sec": 900}, T0)["ok"], "both heroes can gather at the same time")
-	# expedition XP goes to the hero who went
-	p["closed_level"] = 1
-	Rules.apply(p, "start", {"level": 1, "mode": "farm"}, T0)
-	var lvl_before := int(p["hero"]["level"])
-	var xp_before := int(p["hero"]["xp"])
-	var herb_id: String = p["heroes_other"][0]["hero"]["id"]
-	Rules.apply(p, "switch_hero", {"id": herb_id}, T0 + 10.0)
-	Rules.apply(p, "collect", {}, T0 + 3600.0)
-	var farmer := Rules.hero_by_id(p, first_id)
-	check(int(p["hero"]["level"]) == 1 and int(p["hero"]["xp"]) == 0, "the hero at home gets no farm XP")
-	check(int(farmer["level"]) > lvl_before or int(farmer["xp"]) > xp_before, "the farming hero gets it")
-	check(Rules.all_heroes(p).size() == 2, "two heroes on the account")
-	var q = JSON.parse_string(JSON.stringify(p))
-	Rules.migrate(q, T0)
-	check(q["heroes_other"].size() == 1 and int(q["heroes_other"][0]["hero"]["level"]) == int(farmer["level"]), "heroes survive JSON")
 
 func test_crystals() -> void:
 	print("crystals")

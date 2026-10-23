@@ -12,7 +12,7 @@ extends RefCounted
 ## so a server keeps it secret by stripping it before sending the profile.
 ## `ctx` (server only): {"account": id, "real_pool": [public snapshots of other players]}
 
-const VERSION := 7
+const VERSION := 6
 const OFFLINE_CAP := 12.0 * 3600.0
 const BOX_PRICE := 300
 const BOX_PACK := 10
@@ -33,11 +33,11 @@ const REAL_SLOTS := 3            # up to 3 of 6 board places go to real players
 
 ## Actions without randomness: the client may apply them locally right away.
 const LOCAL_ACTIONS := ["set_rotation", "move_party", "equip", "unequip", "sell", "hire", "fire", "replace", "fuse", "set_name",
-	"talent_up", "talent_reset", "set_threshold", "set_cosmetic", "switch_hero"]
+	"talent_up", "talent_reset", "set_threshold", "set_cosmetic"]
 ## Actions with randomness or rewards: only the authority (server or offline client) runs them.
 const AUTHORITY_ACTIONS := ["reroll", "open_box", "open_pack", "start", "collect", "stop",
 	"gather_start", "gather_claim", "gather_cancel", "craft_start", "craft_claim", "use_item",
-	"fake_purchase", "buy_cosmetic", "rush", "buy_boost", "upgrade_item", "buy_hero_slot", "create_hero"]
+	"fake_purchase", "buy_cosmetic", "rush", "buy_boost", "upgrade_item"]
 ## Server-internal actions, never accepted from a client.
 const INTERNAL_ACTIONS := ["grant_assists"]
 
@@ -49,12 +49,12 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 	var p := {
 		"v": VERSION, "name": name, "created": now,
 		"gold": 100, "boxes": 1, "closed_level": 0,
-		"hero": {"name": name, "level": 1, "xp": 0, "rotation": ["kick", "fireball", "strike"], "talents": {}, "spell_settings": {}, "cosmetics": {}, "id": "h0",
+		"hero": {"name": name, "level": 1, "xp": 0, "rotation": ["kick", "fireball", "strike"], "talents": {}, "spell_settings": {}, "cosmetics": {},
 			"equipped": _empty_equipment()},
 		"collection": {}, "inventory": [], "board": [], "hired": [], "party_order": [],
 		"rerolls_today": 0, "reroll_day": "", "free_box_day": "",
 		"expedition": null, "reports": [], "stats": {"hired_total": 0, "assist_gold_total": 0},
-		"resources": {}, "recipes_known": [], "crystals": 0, "cosmetics_owned": [], "heroes_other": [], "hero_slots": 1, "gold_box_day": "", "gold_boxes_today": 0, "professions": _fresh_professions(), "gathering": null, "crafting": {}, "buffs": {},
+		"resources": {}, "recipes_known": [], "crystals": 0, "cosmetics_owned": [], "gold_box_day": "", "gold_boxes_today": 0, "professions": _fresh_professions(), "gathering": null, "crafting": {}, "buffs": {},
 		"rng": {"seed": str(seed_value), "state": ""},
 	}
 	var r := _rng(p)
@@ -105,24 +105,6 @@ static func migrate(p: Dictionary, now: float) -> void:
 		p["cosmetics_owned"] = []
 	if typeof(p["hero"].get("cosmetics")) != TYPE_DICTIONARY:
 		p["hero"]["cosmetics"] = {}
-	# v7: several heroes. The active one lives in p.hero (+ professions, gathering, crafting);
-	# the others are bundles in p.heroes_other. Bag, resources, gold, spells are shared.
-	if not p["hero"].has("id"):
-		p["hero"]["id"] = "h0"
-	p["hero_slots"] = int(p.get("hero_slots", 1))
-	if typeof(p.get("heroes_other")) != TYPE_ARRAY:
-		p["heroes_other"] = []
-	for b in p["heroes_other"]:
-		var h: Dictionary = b["hero"]
-		h["level"] = int(h["level"])
-		h["xp"] = int(h["xp"])
-		for slot in h["equipped"]:
-			_fix_item(h["equipped"][slot])
-		for k in h.get("talents", {}).keys():
-			h["talents"][k] = int(h["talents"][k])
-		for pr in b["professions"]:
-			b["professions"][pr]["level"] = int(b["professions"][pr]["level"])
-			b["professions"][pr]["xp"] = int(b["professions"][pr]["xp"])
 	for k in hero["talents"].keys():
 		hero["talents"][k] = int(hero["talents"][k])
 	hero["xp"] = int(hero["xp"])
@@ -262,7 +244,7 @@ static func public_snapshot(p: Dictionary, account: String) -> Dictionary:
 	snap["npc"] = false
 	snap["owner"] = account
 	snap["id"] = "p" + account
-	snap["name"] = str(p["hero"].get("name", p["name"]))
+	snap["name"] = str(p["name"])
 	snap["role"] = role_from_spells(p["hero"]["rotation"])
 	snap["gear"] = p["hero"]["equipped"].duplicate(true)
 	snap["base_stats"] = Db.hero_base_stats(int(p["hero"]["level"]))
@@ -397,9 +379,6 @@ static func apply(p: Dictionary, action: String, args: Dictionary, now: float, c
 		"rush": res = _rush(p, str(args.get("what", "")), str(args.get("prof", "")), now)
 		"buy_boost": res = _buy_boost(p, now)
 		"upgrade_item": res = _upgrade_item(p, str(args.get("id", "")), str(args.get("pay", "gold")))
-		"buy_hero_slot": res = _buy_hero_slot(p)
-		"create_hero": res = _create_hero(p, r, str(args.get("name", "")))
-		"switch_hero": res = _switch_hero(p, str(args.get("id", "")))
 		"set_name": res = _set_name(p, str(args.get("name", "")))
 		"reroll": res = _reroll(p, r, now, ctx)
 		"open_box": res = _open_box(p, r, str(args.get("use", "")), now)
@@ -670,70 +649,6 @@ static func _upgrade_item(p: Dictionary, id: String, pay: String) -> Dictionary:
 	Loot.rescale(it, to)
 	return _ok({"ilvl": to})
 
-# ---------------- several heroes ----------------
-
-const HERO_BUNDLE := ["professions", "gathering", "crafting"]
-
-static func all_heroes(p: Dictionary) -> Array:
-	var out := [p["hero"]]
-	for b in p.get("heroes_other", []):
-		out.append(b["hero"])
-	return out
-
-## A hero dict by id: the active one or one waiting in heroes_other ({} if none).
-static func hero_by_id(p: Dictionary, id: String) -> Dictionary:
-	if str(p["hero"].get("id", "h0")) == id:
-		return p["hero"]
-	for b in p.get("heroes_other", []):
-		if str(b["hero"]["id"]) == id:
-			return b["hero"]
-	return p["hero"]
-
-static func _buy_hero_slot(p: Dictionary) -> Dictionary:
-	if int(p["hero_slots"]) >= Shop.MAX_HEROES:
-		return _err("max hero slots")
-	if not _spend_crystals(p, Shop.HERO_SLOT_PRICE):
-		return _err("not enough crystals")
-	p["hero_slots"] = int(p["hero_slots"]) + 1
-	return _ok()
-
-static func _create_hero(p: Dictionary, r: RandomNumberGenerator, name: String) -> Dictionary:
-	if all_heroes(p).size() >= int(p["hero_slots"]):
-		return _err("no free hero slot")
-	name = name.strip_edges()
-	if name.length() < 2 or name.length() > 16:
-		return _err("name length 2-16")
-	var n := 0
-	for h in all_heroes(p):
-		n = max(n, int(str(h["id"]).substr(1)) + 1)
-	var sword := Loot.roll_gear(r, 1, -1.0, "weapon", "sword")
-	sword["name"] = "Учебный меч"
-	var eq := _empty_equipment()
-	eq["weapon"] = sword
-	var hero := {"name": name, "level": 1, "xp": 0, "rotation": ["kick", "fireball", "strike"], "talents": {},
-		"spell_settings": {}, "cosmetics": {}, "id": "h%d" % n, "equipped": eq}
-	p["heroes_other"].append({"hero": hero, "professions": _fresh_professions(), "gathering": null, "crafting": {}})
-	return _switch_hero(p, hero["id"])
-
-## Makes another hero active. Their professions, gathering and crafting come along;
-## an expedition keeps running and still pays its XP to the hero who went.
-static func _switch_hero(p: Dictionary, id: String) -> Dictionary:
-	if str(p["hero"]["id"]) == id:
-		return _ok()
-	for i in p["heroes_other"].size():
-		var b: Dictionary = p["heroes_other"][i]
-		if str(b["hero"]["id"]) == id:
-			var cur := {"hero": p["hero"]}
-			for k in HERO_BUNDLE:
-				cur[k] = p[k]
-			p["hero"] = b["hero"]
-			for k in HERO_BUNDLE:
-				p[k] = b[k]
-			p["heroes_other"][i] = cur
-			# the party keeps its mercenaries; the hero spot follows the active hero
-			return _ok()
-	return _err("no such hero")
-
 static func _talent_reset(p: Dictionary) -> Dictionary:
 	p["hero"]["talents"] = {}
 	return _ok()
@@ -877,7 +792,6 @@ static func _start(p: Dictionary, r: RandomNumberGenerator, level: int, mode: St
 			if buffs.has(eff):
 				m["stats"][eff] = float(buffs[eff]["value"])
 	p["expedition"] = _make_expedition(level, mode, party, r.randi(), level > int(p["closed_level"]), now)
-	p["expedition"]["hero_id"] = str(p["hero"]["id"])
 	var out := _ok({"expedition": p["expedition"]["id"]})
 	if not prev.is_empty():
 		out["previous"] = prev.get("report", {})
@@ -886,7 +800,7 @@ static func _start(p: Dictionary, r: RandomNumberGenerator, level: int, mode: St
 
 static func _make_expedition(level: int, mode: String, party: Array, seed_value: int, first: bool, now: float) -> Dictionary:
 	var tl := Expedition.build_timeline(level, mode, party, seed_value, first)
-	return {"id": "%d_%d" % [seed_value, int(now)], "level": level, "mode": mode, "seed": seed_value, "first": first, "hero_id": "",
+	return {"id": "%d_%d" % [seed_value, int(now)], "level": level, "mode": mode, "seed": seed_value, "first": first,
 		"party": party, "started_at": now, "tl": tl, "collected": Expedition.zero_point()}
 
 ## Collects pending rewards. With `finish` the expedition ends (stop / push over).
@@ -897,7 +811,7 @@ static func _collect(p: Dictionary, r: RandomNumberGenerator, now: float, ctx: D
 	var t := expedition_time(ex, now)
 	var tot := Expedition.rewards_at(ex["tl"], t)
 	var c: Array = ex["collected"]
-	var rep := {"type": "rewards", "level": ex["level"], "mode": ex["mode"], "hero_id": str(ex.get("hero_id", "")),
+	var rep := {"type": "rewards", "level": ex["level"], "mode": ex["mode"],
 		"gold": tot[1] - c[1], "xp": tot[2] - c[2], "kills": tot[3] - c[3], "boxes": tot[5] - c[5],
 		"won": tot[6] - c[6], "lost": tot[7] - c[7], "items": [], "auto_sold": 0, "auto_sold_gold": 0,
 		"mats": Expedition.mats_diff(tot[Expedition.P_MATS], c[Expedition.P_MATS] if c.size() > Expedition.P_MATS else {})}
@@ -941,7 +855,7 @@ static func _collect(p: Dictionary, r: RandomNumberGenerator, now: float, ctx: D
 static func _apply_rewards(p: Dictionary, r: RandomNumberGenerator, rep: Dictionary, ctx: Dictionary) -> void:
 	p["gold"] += int(rep["gold"]) + int(rep["auto_sold_gold"])
 	p["boxes"] += int(rep["boxes"])
-	rep["level_ups"] = _add_xp(p, int(rep["xp"]), str(rep.get("hero_id", "")))
+	rep["level_ups"] = _add_xp(p, int(rep["xp"]))
 	for it in rep["items"]:
 		p["inventory"].append(it)
 	for res in rep.get("mats", {}):
@@ -961,8 +875,8 @@ static func _apply_rewards(p: Dictionary, r: RandomNumberGenerator, rep: Diction
 			if m.get("npc", true) and int(m["level"]) < lvl - 1:
 				p["board"][i] = Roster.relevel(r, m, lvl)
 
-static func _add_xp(p: Dictionary, amount: int, hero_id: String = "") -> int:
-	var hero: Dictionary = hero_by_id(p, hero_id) if hero_id != "" else p["hero"]
+static func _add_xp(p: Dictionary, amount: int) -> int:
+	var hero: Dictionary = p["hero"]
 	var ups := 0
 	hero["xp"] = int(hero["xp"]) + amount
 	while int(hero["xp"]) >= Db.xp_to_next(int(hero["level"])):
