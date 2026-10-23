@@ -22,6 +22,7 @@ func _init() -> void:
 	test_talents()
 	test_rare_loot_and_mods()
 	test_crystals()
+	test_drop_extra_heroes()
 	test_boxes_and_validation()
 	test_json_roundtrip()
 	test_migrate_v1()
@@ -155,6 +156,27 @@ func test_weapons() -> void:
 	check(q["inventory"][0]["affixes"][0]["stat"] == "str" and q["hero"]["equipped"].has("offhand"), "old items lose the attack stat; left hand slot added")
 	var qs := Rules.hero_snapshot(q)
 	check(qs["weapons"] == ["staff"] and qs["stats"]["atk"] == 0, "migrated staff hero casts instead of attacking")
+
+func test_drop_extra_heroes() -> void:
+	print("v7 heroes removed")
+	var p := fresh(81)
+	var main_hero: Dictionary = p["hero"].duplicate(true)
+	main_hero["id"] = "h0"
+	main_hero["level"] = 15
+	var alt: Dictionary = p["hero"].duplicate(true)
+	alt["id"] = "h1"
+	alt["level"] = 10
+	p["hero"] = alt
+	p["professions"]["herbalism"]["level"] = 2
+	var main_prof := Rules._fresh_professions()
+	main_prof["mining"]["level"] = 6
+	p["heroes_other"] = [{"hero": main_hero, "professions": main_prof, "gathering": null, "crafting": {}}]
+	p["hero_slots"] = 2
+	p["crystals"] = 100
+	var q = JSON.parse_string(JSON.stringify(p))
+	Rules.migrate(q, T0)
+	check(int(q["hero"]["level"]) == 15 and int(q["professions"]["mining"]["level"]) == 6, "the first hero is back with his professions")
+	check(not q.has("heroes_other") and not q.has("hero_slots") and int(q["crystals"]) == 600, "extra heroes dropped, 500 crystals refunded per slot")
 
 func test_crystals() -> void:
 	print("crystals")

@@ -12,7 +12,7 @@ extends RefCounted
 ## so a server keeps it secret by stripping it before sending the profile.
 ## `ctx` (server only): {"account": id, "real_pool": [public snapshots of other players]}
 
-const VERSION := 6
+const VERSION := 8
 const OFFLINE_CAP := 12.0 * 3600.0
 const BOX_PRICE := 300
 const BOX_PACK := 10
@@ -71,6 +71,7 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 
 ## Brings any older or JSON-parsed profile to the current shape (ints restored).
 static func migrate(p: Dictionary, now: float) -> void:
+	_drop_extra_heroes(p)
 	# v6: priority rotation; the old default order would never use strike and kick
 	if int(p.get("v", 0)) < 6 and p.has("hero") and p["hero"].get("rotation", []) == ["fireball", "strike", "kick"]:
 		p["hero"]["rotation"] = ["kick", "fireball", "strike"]
@@ -168,6 +169,29 @@ static func _migrate_spells(p: Dictionary) -> void:
 		for l in range(1, best):
 			spare -= fuse_cost(l)
 		col[sid] = {"lvl": best, "copies": max(0, spare)}
+
+## v8: several heroes were tried (v7) and removed. Keep the account's first hero
+## (with his professions, gathering and crafting), drop the others, refund the slots.
+static func _drop_extra_heroes(p: Dictionary) -> void:
+	if not p.has("heroes_other") and not p.has("hero_slots"):
+		return
+	var others: Array = p.get("heroes_other", []) if typeof(p.get("heroes_other")) == TYPE_ARRAY else []
+	if p.has("hero") and str(p["hero"].get("id", "h0")) != "h0":
+		for b in others:
+			if str(b["hero"].get("id", "")) == "h0":
+				p["hero"] = b["hero"]
+				for k in ["professions", "gathering", "crafting"]:
+					p[k] = b.get(k, p.get(k))
+	var slots := int(p.get("hero_slots", 1))
+	if slots > 1:
+		p["crystals"] = int(p.get("crystals", 0)) + (slots - 1) * 500
+	var ex = p.get("expedition")
+	if typeof(ex) == TYPE_DICTIONARY:
+		ex.erase("hero_id")
+	if p.has("hero"):
+		p["hero"].erase("id")
+	p.erase("heroes_other")
+	p.erase("hero_slots")
 
 static func _fresh_professions() -> Dictionary:
 	var d := {}
