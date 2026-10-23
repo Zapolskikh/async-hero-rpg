@@ -4,7 +4,7 @@
 // Incrementing CACHE_VERSION will kick off the install event and force
 // previously cached resources to be updated from the network.
 /** @type {string} */
-const CACHE_VERSION = '1792707937|4415917';
+const CACHE_VERSION = '1792722512|5101665';
 /** @type {string} */
 const CACHE_PREFIX = 'Async Hero RPG-sw-cache-';
 const CACHE_NAME = CACHE_PREFIX + CACHE_VERSION;
