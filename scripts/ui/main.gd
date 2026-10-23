@@ -123,7 +123,7 @@ func _build_top_bar() -> void:
 	var hero: Dictionary = Game.hero
 	var av := UI.avatar("hero", Style.ROLE_COLORS["Герой"], 56, false, Game.hero_snapshot()["look"])
 	h.add_child(av)
-	UI.tap_overlay(av, _switch.bind("hero"))
+	UI.tap_overlay(av, _heroes_popup)
 	var who := UI.vbox(2)
 	who.add_child(UI.label("%s · ур. %d" % [hero["name"], hero["level"]], Style.FONT_BODY, Style.TEXT, true))
 	who.add_child(UI.progress(hero["xp"], Db.xp_to_next(hero["level"]), Style.SECONDARY, 10, 170))
@@ -864,6 +864,84 @@ func _atlas_popup(lvl: int) -> void:
 	sc.custom_minimum_size = Vector2(780, 420 - 36 * mods.size())
 	v.add_child(sc)
 	_modal("Атлас врагов · %d. %s" % [lvl, Db.LEVELS[lvl - 1]["name"]], v)
+
+# =====================================================================
+# Heroes: up to Shop.MAX_HEROES, bag/resources/gold/spells shared
+# =====================================================================
+
+func _hero_status(id: String, bundle: Dictionary) -> String:
+	var parts := []
+	var ex = Game.profile.get("expedition")
+	if ex != null and str(ex.get("hero_id", "h0")) == id:
+		parts.append(("фарм" if ex["mode"] == "farm" else "штурм") + " ур. %d" % int(ex["level"]))
+	var g = bundle.get("gathering")
+	if g != null:
+		var left := float(g["ends_at"]) - Game.now()
+		parts.append("%s: %s" % [Prof.PROFESSIONS[g["prof"]]["name"], "готово" if left <= 0.0 else UI.format_time(left)])
+	for prof in bundle.get("crafting", {}):
+		var c: Dictionary = bundle["crafting"][prof]
+		var left := float(c["ends_at"]) - Game.now()
+		parts.append("%s: %s" % [Prof.RECIPES[c["recipe"]]["name"], "готово" if left <= 0.0 else UI.format_time(left)])
+	return " · ".join(parts) if not parts.is_empty() else "свободен"
+
+func _heroes_popup() -> void:
+	UI.clear(popup_layer)
+	var p: Dictionary = Game.profile
+	var v := UI.vbox(8)
+	var entries := [{"hero": p["hero"], "professions": p["professions"], "gathering": p["gathering"], "crafting": p["crafting"]}]
+	entries.append_array(p.get("heroes_other", []))
+	for b in entries:
+		var h: Dictionary = b["hero"]
+		var active: bool = h["id"] == p["hero"]["id"]
+		var c := UI.card(Style.CARD_2 if active else Style.BG_DEEP, 8)
+		var row := UI.hbox(10)
+		c.add_child(row)
+		row.add_child(UI.avatar("hero", Style.ROLE_COLORS["Герой"], 64, false, Roster.look(h["equipped"])))
+		var tv := UI.vbox(2)
+		tv.add_child(UI.label("%s · ур. %d" % [h["name"], h["level"]], Style.FONT_BODY, Style.TEXT, true))
+		var profs := []
+		for pr in b["professions"]:
+			if int(b["professions"][pr]["level"]) > 1:
+				profs.append("%s %d" % [Prof.PROFESSIONS[pr]["name"], b["professions"][pr]["level"]])
+		tv.add_child(UI.label(", ".join(profs) if not profs.is_empty() else "профессии не развиты", Style.FONT_TINY, Style.MUTED))
+		tv.add_child(UI.wrap(_hero_status(h["id"], b), Style.FONT_TINY, Style.WARNING))
+		row.add_child(UI.expand(tv))
+		if active:
+			row.add_child(UI.chip("Активен", Style.SUCCESS, Style.FONT_SMALL, Color("#062b16")))
+		else:
+			row.add_child(UI.btn("Играть", _pick_hero.bind(h["id"]), "primary", Style.FONT_SMALL, "", 0, 44))
+		v.add_child(c)
+	var slots := int(p.get("hero_slots", 1))
+	if entries.size() < slots:
+		var nh := UI.hbox(8)
+		var e := _line_edit("", "Имя нового героя")
+		e.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		nh.add_child(e)
+		nh.add_child(UI.btn("Создать героя", func(): _new_hero(e.text), "success", Style.FONT_SMALL, "", 0, 50))
+		v.add_child(nh)
+	elif slots < Shop.MAX_HEROES:
+		var sb := UI.btn("Открыть слот героя  %d" % Shop.HERO_SLOT_PRICE, _buy_slot, "secondary", Style.FONT_SMALL, "crystal", 0, 50)
+		sb.disabled = Game.crystals < Shop.HERO_SLOT_PRICE
+		v.add_child(sb)
+	v.add_child(UI.wrap("Сумка, материалы, золото и заклинания общие. Уровень, вещи на себе, таланты и профессии — у каждого героя свои. В поход идёт один герой; пока он фармит, другие могут собирать и крафтить.", Style.FONT_TINY, Style.MUTED))
+	_modal("Герои · %d / %d" % [entries.size(), slots], v)
+
+func _pick_hero(id: String) -> void:
+	Game.switch_hero(id)
+	_heroes_popup()
+
+func _new_hero(hero_name: String) -> void:
+	var r: Dictionary = await Game.create_hero(hero_name)
+	if not r.get("ok", false):
+		_toast("Имя от 2 до 16 символов" if str(r.get("error", "")).begins_with("name") else "Нет свободного слота")
+		return
+	_toast("Новый герой создан")
+	_heroes_popup()
+
+func _buy_slot() -> void:
+	var r: Dictionary = await Game.buy_hero_slot()
+	_toast("Слот открыт" if r.get("ok", false) else "Не хватает кристаллов")
+	_heroes_popup()
 
 # =====================================================================
 # Shop (crystals). Prototype: purchases are test grants.

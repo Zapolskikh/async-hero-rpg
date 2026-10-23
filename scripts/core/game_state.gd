@@ -323,6 +323,15 @@ var crystals: int:
 func gold_boxes_left() -> int:
 	return Rules.gold_boxes_left(profile, now())
 
+func switch_hero(id: String) -> void:
+	act("switch_hero", {"id": id})
+
+func buy_hero_slot() -> Dictionary:
+	return await act_authority("buy_hero_slot", {})
+
+func create_hero(hero_name: String) -> Dictionary:
+	return await act_authority("create_hero", {"name": hero_name})
+
 func set_cosmetic(slot: String, id: String) -> void:
 	act("set_cosmetic", {"slot": slot, "id": id})
 

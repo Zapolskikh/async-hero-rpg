@@ -12,6 +12,7 @@ var talents_only := false
 var atlas_only := false
 var doll_only := false
 var shop_only := false
+var heroes_only := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -33,9 +34,13 @@ func _ready() -> void:
 			doll_only = true
 		if a == "--shots-shop":
 			shop_only = true
+		if a == "--shots-heroes":
+			heroes_only = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if shop_only:
+	if heroes_only:
+		_run_heroes()
+	elif shop_only:
 		_run_shop()
 	elif doll_only:
 		_run_doll()
@@ -404,5 +409,23 @@ func _run_shop() -> void:
 	main._open_watch()
 	await _wait(2.0)
 	await _shot("40_aura_glow")
+	print("shots done")
+	get_tree().quit()
+
+func _run_heroes() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	await Game.fake_purchase("c1200")
+	await Game.buy_hero_slot()
+	Game.profile["hero"]["level"] = 14
+	Game.profile["professions"]["mining"]["level"] = 4
+	Game.profile["closed_level"] = 3
+	await Game.start_expedition(3, "farm")
+	await Game.create_hero("Травница")
+	await Game.gather_start("herbalism", "green_meadow", 3600)
+	Game.changed.emit()
+	main._heroes_popup()
+	await _wait(0.6)
+	await _shot("41_heroes")
 	print("shots done")
 	get_tree().quit()
