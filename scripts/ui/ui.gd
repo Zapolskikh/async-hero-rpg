@@ -78,6 +78,34 @@ static func scroll(child: Control, horizontal: bool = false) -> ScrollContainer:
 	s.ready.connect(func(): pass_mouse(child))
 	return s
 
+## Scroll positions of all ScrollContainers under `root` (tree order), to restore after a rebuild.
+static func scroll_state(root: Node) -> Array:
+	var out := []
+	for s in _scrolls(root):
+		out.append(s.scroll_vertical)
+	return out
+
+static func _scrolls(root: Node) -> Array:
+	var out := []
+	for c in root.get_children():
+		if c is ScrollContainer:
+			out.append(c)
+		out.append_array(_scrolls(c))
+	return out
+
+## Puts scroll positions back once the new layout is ready (rebuilds no longer jump to the top).
+static func restore_scrolls(root: Node, values: Array) -> void:
+	if values.is_empty() or not root.is_inside_tree():
+		return
+	var tree := root.get_tree()
+	await tree.process_frame
+	await tree.process_frame
+	if not is_instance_valid(root):
+		return
+	var list := _scrolls(root)
+	for i in min(list.size(), values.size()):
+		list[i].scroll_vertical = values[i]
+
 ## Makes a subtree let pointer events through to the parent (ScrollContainer drag).
 static func pass_mouse(n: Node) -> void:
 	for c in n.get_children():

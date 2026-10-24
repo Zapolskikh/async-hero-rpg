@@ -22,6 +22,7 @@ func _init() -> void:
 	test_talents()
 	test_rare_loot_and_mods()
 	test_crystals()
+	test_feedback_fixes()
 	test_drop_extra_heroes()
 	test_boxes_and_validation()
 	test_json_roundtrip()
@@ -178,6 +179,51 @@ func test_drop_extra_heroes() -> void:
 	check(int(q["hero"]["level"]) == 15 and int(q["professions"]["mining"]["level"]) == 6, "the first hero is back with his professions")
 	check(not q.has("heroes_other") and not q.has("hero_slots") and int(q["crystals"]) == 600, "extra heroes dropped, 500 crystals refunded per slot")
 
+func test_feedback_fixes() -> void:
+	print("feedback fixes")
+	# maxed spells no longer drop
+	var p := fresh(91)
+	for sid in Db.SPELLS:
+		if not Db.SPELLS[sid].get("enemy", false) and sid != "heal":
+			p["collection"][sid] = {"lvl": Rules.SPELL_MAX_LEVEL, "copies": 0}
+	p["crystals"] = 10000
+	var only_heal := true
+	for i in 5:
+		for b in Rules.apply(p, "open_pack", {"use": "crystals"}, T0)["boxes"]:
+			if b["spell"] != "heal":
+				only_heal = false
+	check(only_heal, "boxes skip spells at max level")
+	# merge
+	var q := fresh(92)
+	q["gold"] = 1000
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	for i in 3:
+		q["inventory"].append(Loot.roll_gear(rng, 4 + i, 0.0, "", "", [], 0))
+	var r := Rules.apply(q, "merge_items", {"rarity": 0}, T0)
+	check(r["ok"] and q["inventory"].size() == 1 and int(q["inventory"][0]["rarity"]) == 1 and int(q["inventory"][0]["ilvl"]) == 6, "3 common -> 1 rare at the highest level")
+	check(not Rules.apply(q, "merge_items", {"rarity": 1}, T0)["ok"], "merge needs 3 items")
+	# level toughness is evened out
+	var lo := 10.0
+	var hi := 0.0
+	for l in range(1, Db.level_count() + 1):
+		lo = min(lo, Db.level_hp_factor(l))
+		hi = max(hi, Db.level_hp_factor(l))
+	check(lo >= 0.75 and hi <= 1.3 and Db.level_hp_factor(13) < 1.0, "golem/guard levels get less health (%.2f..%.2f, L13 %.2f)" % [lo, hi, Db.level_hp_factor(13)])
+	# merc gear fits the role
+	var hr := RandomNumberGenerator.new()
+	hr.seed = 5
+	var agi_on_healers := 0
+	for i in 30:
+		var m := Roster.make_merc(hr, 1, 20, 2)
+		for slot in m["gear"]:
+			var it = m["gear"][slot]
+			if it != null:
+				for a in it["affixes"]:
+					if a["stat"] in ["agi", "str"] and not a.get("imp", false):
+						agi_on_healers += 1
+	check(agi_on_healers == 0, "healers get no strength/agility gear (%d)" % agi_on_healers)
+
 func test_crystals() -> void:
 	print("crystals")
 	var p := fresh(61)
@@ -272,14 +318,14 @@ func test_talents() -> void:
 	var p := fresh(41)
 	check(Talents.points_free(p["hero"]) == 0 and not Rules.apply(p, "talent_up", {"id": "toughness"}, T0)["ok"], "no talent points before level 5")
 	p["hero"]["level"] = 7
-	check(Talents.points_free(p["hero"]) == 3, "3 points at level 7")
+	check(Talents.points_free(p["hero"]) == 6, "6 points at level 7 (2 per level from 5)")
 	var hp0: float = Rules.hero_snapshot(p)["stats"]["hp"]
 	for i in 3:
 		Rules.apply(p, "talent_up", {"id": "toughness"}, T0)
-	check(Rules.hero_snapshot(p)["stats"]["hp"] > hp0 * 1.14, "3 ranks of toughness: +15% health")
-	check(not Rules.apply(p, "talent_up", {"id": "toughness"}, T0)["ok"], "no points left / max rank")
+	check(Rules.hero_snapshot(p)["stats"]["hp"] > hp0 * 1.14 and Talents.points_free(p["hero"]) == 0, "3 ranks of toughness cost 1+2+3 points: +15% health")
+	check(not Rules.apply(p, "talent_up", {"id": "toughness"}, T0)["ok"], "rank 4 needs 4 more points")
 	Rules.apply(p, "talent_reset", {}, T0)
-	check(Talents.points_free(p["hero"]) == 3, "reset returns the points")
+	check(Talents.points_free(p["hero"]) == 6, "reset returns the points")
 	Rules.apply(p, "talent_up", {"id": "eagle_eye"}, T0)
 	var base_agi: float = Db.hero_base_stats(7)["agi"]
 	check(Rules.hero_snapshot(p)["stats"]["agi"] == base_agi, "bow talent does nothing with a sword")
@@ -342,8 +388,11 @@ func test_boxes_and_validation() -> void:
 	check(not Rules.apply(p, "start", {"level": 3, "mode": "farm"}, T0)["ok"], "farm on a locked level rejected")
 	check(not Rules.apply(p, "grant_assists", {}, T0)["ok"], "empty grant rejected")
 	var cost := Rules.reroll_cost(p, T0)
-	Rules.apply(p, "reroll", {}, T0)
-	check(Rules.reroll_cost(p, T0) > cost and Rules.reroll_cost(p, T0 + 86400.0) == cost, "reroll price grows during the day and resets next day")
+	for i in 5:
+		Rules.apply(p, "reroll", {}, T0)
+	check(Rules.reroll_cost(p, T0) > cost and Rules.reroll_cost(p, T0) < cost * 2 and Rules.reroll_cost(p, T0 + 86400.0) == cost, "reroll price grows a little during the day and resets next day")
+	p["hero"]["level"] = 20
+	check(Rules.reroll_cost(p, T0 + 86400.0) == 70, "reroll price follows the hero level (70 at level 20)")
 
 func test_json_roundtrip() -> void:
 	print("json roundtrip")

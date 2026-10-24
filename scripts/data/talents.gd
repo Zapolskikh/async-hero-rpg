@@ -1,15 +1,17 @@
 class_name Talents
 extends RefCounted
-## Hero talents: one point per hero level from FIRST_LEVEL on.
-## Each talent has up to MAX_RANK ranks; every rank applies `per_rank` once.
+## Hero talents: POINTS_PER_LEVEL points per hero level from FIRST_LEVEL on.
+## Each talent has up to MAX_RANK ranks; rank N costs N points (1, 2, 3, ...),
+## so deep ranks are expensive and spreading points is a real choice.
 ## Effect fields:
 ##   stat + pct  -> stat x (1 + pct * rank)      (hp, str, agi, power, armor)
 ##   stat + add  -> stat + add * rank            (crit, haste)
 ##   stat "atk" + pct -> basic attack damage x (1 + pct * rank)
 ##   w           -> only while holding this weapon type ("dual" = a sword in each hand)
 
-const FIRST_LEVEL := 5      # the first point comes at hero level 5
-const MAX_RANK := 3
+const FIRST_LEVEL := 5      # the first points come at hero level 5
+const POINTS_PER_LEVEL := 2
+const MAX_RANK := 5
 
 const BRANCHES := [
 	{"id": "general", "name": "Общие"},
@@ -35,12 +37,17 @@ const TALENTS := {
 }
 
 static func points_total(level: int) -> int:
-	return max(0, level - FIRST_LEVEL + 1)
+	return max(0, level - FIRST_LEVEL + 1) * POINTS_PER_LEVEL
+
+## Points to buy the next rank of a talent now at `rank`.
+static func rank_cost(rank: int) -> int:
+	return rank + 1
 
 static func points_spent(talents: Dictionary) -> int:
 	var n := 0
 	for k in talents:
-		n += int(talents[k])
+		var r := int(talents[k])
+		n += r * (r + 1) / 2
 	return n
 
 static func points_free(hero: Dictionary) -> int:

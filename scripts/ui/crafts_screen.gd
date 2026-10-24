@@ -46,7 +46,9 @@ func _build() -> void:
 	_tick(true)
 
 func _rebuild() -> void:
+	var keep := UI.scroll_state(self)
 	_build()
+	UI.restore_scrolls(self, keep)
 
 func _header() -> Control:
 	var h := UI.hbox(8)

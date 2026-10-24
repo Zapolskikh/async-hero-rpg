@@ -99,7 +99,7 @@ func _notification(what: int) -> void:
 	elif what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		save_game()
 
-## Game clock. Offline, watching at x2/x4 also speeds up the expedition (time warp).
+## Game clock. (time_warp: kept for old saves, no longer grows.)
 func now() -> float:
 	if mode == "online":
 		return Time.get_unix_time_from_system() + time_offset
@@ -108,8 +108,11 @@ func now() -> float:
 func _process(delta: float) -> void:
 	if expedition != null:
 		expedition.advance(delta * watch_speed)
+	# x2..x8 (offline) speeds up only the expedition: it is moved back in time,
+	# so professions, potions and daily timers keep real time
 	if mode == "offline" and watch_speed > 1.0 and profile.get("expedition") != null:
-		profile["time_warp"] = float(profile.get("time_warp", 0.0)) + delta * (watch_speed - 1.0)
+		var ex: Dictionary = profile["expedition"]
+		ex["started_at"] = float(ex["started_at"]) - delta * (watch_speed - 1.0)
 	if Rules.push_finished(profile, now()):
 		if mode == "online":
 			refresh()
@@ -337,6 +340,9 @@ func rush(what: String, prof: String = "") -> Dictionary:
 
 func buy_boost() -> Dictionary:
 	return await act_authority("buy_boost", {})
+
+func merge_items(rarity: int) -> Dictionary:
+	return await act_authority("merge_items", {"rarity": rarity})
 
 func upgrade_item(id: String, pay: String) -> Dictionary:
 	return await act_authority("upgrade_item", {"id": id, "pay": pay})

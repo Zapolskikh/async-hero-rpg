@@ -21,8 +21,10 @@ const BOX_PACK_PRICE := 2700
 const GOLD_BOXES_PER_DAY := 10
 ## Spell Box odds by spell rarity (common, rare, epic, legendary), per spell.
 const BOX_RARITY_WEIGHTS := [10.0, 3.0, 0.8, 0.25]
-const REROLL_BASE := 20
-const REROLL_GROWTH := 1.5
+## Board reroll: price follows the hero level (10 + 3 per level), grows only a little per reroll in a day.
+const REROLL_BASE := 10
+const REROLL_PER_LEVEL := 3
+const REROLL_GROWTH := 1.1
 const MAX_HIRED := 3
 const SPELL_MAX_LEVEL := 10
 ## Spare copies (duplicates from boxes) eaten by each upgrade: I->II, II->III, ... IX->X.
@@ -37,7 +39,7 @@ const LOCAL_ACTIONS := ["set_rotation", "move_party", "equip", "unequip", "sell"
 ## Actions with randomness or rewards: only the authority (server or offline client) runs them.
 const AUTHORITY_ACTIONS := ["reroll", "open_box", "open_pack", "start", "collect", "stop",
 	"gather_start", "gather_claim", "gather_cancel", "craft_start", "craft_claim", "use_item",
-	"fake_purchase", "buy_cosmetic", "rush", "buy_boost", "upgrade_item"]
+	"fake_purchase", "buy_cosmetic", "rush", "buy_boost", "upgrade_item", "merge_items"]
 ## Server-internal actions, never accepted from a client.
 const INTERNAL_ACTIONS := ["grant_assists"]
 
@@ -336,7 +338,8 @@ static func day_of(now: float) -> String:
 
 static func reroll_cost(p: Dictionary, now: float) -> int:
 	var n: int = int(p["rerolls_today"]) if p["reroll_day"] == day_of(now) else 0
-	return int(round(REROLL_BASE * pow(REROLL_GROWTH, n) / 5.0) * 5)
+	var base: float = REROLL_BASE + REROLL_PER_LEVEL * int(p["hero"]["level"])
+	return int(max(5, round(base * pow(REROLL_GROWTH, n) / 5.0) * 5))
 
 static func free_box_available(p: Dictionary, now: float) -> bool:
 	return p["free_box_day"] != day_of(now)
@@ -403,6 +406,7 @@ static func apply(p: Dictionary, action: String, args: Dictionary, now: float, c
 		"rush": res = _rush(p, str(args.get("what", "")), str(args.get("prof", "")), now)
 		"buy_boost": res = _buy_boost(p, now)
 		"upgrade_item": res = _upgrade_item(p, str(args.get("id", "")), str(args.get("pay", "gold")))
+		"merge_items": res = _merge_items(p, r, int(args.get("rarity", -1)))
 		"set_name": res = _set_name(p, str(args.get("name", "")))
 		"reroll": res = _reroll(p, r, now, ctx)
 		"open_box": res = _open_box(p, r, str(args.get("use", "")), now)
@@ -551,11 +555,11 @@ static func _talent_up(p: Dictionary, id: String) -> Dictionary:
 	if not Talents.TALENTS.has(id):
 		return _err("no such talent")
 	var hero: Dictionary = p["hero"]
-	if Talents.points_free(hero) <= 0:
-		return _err("no talent points")
 	var t: Dictionary = hero["talents"]
 	if int(t.get(id, 0)) >= Talents.MAX_RANK:
 		return _err("max rank")
+	if Talents.points_free(hero) < Talents.rank_cost(int(t.get(id, 0))):
+		return _err("no talent points")
 	t[id] = int(t.get(id, 0)) + 1
 	return _ok()
 
@@ -673,6 +677,36 @@ static func _upgrade_item(p: Dictionary, id: String, pay: String) -> Dictionary:
 	Loot.rescale(it, to)
 	return _ok({"ilvl": to})
 
+## Item merge: MERGE_COUNT bag items of one rarity -> one random item of the next
+## rarity at the highest item level of the three. The weakest ones are used.
+const MERGE_COUNT := 3
+const MERGE_GOLD := [60, 200, 600]
+
+static func merge_candidates(p: Dictionary, rarity: int) -> Array:
+	var list := []
+	for it in p["inventory"]:
+		if int(it["rarity"]) == rarity:
+			list.append(it)
+	list.sort_custom(func(a, b): return Loot.item_score(a) < Loot.item_score(b))
+	return list.slice(0, MERGE_COUNT) if list.size() >= MERGE_COUNT else []
+
+static func _merge_items(p: Dictionary, r: RandomNumberGenerator, rarity: int) -> Dictionary:
+	if rarity < 0 or rarity > 2:
+		return _err("bad rarity")
+	var used := merge_candidates(p, rarity)
+	if used.is_empty():
+		return _err("not enough items")
+	if int(p["gold"]) < int(MERGE_GOLD[rarity]):
+		return _err("not enough gold")
+	p["gold"] -= int(MERGE_GOLD[rarity])
+	var ilvl := 1
+	for it in used:
+		ilvl = max(ilvl, int(it["ilvl"]))
+		p["inventory"].erase(it)
+	var out := Loot.roll_gear(r, ilvl, 0.0, "", "", [], rarity + 1)
+	p["inventory"].append(out)
+	return _ok({"item": out})
+
 static func _talent_reset(p: Dictionary) -> Dictionary:
 	p["hero"]["talents"] = {}
 	return _ok()
@@ -779,8 +813,13 @@ static func _roll_box(p: Dictionary, r: RandomNumberGenerator) -> Dictionary:
 	for sid in Db.SPELLS:
 		if Db.SPELLS[sid].get("enemy", false):
 			continue
+		if Roster.spell_best_level(p["collection"], sid) >= SPELL_MAX_LEVEL:
+			continue   # maxed spells no longer drop, so the rest come more often
 		pool.append(sid)
 		total += weights[Db.SPELLS[sid]["rarity"]]
+	if pool.is_empty():
+		pool.append("strike")
+		total = 1.0
 	var x := r.randf() * total
 	var pick: String = pool[0]
 	for sid in pool:

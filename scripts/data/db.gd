@@ -25,13 +25,13 @@ const SPELLS := {
 	"fireball":     {"name": "Огненный шар",    "kind": "damage",     "mult": 2.8, "cast": 1.2, "cd": 0.0, "rarity": 0, "tags": ["dps"],
 					 "bonus": {"w": "staff", "mult": 1.2},
 					 "desc": "Каст 1.2 с, сильный урон по цели."},
-	"cleave":       {"name": "Рассечение",      "kind": "aoe_damage", "mult": 1.0, "cast": 0.0, "cd": 5.0, "rarity": 1, "min_targets": 2, "tags": ["aoe"],
+	"cleave":       {"name": "Рассечение",      "kind": "aoe_damage", "mult": 1.3, "cast": 0.0, "cd": 5.0, "rarity": 1, "min_targets": 2, "tags": ["aoe"],
 					 "stat": "str", "bonus": {"w": "greatsword", "mult": 1.3},
 					 "desc": "Урон по всем врагам. Только если врагов 2+."},
-	"chain_lightning": {"name": "Цепная молния", "kind": "aoe_damage", "mult": 1.4, "cast": 1.5, "cd": 7.0, "rarity": 2, "min_targets": 3, "tags": ["aoe"],
+	"chain_lightning": {"name": "Цепная молния", "kind": "aoe_damage", "mult": 1.6, "cast": 1.5, "cd": 7.0, "rarity": 2, "min_targets": 3, "tags": ["aoe"],
 					 "bonus": {"w": "staff", "mult": 1.2},
 					 "desc": "Каст 1.5 с, урон по всем. Только если врагов 3+."},
-	"ignite":       {"name": "Поджог",          "kind": "dot",        "mult": 0.55, "cast": 0.0, "cd": 0.0, "dur": 6.0, "rarity": 0, "tags": ["dot"],
+	"ignite":       {"name": "Поджог",          "kind": "dot",        "mult": 0.4, "cast": 0.0, "cd": 0.0, "dur": 6.0, "rarity": 0, "tags": ["dot"],
 					 "desc": "Горение 6 с на цели без горения."},
 	"poison_cloud": {"name": "Ядовитое облако", "kind": "aoe_dot",    "mult": 0.35, "cast": 0.0, "cd": 0.0, "dur": 6.0, "rarity": 1, "min_targets": 2, "tags": ["dot", "aoe"],
 					 "desc": "Яд на всех врагах. Только если врагов 2+."},
@@ -40,7 +40,7 @@ const SPELLS := {
 					 "desc": "Огромный урон по врагу ниже 30% HP."},
 	"kick":         {"name": "Пинок",           "kind": "interrupt",  "mult": 0.8, "cast": 0.0, "cd": 5.0, "rarity": 0, "tags": ["interrupt"],
 					 "stat": "str",
-					 "desc": "Сбивает вражеский каст. Только если враг кастует."},
+					 "desc": "Сбивает вражеский каст. Срабатывает сразу, как враг начал каст, вне очереди ротации (если нет перезарядки)."},
 	"bash":         {"name": "Оглушение",       "kind": "stun",       "mult": 0.6, "cast": 0.0, "cd": 10.0, "dur": 2.0, "rarity": 1, "tags": ["control"],
 					 "stat": "str", "bonus": {"w": "shield", "mult": 1.3},
 					 "desc": "Оглушает цель на 2 с и сбивает каст. Боссы невосприимчивы."},
@@ -68,7 +68,7 @@ const SPELLS := {
 	"mortal_strike": {"name": "Сокрушительный удар", "kind": "damage", "mult": 3.4, "cast": 0.0, "cd": 6.0, "rarity": 0, "tags": ["dps"],
 					 "stat": "str", "req": ["greatsword"],
 					 "desc": "Нужен двуручный меч. Тяжёлый удар по цели."},
-	"whirlwind":    {"name": "Вихрь клинка",    "kind": "aoe_damage", "mult": 1.4, "cast": 0.0, "cd": 6.0, "rarity": 1, "min_targets": 2, "tags": ["aoe"],
+	"whirlwind":    {"name": "Вихрь клинка",    "kind": "aoe_damage", "mult": 1.7, "cast": 0.0, "cd": 6.0, "rarity": 1, "min_targets": 2, "tags": ["aoe"],
 					 "stat": "str", "req": ["greatsword"],
 					 "desc": "Нужен двуручный меч. Урон по всем врагам, если их 2+."},
 	"shield_slam":  {"name": "Удар щитом",      "kind": "stun",       "mult": 1.0, "cast": 0.0, "cd": 9.0, "dur": 1.5, "rarity": 1, "tags": ["control"],
@@ -80,7 +80,7 @@ const SPELLS := {
 	"aimed_shot":   {"name": "Прицельный выстрел", "kind": "damage",  "mult": 3.6, "cast": 1.5, "cd": 0.0, "rarity": 0, "tags": ["dps"],
 					 "stat": "agi", "req": ["bow"],
 					 "desc": "Нужен лук. Каст 1.5 с, сильный выстрел по цели."},
-	"arrow_rain":   {"name": "Дождь стрел",     "kind": "aoe_damage", "mult": 1.2, "cast": 0.0, "cd": 8.0, "rarity": 1, "min_targets": 2, "tags": ["aoe"],
+	"arrow_rain":   {"name": "Дождь стрел",     "kind": "aoe_damage", "mult": 1.5, "cast": 0.0, "cd": 8.0, "rarity": 1, "min_targets": 2, "tags": ["aoe"],
 					 "stat": "agi", "req": ["bow"],
 					 "desc": "Нужен лук. Урон по всем врагам, если их 2+."},
 	"arcane_bolt":  {"name": "Чародейская стрела", "kind": "damage",  "mult": 2.2, "cast": 0.0, "cd": 0.0, "rarity": 0, "tags": ["dps"],
@@ -210,6 +210,29 @@ const LATE_TOUGHNESS := 1.09 # extra difficulty multiplier per level after the b
 
 static func level_count() -> int:
 	return LEVELS.size()
+
+## Levels differ a lot in how tough their waves are (golems and guards vs
+## casters). Enemy health is scaled so every level's average wave is about
+## equally tough (effective HP = hp x (100 + armor) / 100), within 0.75..1.3.
+static func level_toughness(level: int) -> float:
+	var tot := 0.0
+	var waves := level_waves(level)
+	for w in waves:
+		for e in w:
+			var en: Dictionary = ENEMIES[e]
+			tot += float(en["hp"]) * (100.0 + float(en["armor"]) * enemy_armor_mult(level)) / 100.0
+	return tot / max(1, waves.size())
+
+static var _toughness_ref := -1.0
+
+static func level_hp_factor(level: int) -> float:
+	if _toughness_ref < 0.0:
+		var vals := []
+		for l in range(1, level_count() + 1):
+			vals.append(level_toughness(l))
+		vals.sort()
+		_toughness_ref = vals[vals.size() / 2]   # median level
+	return clamp(_toughness_ref / level_toughness(level), 0.75, 1.3)
 
 ## Enemy modifiers on later levels: one from MODS_FROM, two from MODS_TWO_FROM.
 ## Each changes every enemy of the level (bosses too); shown on the level card and in the atlas.

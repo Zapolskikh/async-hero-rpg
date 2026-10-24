@@ -12,6 +12,8 @@ var talents_only := false
 var atlas_only := false
 var doll_only := false
 var shop_only := false
+var farm_only := false
+var fb_only := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -33,9 +35,17 @@ func _ready() -> void:
 			doll_only = true
 		if a == "--shots-shop":
 			shop_only = true
+		if a == "--shots-farm":
+			farm_only = true
+		if a == "--shots-fb":
+			fb_only = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if shop_only:
+	if fb_only:
+		_run_fb()
+	elif farm_only:
+		_run_farm()
+	elif shop_only:
 		_run_shop()
 	elif doll_only:
 		_run_doll()
@@ -404,5 +414,60 @@ func _run_shop() -> void:
 	main._open_watch()
 	await _wait(2.0)
 	await _shot("40_aura_glow")
+	print("shots done")
+	get_tree().quit()
+
+func _run_farm() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	Game.profile["closed_level"] = 14
+	Game.profile["hero"]["level"] = 20
+	await Game.start_expedition(3, "farm")
+	main._switch("expedition")
+	await _wait(1.0)
+	await _shot("42_farm_hub")
+	print("shots done")
+	get_tree().quit()
+
+func _run_fb() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 12
+	Game.profile["hero"]["level"] = 12
+	Game.profile["gold"] = 5000
+	Game.profile["closed_level"] = 5
+	for i in 7:
+		Game.profile["inventory"].append(Loot.roll_gear(rng, 5 + i, 0.0, "", "", [], i % 2))
+	Game.profile["inventory"].append(Loot.roll_gear(rng, 10, 0.3, "armor"))
+	Game.profile["inventory"].append(Loot.roll_gear(rng, 8, 0.3, "armor"))
+	Game.changed.emit()
+	main._switch("hero")
+	await _wait(0.4)
+	main._gear_popup("armor")
+	await _wait(0.4)
+	await _shot("43_gear_slot")
+	UI.clear(main.popup_layer)
+	main._talents_popup()
+	await _wait(0.4)
+	await _shot("44_talents_ranks")
+	UI.clear(main.popup_layer)
+	main._dummy_popup()
+	await _wait(0.4)
+	await _shot("45_dummy")
+	UI.clear(main.popup_layer)
+	main._switch("bag")
+	await _wait(0.3)
+	main._merge_popup()
+	await _wait(0.4)
+	await _shot("46_merge")
+	UI.clear(main.popup_layer)
+	await _shot("47_bag_sort")
+	await Game.start_expedition(5, "farm")
+	main._open_watch()
+	await _wait(6.0)
+	main._meter_details(main.meter_rows, 0, "dealt_by", "Урон")
+	await _wait(0.4)
+	await _shot("48_meter_breakdown")
 	print("shots done")
 	get_tree().quit()

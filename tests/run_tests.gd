@@ -15,6 +15,7 @@ func _init() -> void:
 	test_determinism()
 	test_rotation_skips_invalid()
 	test_priority_rotation()
+	test_reactive_kick()
 	test_interrupt_and_execute()
 	test_push_wipe_gives_partial()
 	test_farm_fast_forward()
@@ -102,6 +103,27 @@ func test_priority_rotation() -> void:
 	p["hero"]["rotation"] = ["heal", "kick", "strike"]
 	var sp: Array = Rules.hero_snapshot(p)["spells"]
 	check(sp[0].get("threshold", 0.0) == 0.9, "hero snapshot carries the threshold")
+
+func test_reactive_kick() -> void:
+	print("reactive interrupt")
+	# kick in slot 3 behind spells that are always usable still interrupts every cast it can
+	var sim := BattleSim.new()
+	var hero := BattleUnit.new(0, 0, 0, {"name": "H", "stats": {"hp": 100000, "atk": 1, "power": 1, "armor": 0},
+		"spells": [{"id": "strike", "lvl": 1}, {"id": "fireball", "lvl": 1}, {"id": "kick", "lvl": 1}]})
+	var caster := Expedition.enemy_snapshot("caster", 1)
+	caster["stats"]["hp"] = 1000000.0
+	sim.setup([hero], [caster], 3)
+	var casts := 0
+	var kicks := 0
+	for i in 600:
+		sim.step()
+		for e in sim.events:
+			if e["t"] == "cast" and e["uid"] != 0:
+				casts += 1
+			if e["t"] == "interrupt":
+				kicks += 1
+		sim.events.clear()
+	check(kicks >= 4 and hero.dealt_by.has("kick") and hero.dealt_by.has("attack"), "kick fires on enemy casts outside the rotation (%d kicks / %d casts)" % [kicks, casts])
 
 func test_interrupt_and_execute() -> void:
 	print("interrupt")

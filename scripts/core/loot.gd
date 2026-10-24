@@ -89,7 +89,8 @@ static func _roll_affix(rng: RandomNumberGenerator, stat: String, ilvl: int, rar
 
 ## rarity_bonus shifts the roll towards better rarities (bosses, first clears).
 ## force_slot picks the slot; force_type picks the weapon type ("" = random).
-static func roll_gear(rng: RandomNumberGenerator, ilvl: int, rarity_bonus: float = 0.0, force_slot: String = "", force_type: String = "") -> Dictionary:
+## `prefer`: stats to pick affixes from first (mercenaries get gear that fits their role).
+static func roll_gear(rng: RandomNumberGenerator, ilvl: int, rarity_bonus: float = 0.0, force_slot: String = "", force_type: String = "", prefer: Array = [], force_rarity: int = -1) -> Dictionary:
 	var r := rng.randf() + rarity_bonus
 	var rarity := 0
 	if r > 0.985:
@@ -98,6 +99,8 @@ static func roll_gear(rng: RandomNumberGenerator, ilvl: int, rarity_bonus: float
 		rarity = 2
 	elif r > 0.6:
 		rarity = 1
+	if force_rarity >= 0:
+		rarity = force_rarity
 	var slot: String = force_slot if force_slot != "" else _pick_weighted(rng, SLOT_WEIGHTS)
 	if force_type != "":
 		slot = "weapon"  # the weapon branch below sets the real slot from the type
@@ -132,7 +135,10 @@ static func roll_gear(rng: RandomNumberGenerator, ilvl: int, rarity_bonus: float
 	for i in n_affixes:
 		if pool.is_empty():
 			break
-		var stat: String = pool[rng.randi_range(0, pool.size() - 1)]
+		var choice: Array = pool.filter(func(x): return x in prefer)
+		if choice.is_empty():
+			choice = pool
+		var stat: String = choice[rng.randi_range(0, choice.size() - 1)]
 		pool.erase(stat)
 		item["affixes"].append(_roll_affix(rng, stat, ilvl, rarity))
 	return item

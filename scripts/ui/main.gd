@@ -16,6 +16,8 @@ const TABS := [
 
 var current_tab := "expedition"
 var selected_level := 1
+var _built_tab := ""         # tab whose content is on screen (scroll is kept when rebuilding the same tab)
+var bag_sort := "level"     # bag order: level / rarity / type
 var selected_item := ""
 
 var top_bar: PanelContainer
@@ -64,6 +66,8 @@ func _ready() -> void:
 	add_child(toast_layer)
 
 	selected_level = min(Game.closed_level + 1, Db.level_count())
+	if Game.exp_info() != null:
+		selected_level = int(Game.exp_info()["level"])
 	Game.changed.connect(_refresh)
 	Game.online_changed.connect(_refresh)
 	Game.expedition_finished.connect(_on_expedition_finished)
@@ -94,6 +98,8 @@ func _switch(tab: String) -> void:
 	if tab == current_tab:
 		return
 	current_tab = tab
+	if tab == "expedition" and Game.exp_info() != null:
+		selected_level = int(Game.exp_info()["level"])   # show the running expedition
 	_refresh()
 	content.modulate.a = 0.0
 	create_tween().tween_property(content, "modulate:a", 1.0, 0.15)
@@ -103,6 +109,8 @@ func _refresh() -> void:
 		selected_level = min(Game.closed_level + 1, Db.level_count())
 	_build_top_bar()
 	_build_nav()
+	var keep := UI.scroll_state(content) if current_tab == _built_tab else []
+	_built_tab = current_tab
 	UI.clear(content)
 	exp_status = null
 	match current_tab:
@@ -115,6 +123,7 @@ func _refresh() -> void:
 			cs.main = self
 			content.add_child(cs)
 		"bag": content.add_child(_screen_bag())
+	UI.restore_scrolls(content, keep)
 
 func _build_top_bar() -> void:
 	UI.clear(top_bar)
@@ -132,7 +141,10 @@ func _build_top_bar() -> void:
 	var ex = Game.exp_info()
 	if ex != null:
 		var mode := "Фарм" if ex["mode"] == "farm" else "Штурм"
-		h.add_child(UI.pill("loop" if ex["mode"] == "farm" else "swords", "%s · ур. %d" % [mode, ex["level"]], Style.FONT_SMALL, Style.CARD))
+		var sp := ("  ×%d" % int(Game.watch_speed)) if Game.watch_speed > 1.0 and not Game.is_online() else ""
+		var ep := UI.pill("loop" if ex["mode"] == "farm" else "swords", "%s · ур. %d%s" % [mode, ex["level"], sp], Style.FONT_SMALL, Style.CARD)
+		UI.tap_overlay(ep, _go_to_expedition)
+		h.add_child(ep)
 	h.add_child(UI.pill("gold", str(Game.gold)))
 	var cr := UI.pill("crystal", "%d  +" % Game.crystals, Style.FONT_BODY, Color("#3a2f5a"))
 	UI.tap_overlay(cr, _shop_popup)
@@ -302,6 +314,13 @@ func _path_node(lvl: int) -> Control:
 		holder.add_child(sk)
 	return holder
 
+func _go_to_expedition() -> void:
+	var ex = Game.exp_info()
+	if ex != null:
+		selected_level = int(ex["level"])
+	current_tab = ""
+	_switch("expedition")
+
 func _select_level(lvl: int) -> void:
 	selected_level = lvl
 	_refresh()
@@ -355,8 +374,15 @@ func _level_card() -> Control:
 	var closed := lvl <= Game.closed_level
 	var c := UI.card(Style.CARD, 14)
 	c.custom_minimum_size.x = 430
+	# info scrolls if it does not fit, the status and buttons always stay visible:
+	# the card can never push the bottom navigation off the screen
+	var outer := UI.vbox(8)
+	c.add_child(outer)
 	var v := UI.vbox(10)
-	c.add_child(v)
+	var info := UI.scroll(v)
+	info.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	info.custom_minimum_size.y = 60
+	outer.add_child(info)
 
 	var head := UI.hbox(8)
 	var hv := UI.vbox(0)
@@ -366,6 +392,10 @@ func _level_card() -> Control:
 	head.add_child(UI.chip("Пройден" if closed else "Новый", Style.SUCCESS if closed else Style.PRIMARY,
 		Style.FONT_TINY, Color("#062b16") if closed else Style.PRIMARY_TEXT))
 	v.add_child(head)
+	var run = Game.exp_info()
+	if run != null and int(run["level"]) != lvl:
+		v.add_child(UI.btn("Идёт %s на ур. %d — открыть" % ["фарм" if run["mode"] == "farm" else "штурм", int(run["level"])],
+			_select_level.bind(int(run["level"])), "secondary", Style.FONT_SMALL, "loop", 0, 44))
 
 	var foes := UI.hbox(6)
 	var seen := {}
@@ -429,8 +459,8 @@ func _level_card() -> Control:
 	v.add_child(party)
 
 	exp_status = UI.wrap("", Style.FONT_TINY, Style.MUTED)
-	v.add_child(exp_status)
-	v.add_child(_level_actions(lvl, closed))
+	outer.add_child(exp_status)
+	outer.add_child(_level_actions(lvl, closed))
 	_tick_status()
 	return c
 
@@ -510,8 +540,12 @@ func _build_watch_layer() -> void:
 
 ## Recount-style meters: one bar per ally, total (per second), best on top.
 func _build_meter() -> void:
-	meter_rows = _build_meter_panel("Урон", "всего (DPS)", 12)
+	meter_rows = _build_meter_panel("Урон", "всего (DPS) · нажмите на строку", 12)
 	heal_rows = _build_meter_panel("Лечение", "всего (HPS)", 464)
+	for i in meter_rows.size():
+		UI.tap_overlay(meter_rows[i]["root"], _meter_details.bind(meter_rows, i, "dealt_by", "Урон"))
+	for i in heal_rows.size():
+		UI.tap_overlay(heal_rows[i]["root"], _meter_details.bind(heal_rows, i, "healed_by", "Лечение"))
 
 func _build_meter_panel(title: String, hint: String, x: float) -> Array:
 	var panel := PanelContainer.new()
@@ -570,6 +604,38 @@ func _update_meter(ex: Expedition) -> void:
 	_fill_meter(meter_rows, allies, "dealt", t)
 	_fill_meter(heal_rows, allies, "healed", t)
 
+## Breakdown by spell for one meter row (Recount-style detail).
+func _meter_details(rows: Array, i: int, field: String, title: String) -> void:
+	var ex: Expedition = Game.expedition
+	if ex == null or ex.sim == null or not rows[i].has("uid"):
+		return
+	var u = ex.sim.unit_by_uid(int(rows[i]["uid"]))
+	if u == null:
+		return
+	var by: Dictionary = u.get(field)
+	var total := 0.0
+	for k in by:
+		total += float(by[k])
+	var t: float = max(1.0, ex.run_time_done + ex.sim.time)
+	var keys: Array = by.keys()
+	keys.sort_custom(func(a, b): return by[a] > by[b])
+	var v := UI.vbox(6)
+	if keys.is_empty():
+		v.add_child(UI.label("Пока ничего.", Style.FONT_SMALL, Style.MUTED))
+	for k in keys:
+		var amount := float(by[k])
+		var row := UI.hbox(8)
+		var icon := "atk" if k == "attack" else UI.spell_icon(k)
+		row.add_child(UI.icon(icon, 28))
+		var name: String = "Автоатака" if k == "attack" else Db.SPELLS[k]["name"]
+		var nv := UI.vbox(2)
+		nv.add_child(UI.label(name, Style.FONT_SMALL, Style.TEXT, true))
+		nv.add_child(UI.progress(amount, max(1.0, total), Style.SECONDARY, 8))
+		row.add_child(UI.expand(nv))
+		row.add_child(UI.label("%d (%d/с) · %d%%" % [roundi(amount), roundi(amount / t), roundi(amount / max(1.0, total) * 100)], Style.FONT_SMALL, Style.TEXT))
+		v.add_child(row)
+	_modal("%s: %s · за забег" % [title, u.name], v)
+
 func _fill_meter(rows: Array, units: Array, field: String, t: float) -> void:
 	var allies := units.duplicate()
 	allies.sort_custom(func(a, b): return a.get(field) > b.get(field))
@@ -585,6 +651,7 @@ func _fill_meter(rows: Array, units: Array, field: String, t: float) -> void:
 		var bar: ColorRect = r["bar"]
 		bar.color = Color(u.color, 0.75) if u.alive() else Color(0.4, 0.4, 0.45, 0.6)
 		var amount: float = u.get(field)
+		r["uid"] = u.uid
 		bar.anchor_right = amount / top
 		r["name"].text = "%d. %s" % [i + 1, u.name]
 		r["value"].text = "%d (%d)" % [roundi(amount), roundi(amount / t)]
@@ -600,8 +667,7 @@ func _open_watch() -> void:
 	create_tween().tween_property(watch_layer, "modulate:a", 1.0, 0.15)
 
 func _close_watch() -> void:
-	watch_layer.visible = false
-	Game.watch_speed = 1.0
+	watch_layer.visible = false   # the chosen speed stays (offline): the expedition keeps going faster
 	_refresh()
 
 func _process(_delta: float) -> void:
@@ -649,7 +715,10 @@ func _screen_hero() -> Control:
 	sv.add_child(UI.spacer())
 	var free := Talents.points_free(hero)
 	var tb := UI.btn("Таланты" + (" (+%d)" % free if free > 0 else ""), _talents_popup, "primary" if free > 0 else "secondary", Style.FONT_SMALL, "star", 0, 44)
-	sv.add_child(tb)
+	var trow := UI.hbox(6)
+	trow.add_child(UI.expand(tb))
+	trow.add_child(UI.btn("Манекен", _dummy_popup, "ghost", Style.FONT_SMALL, "swords", 0, 44))
+	sv.add_child(trow)
 	sv.add_child(UI.label("Опыт %d / %d" % [hero["xp"], Db.xp_to_next(hero["level"])], Style.FONT_TINY, Style.MUTED))
 	sv.add_child(UI.progress(hero["xp"], Db.xp_to_next(hero["level"]), Style.SECONDARY, 12))
 	h.add_child(sc)
@@ -870,6 +939,7 @@ func _atlas_popup(lvl: int) -> void:
 # =====================================================================
 
 func _shop_popup() -> void:
+	var keep := UI.scroll_state(popup_layer)
 	UI.clear(popup_layer)
 	var v := UI.vbox(10)
 	v.add_child(UI.wrap("Прототип: покупки тестовые, деньги не списываются.", Style.FONT_TINY, Style.WARNING))
@@ -926,6 +996,7 @@ func _shop_popup() -> void:
 	sc.custom_minimum_size = Vector2(780, 230)
 	v.add_child(sc)
 	_modal("Магазин · кристаллов: %d" % Game.crystals, v)
+	UI.restore_scrolls(popup_layer, keep)
 
 func _shop_buy_pack(id: String) -> void:
 	await Game.fake_purchase(id)
@@ -945,14 +1016,58 @@ func _shop_wear(slot: String, id: String) -> void:
 	Game.set_cosmetic(slot, id)
 	_shop_popup()
 
+## Training dummy: the hero alone hits dummies for 60 s; DPS and the share of each skill.
+func _dummy_popup() -> void:
+	var lvl := mini(Game.closed_level + 1, Db.level_count())
+	var armor: float = Expedition.enemy_snapshot("brute", lvl)["stats"]["armor"]
+	var v := UI.vbox(8)
+	v.add_child(UI.wrap("Герой один бьёт манекены 60 секунд. Броня манекена как у обычного врага уровня %d (%d). Лечение и щиты тут не считаются." % [lvl, armor], Style.FONT_TINY, Style.MUTED))
+	var cols := UI.hbox(12)
+	for n in [1, 3]:
+		var res := _dummy_run(n, armor)
+		var c := UI.card(Style.BG_DEEP, 10)
+		c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		var cv := UI.vbox(6)
+		c.add_child(cv)
+		cv.add_child(UI.label("%s: %d урона в сек" % ["1 цель" if n == 1 else "3 цели", roundi(res["dps"])], Style.FONT_BODY, Style.TEXT, true))
+		var by: Dictionary = res["by"]
+		var keys: Array = by.keys()
+		keys.sort_custom(func(a, b): return by[a] > by[b])
+		for k in keys:
+			var row := UI.hbox(6)
+			row.add_child(UI.icon("atk" if k == "attack" else UI.spell_icon(k), 24))
+			row.add_child(UI.expand(UI.label("Автоатака" if k == "attack" else Db.SPELLS[k]["name"], Style.FONT_SMALL, Style.TEXT)))
+			row.add_child(UI.label("%d/с · %d%%" % [roundi(by[k] / 60.0), roundi(by[k] / max(1.0, res["total"]) * 100)], Style.FONT_SMALL, Style.MUTED))
+			cv.add_child(row)
+		cols.add_child(c)
+	v.add_child(cols)
+	_modal("Манекен", v)
+
+func _dummy_run(targets: int, armor: float) -> Dictionary:
+	var snap := Game.hero_snapshot()
+	var sim := BattleSim.new()
+	sim.record_events = false
+	var hero := BattleUnit.new(0, 0, 0, snap)
+	var dummies := []
+	for i in targets:
+		dummies.append({"name": "Манекен", "stats": {"hp": 1.0e9, "atk": 0.0, "power": 0.0, "armor": armor}, "spells": []})
+	sim.setup([hero], dummies, 7)
+	for i in 600:
+		sim.step()
+	var total := 0.0
+	for k in hero.dealt_by:
+		total += float(hero.dealt_by[k])
+	return {"dps": total / sim.time, "by": hero.dealt_by, "total": total}
+
 func _talents_popup() -> void:
+	var keep := UI.scroll_state(popup_layer)
 	UI.clear(popup_layer)
 	var hero: Dictionary = Game.hero
 	var talents: Dictionary = hero.get("talents", {})
 	var weapons: Array = Game.hero_snapshot()["weapons"]
 	var v := UI.vbox(8)
 	var free := Talents.points_free(hero)
-	v.add_child(UI.label("Свободно очков: %d · очко за каждый уровень героя с %d-го" % [free, Talents.FIRST_LEVEL],
+	v.add_child(UI.label("Свободно очков: %d · по %d за уровень героя с %d-го · ранг N стоит N очков" % [free, Talents.POINTS_PER_LEVEL, Talents.FIRST_LEVEL],
 		Style.FONT_SMALL, Style.SUCCESS if free > 0 else Style.MUTED, true))
 	var g := UI.grid(2, 8)
 	for br in Talents.BRANCHES:
@@ -972,14 +1087,16 @@ func _talents_popup() -> void:
 			tv.add_child(UI.wrap(Talents.describe(id) + ("" if active or rank == 0 else " (сейчас не действует)"), Style.FONT_TINY,
 				Style.MUTED if active or rank == 0 else Style.WARNING))
 			h.add_child(UI.expand(tv))
-			var plus := UI.btn("+", _talent_up.bind(id), "primary", Style.FONT_BODY, "", 44, 44)
-			plus.disabled = free <= 0 or rank >= Talents.MAX_RANK
+			var cost := Talents.rank_cost(rank)
+			var plus := UI.btn("+%d" % cost if rank < Talents.MAX_RANK else "макс", _talent_up.bind(id), "primary", Style.FONT_SMALL, "", 52, 44)
+			plus.disabled = free < cost or rank >= Talents.MAX_RANK
 			h.add_child(plus)
 			g.add_child(c)
 	var sc := UI.scroll(g)
 	sc.custom_minimum_size = Vector2(830, 430)
 	v.add_child(sc)
 	_modal("Таланты", v, [["Сбросить", _talent_reset, "danger", Talents.points_spent(talents) > 0]])
+	UI.restore_scrolls(popup_layer, keep)
 
 func _set_threshold(sid: String, value: float) -> void:
 	Game.set_threshold(sid, value)
@@ -995,13 +1112,47 @@ func _talent_reset() -> void:
 	_talents_popup()
 
 func _gear_popup(slot: String) -> void:
+	UI.clear(popup_layer)
 	var it = Game.hero["equipped"].get(slot)
+	var body := UI.vbox(10)
 	if it == null:
-		var where := "Предметы падают за первое прохождение уровня и иногда на фарме." if slot in Loot.SLOTS else "Такие вещи делают кузнецы и портные во вкладке «Ремёсла»."
-		var body := UI.wrap("Слот «%s» пуст. %s" % [Loot.SLOT_NAMES[slot], where], Style.FONT_BODY, Style.TEXT)
-		_modal(Loot.SLOT_NAMES[slot], body, [["В сумку", _switch.bind("bag"), "secondary", true]])
-		return
-	_modal(UI.item_title(it), _item_details(it, false), [["Снять", Game.unequip.bind(slot), "danger", true]])
+		var where := "Предметы падают за первое прохождение уровня и иногда на фарме." if slot in Loot.SLOTS else "Такие вещи делают кузнецы и портные во вкладке «Ремёсла»; изредка падают в бою."
+		body.add_child(UI.wrap("Слот «%s» пуст. %s" % [Loot.SLOT_NAMES[slot], where], Style.FONT_SMALL, Style.MUTED))
+	else:
+		body.add_child(_item_details(it, false))
+	# what from the bag fits this slot
+	var fits := []
+	for x in Game.inventory:
+		if x["slot"] == slot or (slot == "offhand" and Loot.fits_offhand(x)):
+			fits.append(x)
+	fits.sort_custom(func(a, b): return Game.power_with(a, slot) > Game.power_with(b, slot))
+	if not fits.is_empty():
+		body.add_child(UI.label("Из сумки в этот слот:", Style.FONT_SMALL, Style.TEXT, true))
+		var list := UI.vbox(6)
+		for x in fits:
+			var row := UI.hbox(8)
+			row.add_child(UI.tile(UI.item_icon(x), Style.RARITY[x["rarity"]], 48))
+			var tv := UI.vbox(0)
+			tv.add_child(UI.label("%s · ур. %d" % [UI.item_title(x), x["ilvl"]], Style.FONT_SMALL, Style.RARITY[x["rarity"]], true))
+			tv.add_child(UI.label(UI.item_line(x), Style.FONT_TINY, Style.MUTED))
+			row.add_child(UI.expand(tv))
+			var d := Game.power_with(x, slot) - Game.power_now()
+			row.add_child(UI.label(("+%d" % d) if d > 0 else str(d), Style.FONT_SMALL, Style.SUCCESS if d > 0 else Style.DANGER, true))
+			row.add_child(UI.btn("Надеть", _equip_from_slot.bind(x["id"], slot), "primary", Style.FONT_SMALL, "", 0, 40))
+			list.add_child(row)
+		var sc := UI.scroll(list)
+		sc.custom_minimum_size = Vector2(620, min(300, 56 * fits.size()))
+		body.add_child(sc)
+	elif it == null:
+		body.add_child(UI.label("В сумке нет подходящих вещей.", Style.FONT_SMALL, Style.MUTED))
+	var buttons := []
+	if it != null:
+		buttons.append(["Снять", Game.unequip.bind(slot), "danger", true])
+	_modal(UI.item_title(it) if it != null else Loot.SLOT_NAMES[slot], body, buttons)
+
+func _equip_from_slot(id: String, slot: String) -> void:
+	Game.equip(id, "offhand" if slot == "offhand" else "")
+	_gear_popup(slot)
 
 func _spell_popup(sid: String, caster: Dictionary = {}) -> void:
 	var d: Dictionary = Db.SPELLS[sid]
@@ -1508,12 +1659,30 @@ func _screen_bag() -> Control:
 	var head := UI.hbox(8)
 	head.add_child(UI.expand(UI.title("Сумка", 22)))
 	head.add_child(UI.label("%d предм." % Game.inventory.size(), Style.FONT_SMALL, Style.MUTED))
+	head.add_child(UI.btn("Объединить", _merge_popup, "secondary", Style.FONT_TINY, "", 0, 36))
 	lv.add_child(head)
 	var potions := _potions_row()
 	if potions != null:
 		lv.add_child(potions)
+	var sort_row := UI.hbox(6)
+	sort_row.add_child(UI.label("Сортировка:", Style.FONT_TINY, Style.MUTED))
+	for so in [["level", "Уровень"], ["rarity", "Редкость"], ["type", "Тип"]]:
+		sort_row.add_child(UI.btn(so[1], _set_bag_sort.bind(so[0]), "primary" if bag_sort == so[0] else "ghost", Style.FONT_TINY, "", 0, 34))
+	lv.add_child(sort_row)
 	var items: Array = Game.inventory.duplicate()
-	items.sort_custom(func(a, b): return a["rarity"] * 1000 + Loot.item_score(a) > b["rarity"] * 1000 + Loot.item_score(b))
+	var slot_order := {}
+	for i in Loot.ALL_SLOTS.size():
+		slot_order[Loot.ALL_SLOTS[i]] = i
+	match bag_sort:
+		"rarity":
+			items.sort_custom(func(a, b): return a["rarity"] * 100000 + a["ilvl"] * 100 + Loot.item_score(a) / 100.0 > b["rarity"] * 100000 + b["ilvl"] * 100 + Loot.item_score(b) / 100.0)
+		"type":
+			items.sort_custom(func(a, b):
+				if a["slot"] != b["slot"]:
+					return slot_order.get(a["slot"], 99) < slot_order.get(b["slot"], 99)
+				return a["ilvl"] * 10 + a["rarity"] > b["ilvl"] * 10 + b["rarity"])
+		_:
+			items.sort_custom(func(a, b): return a["ilvl"] * 10 + a["rarity"] > b["ilvl"] * 10 + b["rarity"])
 	if items.is_empty():
 		lv.add_child(UI.wrap("Пусто. Предметы падают за первое прохождение уровня и иногда на фарме.", Style.FONT_BODY))
 	var sel = null
@@ -1596,6 +1765,41 @@ func _potions_row() -> Control:
 func _drink(res: String) -> void:
 	var r: Dictionary = await Game.use_item(res)
 	_toast(("%s: эффект активен" % Prof.RESOURCES[res]["name"]) if r.get("ok", false) else "Не получилось")
+	_refresh()
+
+func _merge_popup() -> void:
+	UI.clear(popup_layer)
+	var v := UI.vbox(10)
+	v.add_child(UI.wrap("3 вещи одной редкости → 1 случайная вещь следующей редкости, уровня самой высокой из трёх. Берутся самые слабые вещи из сумки (надетые не трогаются).", Style.FONT_SMALL, Style.MUTED))
+	for r in 3:
+		var used := Rules.merge_candidates(Game.profile, r)
+		var c := UI.card(Style.BG_DEEP, 8)
+		var h := UI.hbox(8)
+		c.add_child(h)
+		var tv := UI.vbox(2)
+		tv.add_child(UI.label("%s ×3 → %s" % [Db.RARITY_NAMES[r], Db.RARITY_NAMES[r + 1]], Style.FONT_SMALL, Style.RARITY[r + 1], true))
+		var names := []
+		for it in used:
+			names.append("%s ур.%d" % [UI.item_title(it), it["ilvl"]])
+		tv.add_child(UI.wrap(", ".join(names) if not names.is_empty() else "нужно 3 вещи этой редкости в сумке", Style.FONT_TINY, Style.MUTED))
+		h.add_child(UI.expand(tv))
+		var b := UI.btn("%d" % Rules.MERGE_GOLD[r], _merge.bind(r), "primary", Style.FONT_SMALL, "gold", 0, 44)
+		b.disabled = used.is_empty() or Game.gold < Rules.MERGE_GOLD[r]
+		h.add_child(b)
+		v.add_child(c)
+	_modal("Объединение вещей", v)
+
+func _merge(rarity: int) -> void:
+	var r: Dictionary = await Game.merge_items(rarity)
+	if r.get("ok", false):
+		selected_item = r["item"]["id"]
+		_toast("Получено: %s (%s)" % [UI.item_title(r["item"]), Db.RARITY_NAMES[int(r["item"]["rarity"])]])
+	else:
+		_toast("Не хватает вещей или золота")
+	_merge_popup()
+
+func _set_bag_sort(s: String) -> void:
+	bag_sort = s
 	_refresh()
 
 func _upgrade(id: String, pay: String) -> void:

@@ -49,6 +49,8 @@ var hots: Array = []
 
 # Stats for the after-battle summary.
 var dealt := 0.0
+var dealt_by := {}       # spell id (or "attack") -> damage, for the meter breakdown
+var healed_by := {}
 var healed := 0.0
 
 func _init(p_uid: int, p_side: int, p_slot: int, snap: Dictionary) -> void:

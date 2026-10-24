@@ -63,6 +63,17 @@ static func cosmetic_colors(cos: Dictionary) -> Dictionary:
 			out[slot] = Shop.COSMETICS[cos[slot]]["color"]
 	return out
 
+## Stats a mercenary template wants on its gear, from its role.
+static func gear_pref(t: Dictionary) -> Array:
+	var st: Dictionary = t.get("stat", {})
+	if float(st.get("armor", 1.0)) > 1.5:
+		return ["hp", "armor", "str"]
+	if float(st.get("power", 1.0)) > 1.05:
+		return ["power", "haste", "crit", "hp"]
+	if float(st.get("agi", 1.0)) > 1.05:
+		return ["agi", "crit", "haste", "hp"]
+	return ["str", "crit", "haste", "hp", "armor"]
+
 static func empty_gear() -> Dictionary:
 	var g := {}
 	for slot in Loot.SLOTS:
@@ -135,7 +146,7 @@ static func make_merc(rng: RandomNumberGenerator, template_idx: int, level: int,
 			wtype = wts[0]
 		elif slot == "offhand":
 			wtype = wts[1]
-		gear[slot] = Loot.roll_gear(rng, level, tr["rarity_bonus"], slot, wtype)
+		gear[slot] = Loot.roll_gear(rng, level, tr["rarity_bonus"], slot, wtype, gear_pref(t))
 	# spells: levels vary, weak ones sometimes have a clumsy rotation order
 	var spell_lvl := baseline_spell_level(level) + int(tr["spell"])
 	var spells := []

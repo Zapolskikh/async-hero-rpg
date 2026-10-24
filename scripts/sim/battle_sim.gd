@@ -138,7 +138,7 @@ func _tick_statuses(u: BattleUnit) -> void:
 		d["remaining"] -= STEP
 		if d["tick"] <= 0.0:
 			d["tick"] += DOT_TICK
-			_deal(d["src"], u, d["per_tick"], false, true)
+			_deal(d["src"], u, d["per_tick"], false, true, d["id"])
 		if d["remaining"] <= 0.0 or not u.alive():
 			u.dots.erase(d)
 	for h in u.hots.duplicate():
@@ -146,7 +146,7 @@ func _tick_statuses(u: BattleUnit) -> void:
 		h["remaining"] -= STEP
 		if h["tick"] <= 0.0:
 			h["tick"] += DOT_TICK
-			_heal(h["src"], u, h["per_tick"], false)
+			_heal(h["src"], u, h["per_tick"], false, h["id"])
 		if h["remaining"] <= 0.0:
 			u.hots.erase(h)
 
@@ -164,6 +164,16 @@ func _act(u: BattleUnit) -> void:
 			if target != null:
 				_cast(u, c["spell"], c["lvl"], target)
 		return
+	# interrupts are reactive: used the moment an enemy casts (if off cooldown), outside the rotation
+	for entry in u.spells:
+		if Db.SPELLS[entry["id"]]["kind"] == "interrupt" and not u.cooldowns.has(entry["id"]):
+			var it = _find_spell_target(u, entry["id"])
+			if it != null:
+				var sp: Dictionary = Db.SPELLS[entry["id"]]
+				if sp.get("cd", 0.0) > 0.0:
+					u.cooldowns[entry["id"]] = sp["cd"]
+				_cast(u, entry["id"], entry.get("lvl", 1), it)
+				return
 	u.spell_cd -= STEP
 	if u.spell_cd <= 0.0 and not u.spells.is_empty():
 		if _try_rotation(u):
@@ -178,7 +188,7 @@ func _act(u: BattleUnit) -> void:
 		var t := pick_target(u)
 		if t != null:
 			_emit({"t": "attack", "uid": u.uid, "tgt": t.uid})
-			_deal(u, t, u.atk * rng.randf_range(0.9, 1.1), true, false)
+			_deal(u, t, u.atk * rng.randf_range(0.9, 1.1), true, false, "attack")
 
 ## Priority rotation: every step checks Slot 1 -> 2 -> 3 from the left and uses
 ## the first spell that is off cooldown and whose condition holds.
@@ -295,10 +305,10 @@ func _cast(u: BattleUnit, sid: String, lvl: int, target) -> void:
 	_emit({"t": "spell", "uid": u.uid, "text": s["name"], "sid": sid, "kind": s["kind"], "tgt": tgt_uid})
 	match s["kind"]:
 		"damage", "execute":
-			_deal(u, target, amount, true, false)
+			_deal(u, target, amount, true, false, sid)
 		"aoe_damage":
 			for f in foes_of(u):
-				_deal(u, f, amount, true, false)
+				_deal(u, f, amount, true, false, sid)
 		"dot":
 			_apply_dot(u, target, sid, amount, s.get("dur", 6.0))
 		"aoe_dot":
@@ -306,17 +316,17 @@ func _cast(u: BattleUnit, sid: String, lvl: int, target) -> void:
 				_apply_dot(u, f, sid, amount, s.get("dur", 6.0))
 		"interrupt":
 			_interrupt(u, target)
-			_deal(u, target, amount, true, false)
+			_deal(u, target, amount, true, false, sid)
 		"stun":
 			_interrupt(u, target)
 			target.stun = s.get("dur", 2.0)
 			_emit({"t": "status", "uid": target.uid, "text": "Оглушён"})
-			_deal(u, target, amount, true, false)
+			_deal(u, target, amount, true, false, sid)
 		"drain":
-			var d := _deal(u, target, amount, true, false)
-			_heal(u, u, d, false)
+			var d := _deal(u, target, amount, true, false, sid)
+			_heal(u, u, d, false, sid)
 		"heal":
-			_heal(u, target, amount, true)
+			_heal(u, target, amount, true, sid)
 		"hot_all":
 			for f in friends_of(u):
 				var found := false
@@ -343,7 +353,7 @@ func _cast(u: BattleUnit, sid: String, lvl: int, target) -> void:
 			target.dots.clear()
 			target.stun = 0.0
 			_emit({"t": "status", "uid": target.uid, "text": "Очищен"})
-			_heal(u, target, amount, true)
+			_heal(u, target, amount, true, sid)
 
 func _apply_dot(src: BattleUnit, t: BattleUnit, sid: String, per_tick: float, dur: float) -> void:
 	for d in t.dots:
@@ -359,7 +369,7 @@ func _interrupt(src: BattleUnit, t: BattleUnit) -> void:
 		_emit({"t": "interrupt", "uid": t.uid, "text": "Прервано!"})
 
 ## Damage after armor (DoTs ignore armor), crits, then shield absorption.
-func _deal(src: BattleUnit, t: BattleUnit, amount: float, can_crit: bool, is_dot: bool) -> float:
+func _deal(src: BattleUnit, t: BattleUnit, amount: float, can_crit: bool, is_dot: bool, sid: String = "") -> float:
 	if not t.alive():
 		return 0.0
 	var dmg := amount * src.dmg_mult
@@ -380,6 +390,8 @@ func _deal(src: BattleUnit, t: BattleUnit, amount: float, can_crit: bool, is_dot
 		t.hp = max(0.0, t.hp - dmg)
 		_emit({"t": "dmg", "uid": t.uid, "v": dmg, "crit": crit, "dot": is_dot, "src": src.uid})
 	src.dealt += dmg + absorbed
+	if sid != "":
+		src.dealt_by[sid] = float(src.dealt_by.get(sid, 0.0)) + dmg + absorbed
 	if not t.alive():
 		t.casting = {}
 		t.dots.clear()
@@ -388,7 +400,7 @@ func _deal(src: BattleUnit, t: BattleUnit, amount: float, can_crit: bool, is_dot
 		_emit({"t": "death", "uid": t.uid})
 	return dmg + absorbed
 
-func _heal(src: BattleUnit, t: BattleUnit, amount: float, can_crit: bool) -> void:
+func _heal(src: BattleUnit, t: BattleUnit, amount: float, can_crit: bool, sid: String = "") -> void:
 	if not t.alive():
 		return
 	var h := amount * src.heal_mult
@@ -400,6 +412,8 @@ func _heal(src: BattleUnit, t: BattleUnit, amount: float, can_crit: bool) -> voi
 		return
 	t.hp += h
 	src.healed += h
+	if sid != "":
+		src.healed_by[sid] = float(src.healed_by.get(sid, 0.0)) + h
 	_emit({"t": "heal", "uid": t.uid, "v": h, "crit": crit})
 
 func _check_end() -> void:
