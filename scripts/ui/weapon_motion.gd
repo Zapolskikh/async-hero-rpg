@@ -107,6 +107,11 @@ func _staff(hand: Vector2) -> void:
 	draw_colored_polygon(PackedVector2Array([tip+Vector2(0,-17),tip+Vector2(10,0),tip+Vector2(0,17),tip+Vector2(-10,0)]),EDGE)
 	draw_colored_polygon(PackedVector2Array([tip+Vector2(0,-12),tip+Vector2(6,0),tip+Vector2(0,12),tip+Vector2(-6,0)]),Color("#a46bf0"))
 
+func _held_arrow(hand: Vector2) -> void:
+	var end := hand+Vector2(25,70)
+	draw_line(hand,end,Color("#805c32"),3.,true)
+	draw_circle(end,3.,Color("#d4dce7"))
+
 func _glow(hand: Vector2) -> void:
 	for ring in 4:
 		var color := magic_color
@@ -128,7 +133,9 @@ func _magic(left_shoulder: Vector2, right_shoulder: Vector2) -> void:
 		"sword", "dual_swords": _sword(left,135. if preset == "dual_swords" else 26.)
 		"greatsword": _sword(left,-55.,true)
 		"staff": _staff(left)
-		"bow": _bow(left,left,true)
+		"bow":
+			_bow(left,left,true)
+			_held_arrow(left)
 	var rest := Vector2(260,266)
 	var prepare := Vector2(190,137)
 	var target := prepare
@@ -161,9 +168,7 @@ func _draw() -> void:
 			var hold := _arm(right_shoulder,Vector2(279,242),-1.)
 			var arrow_hand := _arm(left_shoulder,Vector2(175,270),1.)
 			_bow(hold,hold,true)
-			var end := arrow_hand+Vector2(25,70)
-			draw_line(arrow_hand,end,Color("#805c32"),3.,true)
-			draw_circle(end,3.,Color("#d4dce7"))
+			_held_arrow(arrow_hand)
 			return
 		var tension := smoothstep(0.,.42,phase)
 		var recoil := maxf(0.,1.-(phase-.44)/.56)
