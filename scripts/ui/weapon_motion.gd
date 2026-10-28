@@ -29,10 +29,13 @@ func _arm(shoulder: Vector2, target: Vector2, bend: float) -> Vector2:
 	var elbow := (shoulder + hand) * .5 + Vector2(-direction_to_hand.y,direction_to_hand.x) * sqrt(1600. - distance * distance * .25) * bend
 	var points := PackedVector2Array([shoulder,elbow,hand])
 	# Draw the silhouette first, then one continuous sleeve: no internal elbow outline.
-	draw_polyline(points, EDGE, 24., true)
+	# Separate strokes + round fills avoid long miter spikes when the elbow folds.
+	for i in 2:
+		draw_line(points[i],points[i+1],EDGE,24.,true)
 	for point in points:
 		draw_circle(point, 12., EDGE)
-	draw_polyline(points, BLUE, 18., true)
+	for i in 2:
+		draw_line(points[i],points[i+1],BLUE,18.,true)
 	for point in points:
 		draw_circle(point, 9., BLUE)
 	var direction := (hand - elbow).normalized()
