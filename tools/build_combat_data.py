@@ -1,4 +1,4 @@
-"""Reproducible talent/spell definitions and native pixel icons for combat v9."""
+"""Reproducible combat definitions; placeholder icons are created only for missing files."""
 from pathlib import Path
 import json
 
@@ -217,6 +217,9 @@ db.write_text(text,encoding='utf-8')
 from PIL import Image, ImageDraw, ImageFilter
 colors={'arcane':'#ae80ed','life':'#74d98c','bulwark':'#79b7ec','assault':'#efb14b','universal':'#f1d47c','melee':'#e68561','ranged':'#94c86b'}
 def make_icon(path, group, symbol, variant):
+    # User-provided artwork is authoritative. Never replace an installed icon.
+    if path.exists():
+        return
     img=Image.new('RGBA',(16,16)); d=ImageDraw.Draw(img)
     col=colors[group]; light='#f1f3ed'
     shape={'shield':2,'shield_hit':2,'shield_throw':2,'earth':2,'fire':3,'fire_arrow':5,
@@ -247,7 +250,7 @@ for index,(ident,s) in enumerate(spells.items()):
     make_icon(ROOT/f'assets/icons/sp_{ident}.png',s['group'],s['fx'],index)
 for index,(ident,t) in enumerate(talents.items()):
     make_icon(ROOT/f'assets/icons/tal_{ident}.png',t['branch'],'talent',index)
-print('Generated 64 talents (51 ranks per branch), 50 abilities, and 114 pixel icons.')
+print('Generated 64 talents (51 ranks per branch) and 50 abilities; installed artwork preserved, missing icons filled with placeholders.')
 
 doc=['# Бой v9: таланты и способности\n',
      'Согласованный бесклассовый набор. Числа — начальная настройка для дальнейших игровых проверок.\n',
