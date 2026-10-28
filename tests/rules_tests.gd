@@ -130,8 +130,8 @@ func test_weapons() -> void:
 	check(st_sw["atk_speed"] < 1.6 and st_gs["atk_speed"] >= 3.0, "one-handed sword is fast, greatsword slow")
 	# weapon spells: requirement and bonus
 	check(not Db.spell_usable("aimed_shot", ["sword"]) and Db.spell_usable("aimed_shot", ["bow"]), "aimed shot needs a bow")
-	check(Db.spell_bonus("fireball", ["staff"]) > 1.0 and Db.spell_bonus("fireball", ["sword"]) == 1.0, "fireball is stronger with a staff")
-	check(Db.spell_bonus("twin_strike", ["sword", "sword"]) > Db.spell_bonus("twin_strike", ["sword", "shield"]), "twin strike bonus with two swords")
+	check(Db.spell_usable("fireball", ["sword"]) and Db.spell_amount("fireball",1,s_hi,["staff"]) > Db.spell_amount("fireball",1,s_lo,["staff"]), "universal fireball benefits from spell power")
+	check(Db.spell_usable("strike", ["sword", "sword"]) and Db.spell_usable("strike", ["greatsword"]), "Bloodthirst supports all swords")
 	check(Db.spell_amount("strike", 1, {"str": 50.0, "power": 10.0}, []) == 1.8 * 50.0, "strike scales from strength")
 	var hero := {"name": "H", "level": 10, "rotation": ["aimed_shot"], "equipped": {"weapon": sw, "offhand": null}}
 	var snap := Roster.hero_snapshot(hero, {"aimed_shot": {"lvl": 1, "copies": 0}})
@@ -210,19 +210,13 @@ func test_feedback_fixes() -> void:
 		lo = min(lo, Db.level_hp_factor(l))
 		hi = max(hi, Db.level_hp_factor(l))
 	check(lo >= 0.75 and hi <= 1.3 and Db.level_hp_factor(13) < 1.0, "golem/guard levels get less health (%.2f..%.2f, L13 %.2f)" % [lo, hi, Db.level_hp_factor(13)])
-	# merc gear fits the role
 	var hr := RandomNumberGenerator.new()
 	hr.seed = 5
-	var agi_on_healers := 0
+	var compatible := true
 	for i in 30:
-		var m := Roster.make_merc(hr, 1, 20, 2)
-		for slot in m["gear"]:
-			var it = m["gear"][slot]
-			if it != null:
-				for a in it["affixes"]:
-					if a["stat"] in ["agi", "str"] and not a.get("imp", false):
-						agi_on_healers += 1
-	check(agi_on_healers == 0, "healers get no strength/agility gear (%d)" % agi_on_healers)
+		var m := Roster.make_merc(hr,1,20)
+		compatible = compatible and Loot.weapon_types(m["gear"]) == m["weapons"]
+	check(compatible, "random mercenary equipment matches its weapons")
 
 func test_crystals() -> void:
 	print("crystals")
@@ -322,13 +316,11 @@ func test_talents() -> void:
 	var hp0: float = Rules.hero_snapshot(p)["stats"]["hp"]
 	for i in 3:
 		Rules.apply(p, "talent_up", {"id": "toughness"}, T0)
-	check(Rules.hero_snapshot(p)["stats"]["hp"] > hp0 * 1.14 and Talents.points_free(p["hero"]) == 0, "3 ranks of toughness cost 1+2+3 points: +15% health")
-	check(not Rules.apply(p, "talent_up", {"id": "toughness"}, T0)["ok"], "rank 4 needs 4 more points")
+	check(Rules.hero_snapshot(p)["stats"]["hp"] >= hp0 * 1.08 and Talents.points_free(p["hero"]) == 3, "3 ranks cost 3 points and give 9% health")
+	check(not Rules.apply(p, "talent_up", {"id": "full_block"}, T0)["ok"], "second tier needs 10 points in branch")
 	Rules.apply(p, "talent_reset", {}, T0)
 	check(Talents.points_free(p["hero"]) == 6, "reset returns the points")
-	Rules.apply(p, "talent_up", {"id": "eagle_eye"}, T0)
-	var base_agi: float = Db.hero_base_stats(7)["agi"]
-	check(Rules.hero_snapshot(p)["stats"]["agi"] == base_agi, "bow talent does nothing with a sword")
+	check(Rules.apply(p, "talent_up", {"id": "poison_blades"}, T0)["ok"] and not Talents._active(Talents.TALENTS["poison_blades"],["bow"]), "sword talent can be learned but is inactive with a bow")
 	check(Loot.sell_price({"ilvl": 10, "rarity": 1}) < (5 + 30) * 3, "selling pays less gold now")
 
 func test_spell_levels() -> void:

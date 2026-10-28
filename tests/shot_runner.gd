@@ -316,9 +316,9 @@ func _run_talents() -> void:
 	UI.clear(main.popup_layer)
 	Game.profile["hero"]["level"] = 10
 	Game.talent_up("toughness")
-	Game.talent_up("blade_master")
-	Game.talent_up("blade_master")
-	Game.talent_up("eagle_eye")
+	Game.talent_up("focus")
+	Game.talent_up("focus")
+	Game.talent_up("spell_crit")
 	main._switch("hero")
 	await _wait(0.4)
 	await _shot("30_hero_talents_button")

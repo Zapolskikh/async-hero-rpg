@@ -109,6 +109,8 @@ func _consume_events(sim: BattleSim) -> void:
 						_shoot(src, dst, Color("#e8dcc0"), "arrow")
 					else:
 						_anim(src.uid)["lunge"] = LUNGE_TIME
+			"fx":
+				_on_fx(sim,e)
 			"spell":
 				_on_spell(sim, e)
 			"dmg":
@@ -139,41 +141,30 @@ func _consume_events(sim: BattleSim) -> void:
 
 func _on_spell(sim: BattleSim, e: Dictionary) -> void:
 	var src := sim.unit_by_uid(e["uid"])
-	if src == null:
+	if src != null:
+		_float(src.uid,e["text"],UI.ACCENT,17,-44.)
+
+func _on_fx(sim: BattleSim, e: Dictionary) -> void:
+	var src := sim.unit_by_uid(e["uid"])
+	var dst := sim.unit_by_uid(e["tgt"])
+	if src == null or dst == null:
 		return
-	var sid: String = e.get("sid", "")
-	var kind: String = e.get("kind", "")
-	_float(src.uid, e["text"], UI.ACCENT, 17, -44.0)
-	var col: Color = SPELL_COLORS.get(sid, Color.WHITE)
-	match kind:
-		"aoe_damage", "aoe_dot":
-			for f in sim.foes_of(src):
-				if sid in MELEE_SPELLS:
-					_effect_on(sim, f.uid, "slash", col, 0.3)
-				else:
-					_shoot(src, f, col, "orb")
-			if sid in MELEE_SPELLS:
-				_anim(src.uid)["lunge"] = LUNGE_TIME
-		"damage", "dot", "execute", "drain", "interrupt", "stun":
-			var dst := sim.unit_by_uid(e.get("tgt", -1))
-			if dst == null:
-				return
-			if sid in MELEE_SPELLS or not src.ranged and kind in ["interrupt", "stun"]:
-				_anim(src.uid)["lunge"] = LUNGE_TIME
-				_effect_on(sim, dst.uid, "slash", col, 0.3)
-			else:
-				_shoot(src, dst, col, "orb")
-		"heal", "cleanse":
-			var dst := sim.unit_by_uid(e.get("tgt", -1))
-			if dst != null and dst != src:
-				_shoot(src, dst, UI.GOOD, "orb")
-		"hot_all":
-			for f in sim.friends_of(src):
-				_effect_on(sim, f.uid, "sparkle", Color("#b6ffb0"), 0.6)
-		"taunt":
-			_effect_on(sim, src.uid, "ring", Color("#ff5a4a"), 0.5)
-		"self_shield":
-			_effect_on(sim, src.uid, "ring", Color("#ffd75a"), 0.5)
+	var kind: String = e["kind"]
+	var col := Color(e["color"])
+	if kind in ["slash","heavy","bleed","shield_hit","whirlwind"]:
+		_anim(src.uid)["lunge"] = LUNGE_TIME
+		_effect_on(sim,dst.uid,kind,col,.42)
+	elif kind in ["shout","shield","cleanse","curse","shockwave","explosion","nature","earth","resurrect"]:
+		_effect_on(sim,dst.uid,kind,col,.65)
+	elif kind in ["lightning","heal_chain"]:
+		effects.append({"pos":_center(dst),"from":_center(src),"t":0.,"dur":.38,"kind":kind,"color":col,"radius":40.})
+	else:
+		_shoot(src,dst,col,kind)
+		if e.get("summon","") != "":
+			for i in src.summons.size():
+				if src.summons[i]["id"] == e["summon"]:
+					projectiles[-1]["from"] = _home(src) + Vector2(-34.-i*25.,-30.)
+					break
 
 func _shoot(src: BattleUnit, dst: BattleUnit, col: Color, kind: String) -> void:
 	projectiles.append({"from": _center(src) + Vector2(0, -10), "to": _center(dst), "t": 0.0, "color": col, "kind": kind})
@@ -324,8 +315,8 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 
 	# cast glow under the feet
 	if u.is_casting():
-		var c := u.casting
-		var col: Color = SPELL_COLORS.get(c["spell"], Color("#ffd27a"))
+		var c: Dictionary = u.casting if not u.casting.is_empty() else u.channel
+		var col: Color = Color(Db.SPELLS[c["spell"]].get("color", "#ffd27a"))
 		col.a = 0.35 + 0.2 * sin(clock * 10.0)
 		_ellipse(home, Vector2(sz.x * 0.55, 14), col)
 
@@ -383,6 +374,9 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 		for i in 3:
 			var ang := clock * 4.0 + i * TAU / 3.0
 			draw_circle(Vector2(r.get_center().x + cos(ang) * 22.0, r.position.y + 6 + sin(ang) * 6.0), 4.0, Color("#ffe14a"))
+	_draw_summons(u, home)
+	if u.silence > 0.:
+		_text(font, home + Vector2(-18,-sz.y-38), "···", 24, Color("#cc9dff"))
 	# status markers
 	var marks := []
 	for d in u.dots:
@@ -407,7 +401,7 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 	_text(font, Vector2(home.x - nw / 2.0, bar.position.y - 5), u.name, 16, Color.WHITE, 4)
 	# cast bar under the feet
 	if u.is_casting():
-		var c := u.casting
+		var c: Dictionary = u.casting if not u.casting.is_empty() else u.channel
 		var cb := Rect2(Vector2(home.x - 50, home.y + 6), Vector2(100, 12))
 		draw_rect(cb.grow(1.5), Color(0, 0, 0, 0.8))
 		var frac: float = 1.0 - c["remaining"] / c["total"]
@@ -422,11 +416,29 @@ func _draw_projectile(p: Dictionary) -> void:
 	var from: Vector2 = p["from"]
 	var to: Vector2 = p["to"]
 	var pos := from.lerp(to, k) + Vector2(0, -sin(k * PI) * 30.0)
+	if p["kind"] == "arrow_rain":
+		from = to + Vector2(-35,-170)
+		pos = from.lerp(to,k)
 	var col: Color = p["color"]
-	if p["kind"] == "arrow":
+	if p["kind"] in ["arrow","poison_arrow","fire_arrow","arrow_rain"]:
 		var d := (to - from).normalized()
 		draw_line(pos - d * 16.0, pos, Color("#6a4a2a"), 3.0)
 		draw_line(pos - d * 4.0, pos, col, 4.0)
+	elif p["kind"] == "beast":
+		draw_rect(Rect2(pos+Vector2(-14,-7),Vector2(23,12)),Color("#986947"))
+		draw_rect(Rect2(pos+Vector2(6,-13),Vector2(12,13)),Color("#c99b69"))
+		draw_rect(Rect2(pos+Vector2(13,-10),Vector2(3,3)),Color("#ffe2a0"))
+	elif p["kind"] in ["shield_throw","blade"]:
+		draw_set_transform(pos, k * TAU * 2.)
+		draw_rect(Rect2(-10,-10,20,20),Color("#252a3b"))
+		draw_rect(Rect2(-7,-7,14,14),col)
+		draw_line(Vector2(-4,0),Vector2(4,0),Color.WHITE,3.)
+		draw_set_transform(Vector2.ZERO)
+	elif p["kind"] == "frost":
+		var dir := (to-from).normalized()
+		for i in 4:
+			var center := pos-dir*i*8.
+			draw_colored_polygon(PackedVector2Array([center+Vector2(0,-7),center+dir*9.,center+Vector2(0,7),center-dir*6.]),Color(col,1.-i*.18))
 	else:
 		for i in 4:
 			var tk: float = max(0.0, k - i * 0.06)
@@ -443,6 +455,44 @@ func _draw_effect(e: Dictionary) -> void:
 	col.a = 1.0 - k
 	var pos: Vector2 = e["pos"]
 	match e["kind"]:
+		"lightning", "heal_chain":
+			var start: Vector2 = e["from"]
+			var points := PackedVector2Array()
+			for i in 9:
+				var p := start.lerp(pos,i/8.)
+				if i > 0 and i < 8:
+					p.y += sin(i*17.+floor(k*8.))*14.
+				points.append(p)
+			draw_polyline(points,col,5.)
+			draw_polyline(points,Color(1,1,1,col.a),2.)
+		"shockwave", "shout":
+			_ellipse(pos+Vector2(0,35),Vector2(15.+k*100.,6.+k*24.),col,false,4.)
+			_ellipse(pos+Vector2(0,35),Vector2(8.+k*65.,4.+k*16.),col,false,2.)
+		"shield", "earth":
+			_ellipse(pos,Vector2(35.+k*12.,48.+k*12.),col,false,4.)
+		"explosion":
+			for i in 12:
+				var angle := i*TAU/12.
+				var p := pos+Vector2(cos(angle),sin(angle))*(12.+k*65.)
+				draw_rect(Rect2(p,Vector2(10,10)*(1.-k)+Vector2(2,2)),col)
+			draw_arc(pos,10.+k*55.,0.,TAU,20,col,3.)
+		"heavy", "shield_hit", "bleed":
+			draw_line(pos+Vector2(-25,-30),pos+Vector2(25,30),col,8.*(1.-k)+1.)
+			for i in 5:
+				var p := pos+Vector2((i-2)*10.*k,-20.+k*55.)
+				draw_rect(Rect2(p,Vector2(5,5)),col)
+		"whirlwind":
+			for i in 3:
+				draw_arc(pos,30.+i*9.,k*TAU+i,k*TAU+i+PI,16,col,4.)
+		"curse":
+			draw_arc(pos,28.,-k*TAU,PI-k*TAU,16,col,3.)
+			draw_line(pos+Vector2(-14,-14),pos+Vector2(14,14),col,3.)
+			draw_line(pos+Vector2(14,-14),pos+Vector2(-14,14),col,3.)
+		"cleanse", "nature", "resurrect":
+			for i in 6:
+				var p := pos+Vector2((i-2.5)*12.,30.-k*100.+sin(i)*15.)
+				draw_rect(Rect2(p-Vector2(2,6),Vector2(4,12)),col)
+				draw_rect(Rect2(p-Vector2(6,2),Vector2(12,4)),col)
 		"burst":
 			draw_circle(pos, 6.0 + k * e["radius"], Color(col, (1.0 - k) * 0.5))
 			draw_arc(pos, 6.0 + k * e["radius"], 0.0, TAU, 20, col, 3.0)
@@ -484,3 +534,23 @@ func _get_preview_units() -> Array:
 			Roster.ensure_visuals(snaps[i])
 			_preview_units.append(BattleUnit.new(i, 0, i, snaps[i]))
 	return _preview_units
+
+func _draw_summons(u: BattleUnit, home: Vector2) -> void:
+	for i in u.summons.size():
+		var summon: Dictionary = u.summons[i]
+		var pos := home + Vector2(-34.-i*25.,0.)
+		var col := Color("#8ee6ae") if summon["id"] == "healing_totem" else Color("#ff9c42")
+		if summon["id"] == "beast":
+			pos.x += sin(clock*6.)*5.
+			draw_rect(Rect2(pos+Vector2(-15,-19),Vector2(26,12)),Color("#986947"))
+			draw_rect(Rect2(pos+Vector2(7,-26),Vector2(13,15)),Color("#c99b69"))
+			draw_rect(Rect2(pos+Vector2(9,-31),Vector2(5,8)),Color("#986947"))
+			draw_rect(Rect2(pos+Vector2(15,-23),Vector2(3,3)),Color("#ffe2a0"))
+			for leg in 2:
+				draw_rect(Rect2(pos+Vector2(-10+leg*17,-8),Vector2(5,8)),Color("#67462f"))
+		else:
+			draw_rect(Rect2(pos+Vector2(-7,-28),Vector2(14,28)),Color("#79583e"))
+			draw_rect(Rect2(pos+Vector2(-11,-23),Vector2(22,6)),col.darkened(.35))
+			draw_rect(Rect2(pos+Vector2(-6,-33),Vector2(12,10)),col)
+			draw_rect(Rect2(pos+Vector2(-2,-31),Vector2(4,5)),Color.WHITE)
+			_ellipse(pos+Vector2(0,-30),Vector2(13,9),Color(col,.3+.2*sin(clock*5.)))

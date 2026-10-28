@@ -18,74 +18,60 @@ const RARITY_COLORS := [Color("#b8b8b8"), Color("#4da3ff"), Color("#b36bff"), Co
 #   req (weapon types, any of them is needed; without one the spell is skipped),
 #   bonus ({w: weapon type or "dual" for two swords, mult}: stronger with that weapon)
 const SPELLS := {
-	# --- Player spells ---
-	"strike":       {"name": "Мощный удар",     "kind": "damage",     "mult": 1.8, "cast": 0.0, "cd": 0.0, "rarity": 0, "tags": ["dps"],
-					 "stat": "str", "bonus": {"w": "sword", "mult": 1.2},
-					 "desc": "Удар по цели. Срабатывает всегда."},
-	"fireball":     {"name": "Огненный шар",    "kind": "damage",     "mult": 2.8, "cast": 1.2, "cd": 0.0, "rarity": 0, "tags": ["dps"],
-					 "bonus": {"w": "staff", "mult": 1.2},
-					 "desc": "Каст 1.2 с, сильный урон по цели."},
-	"cleave":       {"name": "Рассечение",      "kind": "aoe_damage", "mult": 1.3, "cast": 0.0, "cd": 5.0, "rarity": 1, "min_targets": 2, "tags": ["aoe"],
-					 "stat": "str", "bonus": {"w": "greatsword", "mult": 1.3},
-					 "desc": "Урон по всем врагам. Только если врагов 2+."},
-	"chain_lightning": {"name": "Цепная молния", "kind": "aoe_damage", "mult": 1.6, "cast": 1.5, "cd": 7.0, "rarity": 2, "min_targets": 3, "tags": ["aoe"],
-					 "bonus": {"w": "staff", "mult": 1.2},
-					 "desc": "Каст 1.5 с, урон по всем. Только если врагов 3+."},
-	"ignite":       {"name": "Поджог",          "kind": "dot",        "mult": 0.4, "cast": 0.0, "cd": 0.0, "dur": 6.0, "rarity": 0, "tags": ["dot"],
-					 "desc": "Горение 6 с на цели без горения."},
-	"poison_cloud": {"name": "Ядовитое облако", "kind": "aoe_dot",    "mult": 0.35, "cast": 0.0, "cd": 0.0, "dur": 6.0, "rarity": 1, "min_targets": 2, "tags": ["dot", "aoe"],
-					 "desc": "Яд на всех врагах. Только если врагов 2+."},
-	"execute":      {"name": "Казнь",           "kind": "execute",    "mult": 4.5, "cast": 0.0, "cd": 4.0, "threshold": 0.3, "rarity": 1, "tags": ["dps"],
-					 "stat": "str", "bonus": {"w": "greatsword", "mult": 1.25},
-					 "desc": "Огромный урон по врагу ниже 30% HP."},
-	"kick":         {"name": "Пинок",           "kind": "interrupt",  "mult": 0.8, "cast": 0.0, "cd": 5.0, "rarity": 0, "tags": ["interrupt"],
-					 "stat": "str",
-					 "desc": "Сбивает вражеский каст. Срабатывает сразу, как враг начал каст, вне очереди ротации (если нет перезарядки)."},
-	"bash":         {"name": "Оглушение",       "kind": "stun",       "mult": 0.6, "cast": 0.0, "cd": 10.0, "dur": 2.0, "rarity": 1, "tags": ["control"],
-					 "stat": "str", "bonus": {"w": "shield", "mult": 1.3},
-					 "desc": "Оглушает цель на 2 с и сбивает каст. Боссы невосприимчивы."},
-	"drain":        {"name": "Похищение жизни", "kind": "drain",      "mult": 1.6, "cast": 0.0, "cd": 6.0, "rarity": 2, "tags": ["dps", "sustain"],
-					 "desc": "Урон по цели, лечит себя на нанесённый урон."},
-	"heal":         {"name": "Исцеление",       "kind": "heal",       "mult": 3.0, "cast": 1.0, "cd": 0.0, "threshold": 0.7, "rarity": 0, "tags": ["heal"],
-					 "bonus": {"w": "staff", "mult": 1.2},
-					 "desc": "Каст 1 с, лечит самого раненого союзника ниже 70%."},
-	"renew":        {"name": "Обновление",      "kind": "hot_all",    "mult": 0.45, "cast": 0.0, "cd": 10.0, "dur": 6.0, "threshold": 0.9, "rarity": 1, "tags": ["heal"],
-					 "bonus": {"w": "staff", "mult": 1.2},
-					 "desc": "Лечение со временем на всю группу, если кто-то ниже 90%."},
-	"barrier":      {"name": "Барьер",          "kind": "shield",     "mult": 3.0, "cast": 0.0, "cd": 7.0, "dur": 10.0, "rarity": 0, "tags": ["shield"],
-					 "bonus": {"w": "shield", "mult": 1.3},
-					 "desc": "Щит на переднего союзника без щита."},
-	"taunt":        {"name": "Провокация",      "kind": "taunt",      "mult": 1.5, "cast": 0.0, "cd": 12.0, "dur": 6.0, "rarity": 0, "tags": ["tank"],
-					 "bonus": {"w": "shield", "mult": 1.5},
-					 "desc": "Враги бьют только вас 6 с, плюс небольшой щит."},
-	"cleanse":      {"name": "Очищение",        "kind": "cleanse",    "mult": 1.0, "cast": 0.0, "cd": 6.0, "rarity": 1, "tags": ["cleanse", "heal"],
-					 "desc": "Снимает яд/горение/оглушение с союзника и подлечивает."},
-
-	# --- Weapon spells: only usable with the required weapon (req = any of these) ---
-	"twin_strike":  {"name": "Двойной удар",    "kind": "damage",     "mult": 2.2, "cast": 0.0, "cd": 0.0, "rarity": 0, "tags": ["dps"],
-					 "stat": "str", "req": ["sword"], "bonus": {"w": "dual", "mult": 1.4},
-					 "desc": "Нужен меч. Два быстрых удара по цели; с мечом в каждой руке сильнее."},
-	"mortal_strike": {"name": "Сокрушительный удар", "kind": "damage", "mult": 3.4, "cast": 0.0, "cd": 6.0, "rarity": 0, "tags": ["dps"],
-					 "stat": "str", "req": ["greatsword"],
-					 "desc": "Нужен двуручный меч. Тяжёлый удар по цели."},
-	"whirlwind":    {"name": "Вихрь клинка",    "kind": "aoe_damage", "mult": 1.7, "cast": 0.0, "cd": 6.0, "rarity": 1, "min_targets": 2, "tags": ["aoe"],
-					 "stat": "str", "req": ["greatsword"],
-					 "desc": "Нужен двуручный меч. Урон по всем врагам, если их 2+."},
-	"shield_slam":  {"name": "Удар щитом",      "kind": "stun",       "mult": 1.0, "cast": 0.0, "cd": 9.0, "dur": 1.5, "rarity": 1, "tags": ["control"],
-					 "stat": "str", "req": ["shield"],
-					 "desc": "Нужен щит. Оглушает цель на 1.5 с и сбивает каст. Боссы невосприимчивы."},
-	"shield_wall":  {"name": "Стена щитов",     "kind": "self_shield", "mult": 4.0, "cast": 0.0, "cd": 10.0, "dur": 8.0, "rarity": 0, "tags": ["tank"],
-					 "stat": "str", "req": ["shield"],
-					 "desc": "Нужен щит. Большой щит на себя, если своего щита нет."},
-	"aimed_shot":   {"name": "Прицельный выстрел", "kind": "damage",  "mult": 3.6, "cast": 1.5, "cd": 0.0, "rarity": 0, "tags": ["dps"],
-					 "stat": "agi", "req": ["bow"],
-					 "desc": "Нужен лук. Каст 1.5 с, сильный выстрел по цели."},
-	"arrow_rain":   {"name": "Дождь стрел",     "kind": "aoe_damage", "mult": 1.5, "cast": 0.0, "cd": 8.0, "rarity": 1, "min_targets": 2, "tags": ["aoe"],
-					 "stat": "agi", "req": ["bow"],
-					 "desc": "Нужен лук. Урон по всем врагам, если их 2+."},
-	"arcane_bolt":  {"name": "Чародейская стрела", "kind": "damage",  "mult": 2.2, "cast": 0.0, "cd": 0.0, "rarity": 0, "tags": ["dps"],
-					 "req": ["staff"],
-					 "desc": "Нужен посох. Мгновенный магический удар по цели."},
+	# --- Player spells: generated by tools/build_combat_data.py ---
+	"kick": {"name": "Пинок", "group": "universal", "kind": "interrupt", "mult": 0.4, "cd": 8.0, "cast": 0.0, "rarity": 0, "desc": "Реактивно сбивает доступный каст вне очереди. Любое оружие.", "fx": "slash", "color": "#ffe7a1", "tags": ["interrupt"], "stat": "str"},
+	"cleanse": {"name": "Очищение", "group": "universal", "kind": "cleanse", "mult": 0.6, "cd": 8.0, "cast": 0.0, "rarity": 0, "desc": "Снимает отрицательные эффекты и немного лечит союзника.", "fx": "cleanse", "color": "#a5ffb6", "tags": ["cleanse", "heal"]},
+	"purge": {"name": "Развеивание", "group": "universal", "kind": "purge", "mult": 0, "cd": 8.0, "cast": 0.0, "rarity": 1, "desc": "Снимает один положительный эффект противника, включая щит.", "fx": "cleanse", "color": "#ffe7a1", "tags": ["dps"]},
+	"bash": {"name": "Оглушение", "group": "universal", "kind": "stun", "mult": 0.5, "cd": 12.0, "cast": 0.0, "rarity": 1, "desc": "Оглушение на 2 с и сбой каста. Боссы не оглушаются.", "fx": "stun", "color": "#ffe7a1", "tags": ["control"], "dur": 2.0, "stat": "str"},
+	"battle_cry": {"name": "Боевой клич", "group": "universal", "kind": "buff_all", "mult": 0, "cd": 24.0, "cast": 0.0, "rarity": 1, "desc": "Физический урон всей группы +20% на 8 с.", "fx": "shout", "color": "#ffbb29", "tags": ["dps"], "dur": 8.0, "buff": "physical", "value": 0.2},
+	"bloodlust": {"name": "Жажда крови", "group": "universal", "kind": "buff_all", "mult": 0, "cd": 30.0, "cast": 0.0, "rarity": 2, "desc": "Касты и интервал применения способностей группы ускоряются на 30% на 8 с.", "fx": "shout", "color": "#bf7fff", "tags": ["dps"], "dur": 8.0, "buff": "bloodlust", "value": 0.3},
+	"rally": {"name": "Ободряющий клич", "group": "universal", "kind": "rally", "mult": 0, "cd": 24.0, "cast": 0.0, "rarity": 1, "desc": "Временно даёт группе 20% максимального и текущего здоровья на 8 с.", "fx": "shout", "color": "#ffbb29", "tags": ["dps"], "dur": 8.0},
+	"prism": {"name": "Священная призма", "group": "universal", "kind": "prism", "mult": 1.4, "cd": 12.0, "cast": 0.0, "rarity": 2, "desc": "Урон врагу и лечение всей группы в размере 60% силы удара.", "fx": "prism", "color": "#fff0a0", "tags": ["dps"]},
+	"mass_dispel": {"name": "Массовое рассеивание", "group": "universal", "kind": "mass_dispel", "mult": 0, "cd": 20.0, "cast": 1.0, "rarity": 3, "desc": "Очищает группу и снимает по одному положительному эффекту с врагов.", "fx": "cleanse", "color": "#ffe7a1", "tags": ["dps"]},
+	"shatter": {"name": "Сокрушительный бросок", "group": "universal", "kind": "damage", "mult": 1.5, "cd": 10.0, "cast": 0.0, "rarity": 1, "desc": "Удар от лучшей атакующей характеристики; тройной урон поглощению.", "fx": "blade", "color": "#ffe7a1", "tags": ["dps"], "stat": "best", "school": "physical", "shield_bonus": 3.0},
+	"fireball": {"name": "Огненный шар", "group": "arcane", "kind": "damage", "mult": 2.8, "cd": 0.0, "cast": 1.5, "rarity": 0, "desc": "Сильный каст. По цели под твоим Поджогом урон +25%.", "fx": "fire", "color": "#ff8a2a", "tags": ["dps"]},
+	"arcane_bolt": {"name": "Чародейский обстрел", "group": "arcane", "kind": "damage", "mult": 1.8, "cd": 0.0, "cast": 0.0, "rarity": 0, "desc": "Мгновенный магический удар. Любое оружие.", "fx": "arcane", "color": "#b68aff", "tags": ["dps"]},
+	"ignite": {"name": "Поджог", "group": "arcane", "kind": "dot", "mult": 0.3, "cd": 0.0, "cast": 0.0, "rarity": 0, "desc": "Небольшой удар и горение 8 с. Усиливает твой Огненный шар.", "fx": "fire", "color": "#ff672d", "tags": ["dot"], "dur": 8.0, "initial": 0.5},
+	"frostbolt": {"name": "Ледяная стрела", "group": "arcane", "kind": "damage", "mult": 2.1, "cd": 8.0, "cast": 1.5, "rarity": 1, "desc": "Урон и замедление автоатак на 20% на 6 с.", "fx": "frost", "color": "#9be8ff", "tags": ["dps"], "debuff": "slow", "value": 0.2, "dur": 6.0},
+	"weakness": {"name": "Проклятие слабости", "group": "arcane", "kind": "debuff", "mult": 0, "cd": 8.0, "cast": 0.0, "rarity": 1, "desc": "Весь урон цели −15% на 15 с. Не обновляет долгий действующий эффект.", "fx": "curse", "color": "#bb72c9", "tags": ["dps"], "debuff": "weakness", "value": 0.15, "dur": 15.0},
+	"chain_lightning": {"name": "Цепная молния", "group": "arcane", "kind": "aoe_damage", "mult": 1.4, "cd": 8.0, "cast": 1.5, "rarity": 2, "desc": "Молния поражает до трёх врагов. Работает по одной цели.", "fx": "lightning", "color": "#9cdeff", "tags": ["dps"], "max_targets": 3},
+	"haunt": {"name": "Блуждающий дух", "group": "arcane", "kind": "damage", "mult": 1.6, "cd": 10.0, "cast": 1.5, "rarity": 2, "desc": "Удар; твой DoT по цели +20%. Когда дух возвращается, лечит тебя на силу удара.", "fx": "spirit", "color": "#ba99ee", "tags": ["dps"], "debuff": "haunt", "value": 0.2, "dur": 10.0},
+	"living_bomb": {"name": "Живая бомба", "group": "arcane", "kind": "dot", "mult": 0.25, "cd": 10.0, "cast": 0.0, "rarity": 1, "desc": "Горение 6 с, затем взрыв по всем врагам. Взрывается и при смерти цели.", "fx": "fire", "color": "#ff9d35", "tags": ["dot", "aoe"], "dur": 6.0, "explosion": 1.3},
+	"seed": {"name": "Семя порчи", "group": "arcane", "kind": "seed", "mult": 1.7, "cd": 12.0, "cast": 1.5, "rarity": 3, "desc": "Семя взрывается по всем врагам после урона цели в 300% силы заклинаний или её смерти.", "fx": "curse", "color": "#a26ad6", "tags": ["dps"], "dur": 12.0},
+	"heal": {"name": "Исцеление", "group": "life", "kind": "heal", "mult": 3.5, "cd": 0.0, "cast": 1.5, "rarity": 0, "desc": "Сильное прямое лечение наиболее раненого союзника.", "fx": "heal", "color": "#75ed93", "tags": ["heal"], "threshold": 0.7},
+	"renew": {"name": "Обновление", "group": "life", "kind": "hot", "mult": 0.35, "cd": 4.0, "cast": 0.0, "rarity": 0, "desc": "Периодическое лечение одного раненого союзника на 8 с.", "fx": "nature", "color": "#83e878", "tags": ["heal"], "dur": 8.0, "threshold": 0.9},
+	"barrier": {"name": "Барьер", "group": "life", "kind": "shield", "mult": 3.0, "cd": 8.0, "cast": 0.0, "rarity": 0, "desc": "Поглощающий щит на переднего союзника без щита.", "fx": "shield", "color": "#83ceff", "tags": ["shield"], "dur": 8.0},
+	"riptide": {"name": "Быстрина", "group": "life", "kind": "riptide", "mult": 1.5, "cd": 8.0, "cast": 0.0, "rarity": 1, "desc": "Мгновенное лечение и HoT на 6 с.", "fx": "water", "color": "#6de5db", "tags": ["heal"], "dur": 6.0, "tick_mult": 0.25, "threshold": 0.75},
+	"wild_growth": {"name": "Буйный рост", "group": "life", "kind": "hot_all", "mult": 0.5, "cd": 12.0, "cast": 1.0, "rarity": 1, "desc": "Лечение группы на 6 с: первые импульсы сильнее последних.", "fx": "nature", "color": "#8ef09c", "tags": ["heal"], "dur": 6.0, "threshold": 0.85, "decay": true},
+	"chain_heal": {"name": "Цепное исцеление", "group": "life", "kind": "chain_heal", "mult": 2.6, "cd": 8.0, "cast": 2.0, "rarity": 1, "desc": "Лечит до трёх раненых союзников: 100%, 65%, 42% силы.", "fx": "heal_chain", "color": "#b4ffd2", "tags": ["heal"], "threshold": 0.8},
+	"earth_shield": {"name": "Щит земли", "group": "life", "kind": "earth_shield", "mult": 0.9, "cd": 12.0, "cast": 0.0, "rarity": 2, "desc": "Пять зарядов: получение урона лечит владельца. Заряд не чаще раза в 2 с.", "fx": "earth", "color": "#d2be7a", "tags": ["heal"], "dur": 20.0, "charges": 5},
+	"penance": {"name": "Искупление", "group": "life", "kind": "penance", "mult": 0.95, "cd": 10.0, "cast": 0.0, "rarity": 2, "desc": "Три импульса: лечит раненого союзника или атакует врага, если лечение не требуется.", "fx": "holy", "color": "#fff0b0", "tags": ["heal", "dps"], "channel": 2.0, "pulses": 3, "threshold": 0.75},
+	"prayer": {"name": "Молитва восстановления", "group": "life", "kind": "prayer", "mult": 1.3, "cd": 14.0, "cast": 0.0, "rarity": 3, "desc": "Пять лечебных зарядов. После урона лечит владельца и перескакивает на другого союзника.", "fx": "prayer", "color": "#ffe997", "tags": ["heal"], "dur": 20.0, "charges": 5},
+	"taunt": {"name": "Провокация", "group": "bulwark", "kind": "taunt", "mult": 0, "cd": 12.0, "cast": 0.0, "rarity": 0, "desc": "Враги выбирают тебя 6 с. Применяется по готовности; последняя провокация важнее.", "fx": "shout", "color": "#ff7060", "tags": ["tank"], "dur": 6.0},
+	"shield_slam": {"name": "Удар щитом", "group": "bulwark", "kind": "stun", "mult": 1.2, "cd": 9.0, "cast": 0.0, "rarity": 0, "desc": "Удар щитом, прерывание и оглушение 1 с. Боссу можно сбить доступный каст.", "fx": "shield_hit", "color": "#80bcf0", "tags": ["tank", "interrupt"], "dur": 1.0, "stat": "str", "req": ["shield"], "school": "physical", "weapon": true, "reactive": true},
+	"shield_wall": {"name": "Стена щитов", "group": "bulwark", "kind": "buff_self", "mult": 0, "cd": 18.0, "cast": 0.0, "rarity": 0, "desc": "Получаемый урон −40% на 5 с. Требует щит.", "fx": "shield", "color": "#80bcf0", "tags": ["tank"], "dur": 5.0, "buff": "wall", "value": 0.4, "req": ["shield"]},
+	"thunder_clap": {"name": "Удар грома", "group": "bulwark", "kind": "aoe_damage", "mult": 0.9, "cd": 10.0, "cast": 0.0, "rarity": 1, "desc": "Урон всем и замедление автоатак на 20% на 6 с. Любое оружие.", "fx": "shockwave", "color": "#80bcf0", "tags": ["dps"], "stat": "str", "school": "physical", "debuff": "slow", "value": 0.2, "dur": 6.0},
+	"shockwave": {"name": "Ударная волна", "group": "bulwark", "kind": "aoe_damage", "mult": 1.1, "cd": 16.0, "cast": 0.0, "rarity": 2, "desc": "Урон всем врагам и оглушение на 1 с.", "fx": "shockwave", "color": "#80bcf0", "tags": ["dps"], "stat": "str", "school": "physical", "stun": 1.0},
+	"avenger": {"name": "Щит мстителя", "group": "bulwark", "kind": "aoe_damage", "mult": 1.2, "cd": 12.0, "cast": 0.0, "rarity": 1, "desc": "Щит отскакивает к трём врагам; основной цели сбивает каст.", "fx": "shield_throw", "color": "#80bcf0", "tags": ["dps"], "stat": "str", "req": ["shield"], "school": "physical", "weapon": true, "max_targets": 3, "interrupt": true},
+	"vengeance": {"name": "Щит возмездия", "group": "bulwark", "kind": "self_shield", "mult": 3.0, "cd": 18.0, "cast": 0.0, "rarity": 3, "desc": "Щит на себя; при разрушении или истечении взрывается на 50% поглощённого урона. Любое оружие.", "fx": "shield", "color": "#80bcf0", "tags": ["dps"], "dur": 8.0, "stat": "best", "vengeance": true},
+	"strike": {"name": "Кровожадность", "group": "melee", "kind": "damage", "mult": 1.8, "cd": 6.0, "cast": 0.0, "rarity": 0, "desc": "Удар мечом, лечит себя на 20% фактического урона здоровью.", "fx": "slash", "color": "#ece4cc", "tags": ["dps"], "stat": "str", "req": ["sword", "greatsword"], "school": "physical", "weapon": true, "leech": 0.2},
+	"mortal_strike": {"name": "Сокрушительный удар", "group": "melee", "kind": "damage", "mult": 2.7, "cd": 6.0, "cast": 0.0, "rarity": 0, "desc": "Тяжёлый одиночный удар. С двуручником сильнее на 20%.", "fx": "heavy", "color": "#ece4cc", "tags": ["dps"], "stat": "str", "req": ["sword", "greatsword"], "school": "physical", "weapon": true, "bonus": {"w": "greatsword", "mult": 1.2}},
+	"rend": {"name": "Рваная рана", "group": "melee", "kind": "dot", "mult": 0.25, "cd": 0.0, "cast": 0.0, "rarity": 0, "desc": "Удар и кровотечение 8 с. Кровотечение обходит броню.", "fx": "bleed", "color": "#d94f55", "tags": ["dot"], "dur": 8.0, "initial": 0.5, "stat": "str", "req": ["sword", "greatsword"], "school": "physical", "weapon": true},
+	"cleave": {"name": "Рассечение", "group": "melee", "kind": "aoe_damage", "mult": 1.2, "cd": 5.0, "cast": 0.0, "rarity": 1, "desc": "Удар максимум по двум врагам. Доступен против одного.", "fx": "slash", "color": "#ece4cc", "tags": ["dps"], "stat": "str", "req": ["sword", "greatsword"], "school": "physical", "weapon": true, "max_targets": 2},
+	"whirlwind": {"name": "Вихрь клинка", "group": "melee", "kind": "aoe_damage", "mult": 0.95, "cd": 8.0, "cast": 0.0, "rarity": 1, "desc": "Урон всем врагам. Работает и по одной цели.", "fx": "whirlwind", "color": "#ece4cc", "tags": ["dps"], "stat": "str", "req": ["sword", "greatsword"], "school": "physical", "weapon": true, "bonus": {"w": "greatsword", "mult": 1.2}},
+	"execute": {"name": "Казнь", "group": "melee", "kind": "execute", "mult": 4.5, "cd": 6.0, "cast": 0.0, "rarity": 1, "desc": "Сильный удар по врагу ниже 30% здоровья. С талантом доступен с луком.", "fx": "heavy", "color": "#ece4cc", "tags": ["dps"], "threshold": 0.3, "stat": "str", "req": ["sword", "greatsword"], "school": "physical", "weapon": true, "bonus": {"w": "greatsword", "mult": 1.2}},
+	"death_strike": {"name": "Удар смерти", "group": "melee", "kind": "damage", "mult": 1.7, "cd": 12.0, "cast": 0.0, "rarity": 2, "desc": "Удар и лечение на 30% здоровья, потерянного за последние 5 с, минимум 5% максимального HP.", "fx": "spirit", "color": "#ece4cc", "tags": ["dps"], "stat": "str", "req": ["sword", "greatsword"], "school": "physical", "weapon": true, "death_heal": true},
+	"bladestorm": {"name": "Вихрь стали", "group": "melee", "kind": "channel_aoe", "mult": 0.85, "cd": 20.0, "cast": 0.0, "rarity": 3, "desc": "Три массовых удара за 2 с. Во время серии другие способности не применяются.", "fx": "whirlwind", "color": "#ece4cc", "tags": ["dps"], "channel": 2.0, "pulses": 3, "stat": "str", "req": ["sword", "greatsword"], "school": "physical", "weapon": true},
+	"aimed_shot": {"name": "Прицельный выстрел", "group": "ranged", "kind": "damage", "mult": 3.0, "cd": 0.0, "cast": 1.5, "rarity": 0, "desc": "Сильный одиночный выстрел с подготовкой. Это оружейное действие, не магический каст.", "fx": "arrow", "color": "#e5c994", "tags": ["dps"], "stat": "agi", "req": ["bow"], "school": "physical", "weapon": true},
+	"serpent_sting": {"name": "Укус змеи", "group": "ranged", "kind": "dot", "mult": 0.3, "cd": 0.0, "cast": 0.0, "rarity": 0, "desc": "Яд на 8 с. Выстрел химеры обновляет его.", "fx": "poison_arrow", "color": "#8dd851", "tags": ["dot"], "dur": 8.0, "stat": "agi", "req": ["bow"], "weapon": true},
+	"chimera": {"name": "Выстрел химеры", "group": "ranged", "kind": "damage", "mult": 1.8, "cd": 9.0, "cast": 0.0, "rarity": 2, "desc": "Урон, обновление твоего Укуса змеи и немедленный урон в размере 40% его полной силы.", "fx": "poison_arrow", "color": "#8fe0af", "tags": ["dps"], "stat": "agi", "req": ["bow"], "school": "physical", "weapon": true},
+	"explosive": {"name": "Разрывной выстрел", "group": "ranged", "kind": "explosive", "mult": 1.8, "cd": 12.0, "cast": 0.0, "rarity": 1, "desc": "Стрела взрывается через 2 с по всем врагам. Один взрыв на применение.", "fx": "fire_arrow", "color": "#ff9545", "tags": ["dps"], "dur": 2.0, "stat": "agi", "req": ["bow"], "weapon": true},
+	"tranq": {"name": "Усмиряющий выстрел", "group": "ranged", "kind": "damage", "mult": 1.2, "cd": 8.0, "cast": 0.0, "rarity": 1, "desc": "Урон и снятие одного положительного эффекта противника.", "fx": "arrow", "color": "#e5c994", "tags": ["dps"], "stat": "agi", "req": ["bow"], "school": "physical", "weapon": true, "purge": true},
+	"arrow_rain": {"name": "Град стрел", "group": "ranged", "kind": "channel_aoe", "mult": 0.65, "cd": 10.0, "cast": 0.0, "rarity": 1, "desc": "Три залпа по всем врагам за 2 с. Работает против одного.", "fx": "arrow_rain", "color": "#e5c994", "tags": ["dps"], "channel": 2.0, "pulses": 3, "stat": "agi", "req": ["bow"], "school": "physical", "weapon": true},
+	"beast": {"name": "Призыв зверя", "group": "ranged", "kind": "summon", "mult": 0.65, "cd": 20.0, "cast": 0.0, "rarity": 3, "desc": "Призывает зверя на 10 с: атакует каждые 2 с. Любое оружие, не занимает место в группе.", "fx": "beast", "color": "#e5c994", "tags": ["dps"], "dur": 10.0, "stat": "best"},
+	"poison_cloud": {"name": "Живая бомба", "group": "arcane", "kind": "dot", "mult": 0.25, "cd": 10.0, "cast": 0.0, "rarity": 1, "desc": "Горение 6 с, затем взрыв по всем врагам. Взрывается и при смерти цели.", "fx": "fire", "color": "#ff9d35", "tags": ["dot", "aoe"], "dur": 6.0, "explosion": 1.3, "hidden": true},
+	"drain": {"name": "Блуждающий дух", "group": "arcane", "kind": "damage", "mult": 1.6, "cd": 10.0, "cast": 1.5, "rarity": 2, "desc": "Удар; твой DoT по цели +20%. Когда дух возвращается, лечит тебя на силу удара.", "fx": "spirit", "color": "#ba99ee", "tags": ["dps"], "debuff": "haunt", "value": 0.2, "dur": 10.0, "hidden": true},
+	"twin_strike": {"name": "Кровожадность", "group": "melee", "kind": "damage", "mult": 1.8, "cd": 6.0, "cast": 0.0, "rarity": 0, "desc": "Удар мечом, лечит себя на 20% фактического урона здоровью.", "fx": "slash", "color": "#ece4cc", "tags": ["dps"], "stat": "str", "req": ["sword", "greatsword"], "school": "physical", "weapon": true, "leech": 0.2, "hidden": true},
 
 	# --- Enemy spells ---
 	"e_smash":      {"name": "Сокрушение",      "kind": "damage",     "mult": 2.6, "cast": 1.6, "interruptible": true, "enemy": true},
@@ -396,26 +382,32 @@ static func xp_to_next(level: int) -> int:
 	return int(base)
 
 ## Spells whose hp threshold the player can choose, and the choices.
-const THRESHOLD_KINDS := ["heal", "hot_all"]
+const THRESHOLD_KINDS := ["heal", "hot", "hot_all", "riptide", "chain_heal", "penance"]
 const THRESHOLD_OPTIONS := [0.5, 0.7, 0.9, 0.99]
 
 static func spell_level_mult(spell_level: int) -> float:
 	return 1.0 + 0.3 * (spell_level - 1)
 
-const STAT_LABELS := {"power": "сила заклинаний", "str": "сила", "agi": "ловкость"}
+const STAT_LABELS := {"power": "сила заклинаний", "str": "сила", "agi": "ловкость", "best": "лучшая атакующая характеристика"}
 const WEAPON_LABELS := {"sword": "меч", "greatsword": "двуручный меч", "shield": "щит", "staff": "посох",
 	"bow": "лук", "dual": "меч в каждой руке"}
 
 ## The caster stat a spell scales from (enemies only have power and atk).
 static func spell_stat_value(sid: String, stats: Dictionary) -> float:
 	var stat: String = SPELLS[sid].get("stat", "power")
+	if stat == "best":
+		return maxf(float(stats.get("str", 0.0)), maxf(float(stats.get("agi", 0.0)), float(stats.get("power", 0.0))))
 	if stats.has(stat):
 		return float(stats[stat])
 	return float(stats.get("atk", stats.get("power", 0.0))) if stat != "power" else float(stats.get("power", 0.0))
 
 ## True when the caster holds a weapon the spell needs (or it needs none).
-static func spell_usable(sid: String, weapons: Array) -> bool:
+static func spell_usable(sid: String, weapons: Array, talents: Dictionary = {}) -> bool:
 	var req: Array = SPELLS[sid].get("req", [])
+	if sid == "execute" and "bow" in weapons and talents.get("kill_shot",0) > 0:
+		return true
+	if "bow" in req and "sword" in weapons and talents.get("throwing",0) > 0:
+		return true
 	if req.is_empty():
 		return true
 	for w in req:
@@ -435,20 +427,6 @@ static func spell_bonus(sid: String, weapons: Array) -> float:
 ## Spell amount for a caster: mult x level x stat x weapon bonus.
 static func spell_amount(sid: String, lvl: int, stats: Dictionary, weapons: Array) -> float:
 	return SPELLS[sid]["mult"] * spell_level_mult(max(1, lvl)) * spell_stat_value(sid, stats) * spell_bonus(sid, weapons)
-
-# Guild mercenary templates (concept 9: decent generic builds, clearly NPC).
-const MERC_TEMPLATES := [
-# weapons: [main hand, left hand] types the mercenary's gear is rolled with.
-	{"sprite": "tank", "ranged": false, "role": "Танк",     "spells": ["taunt", "barrier", "strike"],     "stat": {"hp": 1.4, "armor": 1.8, "str": 0.8, "power": 0.8}, "weapons": ["sword", "shield"]},
-	{"sprite": "healer", "ranged": true, "role": "Лекарь",   "spells": ["heal", "renew", "barrier"],       "stat": {"hp": 0.9, "power": 1.2}, "weapons": ["staff"]},
-	{"sprite": "healer", "ranged": true, "role": "Лекарь",   "spells": ["heal", "cleanse", "strike"],      "stat": {"hp": 0.9, "power": 1.15}, "weapons": ["staff"]},
-	{"sprite": "pyromancer", "ranged": true, "role": "Пиромант", "spells": ["ignite", "fireball", "strike"],   "stat": {"hp": 0.85, "power": 1.2}, "weapons": ["staff"]},
-	{"sprite": "poisoner_ally", "ranged": false, "role": "Ядовик",   "spells": ["poison_cloud", "ignite", "twin_strike"], "stat": {"hp": 0.85, "power": 1.15}, "weapons": ["sword", "sword"]},
-	{"sprite": "fighter", "ranged": false, "role": "Боец",     "spells": ["execute", "cleave", "mortal_strike"], "stat": {"hp": 1.1, "str": 1.2}, "weapons": ["greatsword"]},
-	{"sprite": "guard", "ranged": false, "role": "Страж",    "spells": ["kick", "shield_slam", "strike"],  "stat": {"hp": 1.1, "str": 1.1, "armor": 1.3}, "weapons": ["sword", "shield"]},
-	{"sprite": "paladin", "ranged": false, "role": "Паладин",  "spells": ["barrier", "heal", "strike"],      "stat": {"hp": 1.2, "armor": 1.3}, "weapons": ["sword", "shield"]},
-	{"sprite": "hunter", "ranged": true, "role": "Охотник",  "spells": ["kick", "arrow_rain", "aimed_shot"], "stat": {"hp": 0.9, "power": 1.1, "agi": 1.2}, "weapons": ["bow"]},
-]
 
 const MERC_NAMES := ["Борис", "Ольга", "Тарас", "Мира", "Гордей", "Злата", "Яромир", "Вера", "Ратибор",
 	"Лада", "Святослав", "Дана", "Велимир", "Ира", "Остап", "Нина", "Добрыня", "Ксена", "Ждан", "Рада"]

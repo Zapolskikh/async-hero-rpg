@@ -82,6 +82,9 @@ func _ready() -> void:
 	rng.randomize()
 	net = Net.new()
 	add_child(net)
+	if "--qa" in OS.get_cmdline_user_args():
+		profile = Rules.new_profile(20261028, now())
+		return
 	if not load_game():
 		new_game()
 	get_tree().set_auto_accept_quit(false)
@@ -138,6 +141,9 @@ func new_game() -> void:
 	changed.emit()
 
 func reset_progress() -> void:
+	if "--qa" in OS.get_cmdline_user_args():
+		new_game()
+		return
 	if mode == "online":
 		return  # server progress is not reset from the client
 	DirAccess.remove_absolute(ProjectSettings.globalize_path(SAVE_PATH))
@@ -163,11 +169,15 @@ func _after_change() -> void:
 func _sync_view() -> void:
 	var ex = profile.get("expedition")
 	if ex == null:
+		if expedition != null and expedition.sim != null:
+			expedition.sim.release()
 		expedition = null
 		_view_id = ""
 		return
 	if ex["id"] == _view_id:
 		return
+	if expedition != null and expedition.sim != null:
+		expedition.sim.release()
 	_view_id = ex["id"]
 	var v := Expedition.new()
 	v.start(int(ex["level"]), ex["mode"], ex["party"], int(ex["seed"]), bool(ex.get("first", false)))
@@ -549,6 +559,8 @@ func _load_account() -> void:
 # ---------------- save / load ----------------
 
 func save_game() -> void:
+	if "--qa" in OS.get_cmdline_user_args():
+		return
 	if mode != "offline":
 		return
 	profile["saved_at"] = now()

@@ -175,7 +175,7 @@ static func attack_of(st: Dictionary, gear: Dictionary) -> Dictionary:
 		hit = float(st.get(UNARMED["stat"], st.get("atk", 0.0))) * float(UNARMED["coef"])
 	if off != null and off.get("wtype", "") == "sword":
 		hit += OFFHAND_SWORD_SHARE * float(off.get("dmg", 0.0))
-	return {"atk": round(hit), "atk_speed": speed}
+	return {"atk": round(hit), "atk_speed": speed, "offhand_atk": OFFHAND_SWORD_SHARE * float(off.get("dmg",0.0)) if off != null and off.get("wtype","") == "sword" else 0.0}
 
 ## Short weapon description: "Меч · урон 12 · 1.6 с".
 static func weapon_text(item: Dictionary) -> String:

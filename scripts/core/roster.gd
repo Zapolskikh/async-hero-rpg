@@ -6,23 +6,6 @@ const HERO_COLOR := "#3fa7d6"
 const MERC_COLORS := ["#e0a458", "#7bc96f", "#d36fa3", "#6fb3d3", "#c9c95b", "#9d8cff"]
 const MERC_STAT_FACTOR := 0.92   # NPCs are decent, but a good real build should beat them
 
-## Quality tiers of guild mercenaries. Same level, very different strength:
-## gear rarity, number of items, spell levels and how sensible the rotation is.
-const TIERS := [
-	{"name": "Слабый",  "chance": 0.20, "rarity_bonus": -0.45, "items": [1, 2], "stat": 0.88, "spell": -1, "shuffle": 0.5},
-	{"name": "Обычный", "chance": 0.55, "rarity_bonus": -0.15, "items": [2, 3], "stat": 0.93, "spell": 0, "shuffle": 0.15},
-	{"name": "Сильный", "chance": 0.20, "rarity_bonus": 0.15,  "items": [3, 3], "stat": 1.0,  "spell": 0, "shuffle": 0.0},
-	{"name": "Элитный", "chance": 0.05, "rarity_bonus": 0.45,  "items": [3, 3], "stat": 1.05, "spell": 1, "shuffle": 0.0},
-]
-
-static func roll_tier(rng: RandomNumberGenerator) -> int:
-	var r := rng.randf()
-	for i in TIERS.size():
-		r -= TIERS[i]["chance"]
-		if r <= 0.0:
-			return i
-	return 1
-
 ## Adds gear affixes on top of base stats.
 static func apply_gear(base: Dictionary, gear: Dictionary) -> Dictionary:
 	var st := base.duplicate()
@@ -114,60 +97,20 @@ static func hero_snapshot(hero: Dictionary, collection: Dictionary) -> Dictionar
 		"role": "Герой", "level": hero["level"], "sprite": "hero", "ranged": "bow" in Loot.weapon_types(hero["equipped"]),
 		"stats": hero_stats(hero), "spells": spells, "target": "front",
 		"weapons": Loot.weapon_types(hero["equipped"]),
+		"talents": hero.get("talents", {}).duplicate(),
 		"look": look(hero["equipped"]),
 		"cosmetics": cosmetic_colors(hero.get("cosmetics", {})),
 	}
 
-static func make_merc(rng: RandomNumberGenerator, template_idx: int, level: int, tier: int = -1) -> Dictionary:
-	var t: Dictionary = Db.MERC_TEMPLATES[template_idx]
-	if tier < 0:
-		tier = roll_tier(rng)
-	var tr: Dictionary = TIERS[tier]
-	var base := Db.hero_base_stats(level)
-	for k in ["hp", "str", "agi", "power", "armor"]:
-		base[k] = round(base[k] * t["stat"].get(k, 1.0) * MERC_STAT_FACTOR * tr["stat"] * rng.randf_range(0.95, 1.05))
-	base["crit"] = 0.05
-	# gear: some slots may stay empty for weak mercenaries; weapons follow the template
-	var gear := empty_gear()
-	var wts: Array = t.get("weapons", [])
-	var slots: Array = ["weapon", "armor", "trinket"]
-	if wts.size() > 1:
-		slots.insert(1, "offhand")
-	var n_items := rng.randi_range(tr["items"][0], tr["items"][1]) + (1 if wts.size() > 1 else 0)
-	for i in range(slots.size() - 1, 0, -1):
-		var j := rng.randi_range(0, i)
-		var tmp = slots[i]
-		slots[i] = slots[j]
-		slots[j] = tmp
-	for i in min(n_items, slots.size()):
-		var slot: String = slots[i]
-		var wtype := ""
-		if slot == "weapon" and wts.size() > 0:
-			wtype = wts[0]
-		elif slot == "offhand":
-			wtype = wts[1]
-		gear[slot] = Loot.roll_gear(rng, level, tr["rarity_bonus"], slot, wtype, gear_pref(t))
-	# spells: levels vary, weak ones sometimes have a clumsy rotation order
-	var spell_lvl := baseline_spell_level(level) + int(tr["spell"])
-	var spells := []
-	for sid in t["spells"]:
-		spells.append({"id": sid, "lvl": max(1, spell_lvl - rng.randi_range(0, 1))})
-	if rng.randf() < tr["shuffle"]:
-		spells.reverse()
-	return {
-		"name": Db.MERC_NAMES[rng.randi_range(0, Db.MERC_NAMES.size() - 1)],
-		"color": MERC_COLORS[rng.randi_range(0, MERC_COLORS.size() - 1)],
-		"npc": true, "role": t["role"], "level": level, "tier": tier,
-		"base_stats": base, "gear": gear, "stats": combat_stats(base, gear),
-		"weapons": Loot.weapon_types(gear),
-		"spells": spells, "target": "front",
-		"id": "m%d" % rng.randi(), "template": template_idx,
-		"sprite": t.get("sprite", ""), "ranged": t.get("ranged", false),
-	}
+static func make_merc(rng: RandomNumberGenerator, _template_idx: int, level: int, _tier: int = -1) -> Dictionary:
+	return MercGenerator.make(rng, level)
 
 ## Guild mercenaries on the board grow with the hero (same build, new gear).
 static func relevel(rng: RandomNumberGenerator, merc: Dictionary, level: int) -> Dictionary:
-	var fresh := make_merc(rng, int(merc.get("template", 0)), level, int(merc.get("tier", 1)))
+	var fresh := MercGenerator.make(rng, level, merc.get("weapons",[]))
+	fresh["spells"] = merc["spells"].duplicate(true)
+	for entry in fresh["spells"]:
+		entry["lvl"] = maxi(int(entry["lvl"]),baseline_spell_level(level))
 	for k in ["name", "color", "id"]:
 		fresh[k] = merc[k]
 	return fresh
@@ -176,7 +119,9 @@ static func relevel(rng: RandomNumberGenerator, merc: Dictionary, level: int) ->
 static func ensure_merc(m: Dictionary) -> void:
 	ensure_visuals(m)
 	m["level"] = int(m["level"])
-	m["tier"] = int(m.get("tier", 1))
+	m.erase("tier")
+	if not m.has("talents"):
+		m["talents"] = {}
 	if not m.has("gear") or typeof(m["gear"]) != TYPE_DICTIONARY:
 		m["gear"] = empty_gear()
 	if not m.has("base_stats"):
@@ -234,28 +179,16 @@ static func power_score(snap: Dictionary) -> int:
 	return int(st["hp"] / 8.0 + atk_rate * 2.0 + st["power"] * 2.5 + st.get("armor", 0) * 1.5
 		+ st.get("haste", 0.0) * 300.0 + st.get("crit", 0.0) * 300.0 + spell_bonus)
 
-## Mercenary Board: 6 candidates around the hero's level, always including at
-## least one healer and one tank (concept 9: guaranteed role coverage).
+## Six independent random candidates near the hero level.
 static func roll_board(rng: RandomNumberGenerator, hero_level: int) -> Array:
 	var board := []
-	var healer_idx := [1, 2, 7]
-	var tank_idx := [0, 6]
-	board.append(make_merc(rng, tank_idx[rng.randi_range(0, tank_idx.size() - 1)], _merc_level(rng, hero_level)))
-	board.append(make_merc(rng, healer_idx[rng.randi_range(0, healer_idx.size() - 1)], _merc_level(rng, hero_level)))
-	for i in 4:
-		board.append(make_merc(rng, rng.randi_range(0, Db.MERC_TEMPLATES.size() - 1), _merc_level(rng, hero_level)))
-	# unique names on one board
-	var used := {}
-	for m in board:
-		while used.has(m["name"]):
-			m["name"] = Db.MERC_NAMES[rng.randi_range(0, Db.MERC_NAMES.size() - 1)]
-		used[m["name"]] = true
-	# shuffle deterministically
-	for i in range(board.size() - 1, 0, -1):
-		var j := rng.randi_range(0, i)
-		var tmp = board[i]
-		board[i] = board[j]
-		board[j] = tmp
+	var names := {}
+	for i in 6:
+		var m := MercGenerator.make(rng, _merc_level(rng, hero_level))
+		while names.has(m["name"]):
+			m["name"] = Db.MERC_NAMES[rng.randi_range(0, Db.MERC_NAMES.size()-1)]
+		names[m["name"]] = true
+		board.append(m)
 	return board
 
 static func _merc_level(rng: RandomNumberGenerator, hero_level: int) -> int:

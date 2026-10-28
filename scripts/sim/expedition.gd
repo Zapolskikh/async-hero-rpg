@@ -59,6 +59,8 @@ var run_time_done := 0.0
 
 func _start_run() -> void:
 	run_time_done = 0.0
+	if sim != null:
+		sim.release()
 	allies.clear()
 	for i in party.size():
 		allies.append(BattleUnit.new(i, 0, i, party[i]))
@@ -71,6 +73,7 @@ func _start_wave() -> void:
 		snaps.append(enemy_snapshot(eid, level))
 	if sim != null and wave_index > 0:
 		run_time_done += sim.time
+		sim.release(true)
 	sim = BattleSim.new()
 	sim.record_events = record_events
 	sim.setup(allies, snaps, base_seed + run_index * 97 + wave_index * 13)
@@ -143,6 +146,7 @@ func _on_wave_end() -> void:
 			xp += int(round(6.0 * Db.xp_level_factor(level) * pow(sc, 0.35) * mult))
 			_drop_mats(u)
 	if sim.won:
+		sim.end_wave()
 		wave_index += 1
 		best_wave = max(best_wave, wave_index)
 		if wave_index >= waves().size():
@@ -152,7 +156,7 @@ func _on_wave_end() -> void:
 			if a.alive():
 				a.hp = min(a.max_hp, a.hp + a.max_hp * BETWEEN_WAVE_HEAL)
 				a.dots.clear()
-				a.hots.clear()
+				a.hots = a.hots.filter(func(h): return h["id"] == "respite")
 				a.stun = 0.0
 		pause = WAVE_PAUSE
 	else:
@@ -293,6 +297,7 @@ static func build_timeline(p_level: int, p_mode: String, p_party: Array, p_seed:
 		while not ex.finished:
 			ex.step_wave_headless()
 			pts.append(ex._point())
+		ex.sim.release()
 		return {"mode": "push", "level": p_level, "seed": p_seed, "pts": pts, "items": ex.items.duplicate(true),
 			"t_end": snappedf(ex.elapsed, 0.01), "won": ex.runs_won > 0, "reason": ex.last_reason,
 			"waves": ex.best_wave, "total": ex.total_waves(), "closed": ex.level_closed_now}
@@ -312,6 +317,7 @@ static func build_timeline(p_level: int, p_mode: String, p_party: Array, p_seed:
 	for res in pts[-1][P_MATS]:
 		mat_rate[res] = float(pts[-1][P_MATS][res]) / t_sim
 	rate.append(mat_rate)
+	ex.sim.release()
 	return {"mode": "farm", "level": p_level, "seed": p_seed, "pts": pts, "items": ex.items.duplicate(true),
 		"sim_until": t_sim, "rate": rate}
 

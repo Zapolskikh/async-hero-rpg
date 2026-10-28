@@ -20,7 +20,7 @@ func _init() -> void:
 	test_push_wipe_gives_partial()
 	test_farm_fast_forward()
 	test_cooldown()
-	test_merc_tiers()
+	test_random_mercenaries()
 	test_board_and_group()
 	print("FAILURES: %d" % failures)
 	quit(1 if failures > 0 else 0)
@@ -56,7 +56,7 @@ func test_rotation_skips_invalid() -> void:
 	# starts a cast, the hero must keep using fireball/strike instead.
 	var sim := BattleSim.new()
 	var hero := BattleUnit.new(0, 0, 0, {"name": "H", "stats": {"hp": 5000, "atk": 1, "power": 10, "armor": 0},
-		"spells": [{"id": "kick", "lvl": 1}, {"id": "strike", "lvl": 1}]})
+		"weapons": ["sword"], "spells": [{"id": "kick", "lvl": 1}, {"id": "strike", "lvl": 1}]})
 	var dummy := {"name": "D", "stats": {"hp": 100000, "atk": 0, "power": 0, "armor": 0}, "spells": []}
 	sim.setup([hero], [dummy], 1)
 	var casts := {}
@@ -144,7 +144,7 @@ func test_interrupt_and_execute() -> void:
 				bolts += 1
 		sim.events.clear()
 	check(interrupts > 0, "enemy casts get interrupted (%d)" % interrupts)
-	check(bolts < interrupts, "most casts never land (%d landed)" % bolts)
+	check(interrupts >= 5 and bolts >= 1, "8-second kick stops casts but leaves cooldown windows (%d stopped / %d landed)" % [interrupts, bolts])
 
 func test_push_wipe_gives_partial() -> void:
 	print("push / wipe")
@@ -186,31 +186,24 @@ func test_cooldown() -> void:
 	check(times.size() >= 2 and min_gap >= Db.SPELLS["barrier"]["cd"] - 0.01,
 		"barrier respects %.0f s cooldown (min gap %.1f s)" % [Db.SPELLS["barrier"]["cd"], min_gap])
 
-func test_merc_tiers() -> void:
-	print("mercenary tiers")
+func test_random_mercenaries() -> void:
+	print("random classless mercenaries")
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
-	var weak := []
-	var elite := []
-	for i in 20:
-		weak.append(Roster.power_score(Roster.make_merc(rng, 3, 10, 0)))
-		elite.append(Roster.power_score(Roster.make_merc(rng, 3, 10, 3)))
-	var w := 0.0
-	var e := 0.0
-	for x in weak:
-		w += x
-	for x in elite:
-		e += x
-	w /= weak.size()
-	e /= elite.size()
-	check(e > w * 1.25, "elite mercs are much stronger than weak ones at the same level (%d vs %d)" % [e, w])
-	var m := Roster.make_merc(rng, 0, 5, 2)
-	var gear_items := 0
-	for slot in m["gear"]:
-		if m["gear"][slot] != null:
-			gear_items += 1
-	check(gear_items == 4 and m["stats"]["hp"] > m["base_stats"]["hp"] - 0.1, "strong tank has full gear (sword + shield) that adds stats")
-	check(m["gear"]["weapon"]["wtype"] == "sword" and m["gear"]["offhand"]["wtype"] == "shield" and m["weapons"] == ["sword", "shield"], "tank holds a sword and a shield")
+	var weapons := {}
+	var builds := {}
+	var valid := true
+	for i in 60:
+		var m := Roster.make_merc(rng, 0, 24)
+		weapons[str(m["weapons"])] = true
+		builds[str(m["spells"])] = true
+		valid = valid and not m.has("tier") and m["spells"].size() == 3 and Talents.points_spent(m["talents"]) == Talents.points_total(24)
+		var sim := BattleSim.new()
+		var u := BattleUnit.new(0,0,0,m)
+		for entry in m["spells"]:
+			valid = valid and sim._usable(u,entry["id"])
+	check(valid, "mercenaries have usable spells, legal talent budgets and no quality tier")
+	check(weapons.size() == 5 and builds.size() > 30, "rerolls cover all weapon sets and diverse random builds")
 
 func test_board_and_group() -> void:
 	print("board and group")

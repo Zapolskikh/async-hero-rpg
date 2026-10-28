@@ -19,6 +19,7 @@ var selected_level := 1
 var _built_tab := ""         # tab whose content is on screen (scroll is kept when rebuilding the same tab)
 var bag_sort := "level"     # bag order: level / rarity / type
 var selected_item := ""
+var spell_group := "all"
 
 var top_bar: PanelContainer
 var nav_bar: PanelContainer
@@ -82,6 +83,9 @@ func _ready() -> void:
 		_show_offline_report(Game.offline_report)
 		Game.offline_report = {}
 	for a in OS.get_cmdline_user_args():
+		if a == "--qa-combat":
+			add_child(load("res://tests/combat_visual_runner.gd").new())
+			break
 		if a.begins_with("--online-test="):
 			add_child(load("res://tests/online_runner.gd").new())
 			break
@@ -1060,43 +1064,11 @@ func _dummy_run(targets: int, armor: float) -> Dictionary:
 	return {"dps": total / sim.time, "by": hero.dealt_by, "total": total}
 
 func _talents_popup() -> void:
-	var keep := UI.scroll_state(popup_layer)
 	UI.clear(popup_layer)
-	var hero: Dictionary = Game.hero
-	var talents: Dictionary = hero.get("talents", {})
-	var weapons: Array = Game.hero_snapshot()["weapons"]
-	var v := UI.vbox(8)
-	var free := Talents.points_free(hero)
-	v.add_child(UI.label("Свободно очков: %d · по %d за уровень героя с %d-го · ранг N стоит N очков" % [free, Talents.POINTS_PER_LEVEL, Talents.FIRST_LEVEL],
-		Style.FONT_SMALL, Style.SUCCESS if free > 0 else Style.MUTED, true))
-	var g := UI.grid(2, 8)
-	for br in Talents.BRANCHES:
-		for id in Talents.TALENTS:
-			var t: Dictionary = Talents.TALENTS[id]
-			if t["branch"] != br["id"]:
-				continue
-			var rank := int(talents.get(id, 0))
-			var c := UI.card(Style.CARD_2 if rank > 0 else Style.BG_DEEP, 8)
-			c.custom_minimum_size.x = 400
-			var h := UI.hbox(8)
-			c.add_child(h)
-			h.add_child(UI.tile(t["icon"], Style.CARD_3, 44, rank == 0))
-			var tv := UI.vbox(0)
-			tv.add_child(UI.label("%s · %s  %d/%d" % [br["name"], t["name"], rank, Talents.MAX_RANK], Style.FONT_SMALL, Style.TEXT, true))
-			var active: bool = not t.has("w") or (weapons.count("sword") >= 2 if t["w"] == "dual" else t["w"] in weapons)
-			tv.add_child(UI.wrap(Talents.describe(id) + ("" if active or rank == 0 else " (сейчас не действует)"), Style.FONT_TINY,
-				Style.MUTED if active or rank == 0 else Style.WARNING))
-			h.add_child(UI.expand(tv))
-			var cost := Talents.rank_cost(rank)
-			var plus := UI.btn("+%d" % cost if rank < Talents.MAX_RANK else "макс", _talent_up.bind(id), "primary", Style.FONT_SMALL, "", 52, 44)
-			plus.disabled = free < cost or rank >= Talents.MAX_RANK
-			h.add_child(plus)
-			g.add_child(c)
-	var sc := UI.scroll(g)
-	sc.custom_minimum_size = Vector2(830, 430)
-	v.add_child(sc)
-	_modal("Таланты", v, [["Сбросить", _talent_reset, "danger", Talents.points_spent(talents) > 0]])
-	UI.restore_scrolls(popup_layer, keep)
+	var panel := TalentPanel.new()
+	panel.configure(Game.hero, Game.hero_snapshot(), func(id): Game.talent_up(id))
+	_modal("Таланты", panel, [["Сбросить бесплатно", _talent_reset, "danger", Talents.points_spent(Game.hero.get("talents",{})) > 0]])
+	panel.custom_minimum_size.x = 930
 
 func _set_threshold(sid: String, value: float) -> void:
 	Game.set_threshold(sid, value)
@@ -1236,7 +1208,7 @@ func _spell_numbers(sid: String, lvl: int, snap: Dictionary) -> Control:
 		h.add_child(UI.expand(UI.wrap(line[1], Style.FONT_SMALL, Style.SUCCESS if line[2] else Style.WARNING)))
 		v.add_child(h)
 	var th := UI.hbox(16)
-	for line in SpellInfo.timing(sid):
+	for line in SpellInfo.timing(sid,snap):
 		var h := UI.hbox(6)
 		h.add_child(UI.icon(line[0], 20))
 		h.add_child(UI.label(line[1], Style.FONT_SMALL, Style.TEXT))
@@ -1364,7 +1336,6 @@ func _merc_card(m: Dictionary) -> Control:
 	v.add_child(top)
 	var chips := UI.hbox(6)
 	chips.add_child(UI.chip(m["role"], role_col, 13))
-	chips.add_child(_tier_chip(m))
 	if not m.get("npc", true):
 		chips.add_child(UI.chip("Игрок", Style.PRIMARY, 13, Style.PRIMARY_TEXT))
 	v.add_child(chips)
@@ -1383,12 +1354,6 @@ func _merc_card(m: Dictionary) -> Control:
 		b = UI.btn("Заменить…", _replace_popup.bind(m), "secondary", Style.FONT_SMALL, "", 0, 44)
 	v.add_child(b)
 	return c
-
-func _tier_chip(m: Dictionary) -> Control:
-	var t := int(m.get("tier", 1))
-	var ch := UI.chip(Roster.TIERS[t]["name"], Style.TIER_COLORS[t], 13, Style.TIER_TEXT[t])
-	ch.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
-	return ch
 
 func _small_gear_tile(it, slot: String, size_px: float) -> Control:
 	if it == null:
@@ -1423,7 +1388,6 @@ func _merc_popup(m: Dictionary) -> void:
 	var tv := UI.vbox(6)
 	var chips := UI.hbox(6)
 	chips.add_child(UI.chip(m["role"], Style.ROLE_COLORS.get(m["role"], Style.CARD_3), 14))
-	chips.add_child(_tier_chip(m))
 	chips.add_child(UI.chip("ур. %d" % m["level"], Style.CARD_3, 14))
 	if m.get("npc", true):
 		chips.add_child(UI.chip("NPC гильдии", Style.CARD_3, 14))
@@ -1470,6 +1434,7 @@ func _merc_popup(m: Dictionary) -> void:
 		rot.add_child(UI.expand(sv))
 	body.add_child(rot)
 	var buttons := []
+	buttons.append(["Таланты",_merc_talents.bind(m),"secondary",true])
 	if hired:
 		buttons.append(["Уволить", Game.fire.bind(m["id"]), "danger", true])
 	elif Game.hired.size() < Game.MAX_HIRED:
@@ -1477,6 +1442,14 @@ func _merc_popup(m: Dictionary) -> void:
 	else:
 		buttons.append(["Заменить…", _replace_popup.bind(m), "secondary", true])
 	_modal(m["name"], body, buttons)
+
+func _merc_talents(m: Dictionary) -> void:
+	UI.clear(popup_layer)
+	var panel := TalentPanel.new()
+	panel.read_only = true
+	panel.configure({"level":m["level"],"talents":m.get("talents",{})},m,func(_id): pass)
+	_modal("Таланты · " + m["name"],panel)
+	panel.custom_minimum_size.x = 930
 
 # =====================================================================
 # Screen: Spells (boxes + collection)
@@ -1522,12 +1495,24 @@ func _screen_spells() -> Control:
 	buy_row.add_child(cb10)
 	v.add_child(buy_row)
 	var g := UI.grid(5, 12)
+	var filters := UI.hbox(4)
+	for entry in [["all","Все"],["universal","Общие"],["arcane","Магия"],["life","Лечение"],["bulwark","Защита"],["melee","Мечи"],["ranged","Охота"]]:
+		var filter_button := UI.btn(entry[1],_set_spell_group.bind(entry[0]),"secondary" if spell_group == entry[0] else "ghost",14,"",0,40)
+		filter_button.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+		filters.add_child(filter_button)
+	v.add_child(filters)
 	for sid in Db.SPELLS:
-		if Db.SPELLS[sid].get("enemy", false):
+		if Db.SPELLS[sid].get("enemy", false) or Db.SPELLS[sid].get("hidden", false):
+			continue
+		if spell_group != "all" and Db.SPELLS[sid].get("group","") != spell_group:
 			continue
 		g.add_child(_spell_card(sid))
 	v.add_child(UI.scroll(g))
 	return v
+
+func _set_spell_group(group: String) -> void:
+	spell_group = group
+	_refresh()
 
 func _spell_card(sid: String) -> Control:
 	var d: Dictionary = Db.SPELLS[sid]
@@ -1546,14 +1531,18 @@ func _spell_card(sid: String) -> Control:
 	var num := UI.label(SpellInfo.short(sid, max(1, lvl), Game.hero_snapshot()) +
 		(("  · кд %.0f с" % d["cd"]) if d.get("cd", 0.0) > 0.0 else ""), Style.FONT_TINY, Style.TEXT if lvl > 0 else Style.MUTED)
 	num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	num.clip_text = true
+	num.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 	v.add_child(num)
 	var req: Array = d.get("req", [])
 	if not req.is_empty():
 		var names := []
 		for w in req:
 			names.append(Db.WEAPON_LABELS[w])
-		var has := Db.spell_usable(sid, Game.hero_snapshot()["weapons"])
+		var has := Db.spell_usable(sid, Game.hero_snapshot()["weapons"],Game.hero.get("talents",{}))
 		var rl := UI.label("Нужен " + " / ".join(names), Style.FONT_TINY, Style.SUCCESS if has else Style.WARNING)
+		rl.clip_text = true
+		rl.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS
 		rl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 		v.add_child(rl)
 	if lvl == 0:

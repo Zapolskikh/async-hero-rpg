@@ -12,7 +12,7 @@ extends RefCounted
 ## so a server keeps it secret by stripping it before sending the profile.
 ## `ctx` (server only): {"account": id, "real_pool": [public snapshots of other players]}
 
-const VERSION := 8
+const VERSION := 9
 const OFFLINE_CAP := 12.0 * 3600.0
 const BOX_PRICE := 300
 const BOX_PACK := 10
@@ -73,6 +73,7 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 
 ## Brings any older or JSON-parsed profile to the current shape (ints restored).
 static func migrate(p: Dictionary, now: float) -> void:
+	var old_combat := int(p.get("v",0)) < 9
 	_drop_extra_heroes(p)
 	# v6: priority rotation; the old default order would never use strike and kick
 	if int(p.get("v", 0)) < 6 and p.has("hero") and p["hero"].get("rotation", []) == ["fireball", "strike", "kick"]:
@@ -93,6 +94,8 @@ static func migrate(p: Dictionary, now: float) -> void:
 		p["hired"] = []
 	_migrate_professions(p)
 	_migrate_spells(p)
+	if int(p.get("v", 0)) < 9:
+		_migrate_combat(p)
 	var hero: Dictionary = p["hero"]
 	hero["level"] = int(hero["level"])
 	if typeof(hero.get("talents")) != TYPE_DICTIONARY:
@@ -135,6 +138,16 @@ static func migrate(p: Dictionary, now: float) -> void:
 		p["expedition"] = _make_expedition(int(ex["level"]), str(ex["mode"]), party, int(ex["seed"]), bool(ex["first"]), started)
 	elif ex != null and typeof(ex) == TYPE_DICTIONARY:
 		_fix_expedition(ex)
+	if old_combat and p.get("expedition") != null and p["expedition"].has("tl") and not p["expedition"]["tl"].has("combat_version"):
+		# Settle already-earned old rewards once, then restart farming with new rules.
+		var previous: Dictionary = p["expedition"]
+		var random := _rng(p)
+		var settled := _collect(p,random,now,{},true)
+		if settled.get("ok",false):
+			p["reports"].append(settled["report"])
+		if previous["mode"] == "farm":
+			p["expedition"] = _make_expedition(int(previous["level"]),"farm",party_snapshots(p),int(previous["seed"]),false,now)
+		_save_rng(p,random)
 	p.erase("time")
 	p.erase("v")
 	p["v"] = VERSION
@@ -556,8 +569,10 @@ static func _talent_up(p: Dictionary, id: String) -> Dictionary:
 		return _err("no such talent")
 	var hero: Dictionary = p["hero"]
 	var t: Dictionary = hero["talents"]
-	if int(t.get(id, 0)) >= Talents.MAX_RANK:
+	if int(t.get(id, 0)) >= Talents.TALENTS[id]["ranks"]:
 		return _err("max rank")
+	if not Talents.unlocked(id, t):
+		return _err("tier locked")
 	if Talents.points_free(hero) < Talents.rank_cost(int(t.get(id, 0))):
 		return _err("no talent points")
 	t[id] = int(t.get(id, 0)) + 1
@@ -811,7 +826,7 @@ static func _roll_box(p: Dictionary, r: RandomNumberGenerator) -> Dictionary:
 	var pool := []
 	var total := 0.0
 	for sid in Db.SPELLS:
-		if Db.SPELLS[sid].get("enemy", false):
+		if Db.SPELLS[sid].get("enemy", false) or Db.SPELLS[sid].get("hidden", false):
 			continue
 		if Roster.spell_best_level(p["collection"], sid) >= SPELL_MAX_LEVEL:
 			continue   # maxed spells no longer drop, so the rest come more often
@@ -863,6 +878,7 @@ static func _start(p: Dictionary, r: RandomNumberGenerator, level: int, mode: St
 
 static func _make_expedition(level: int, mode: String, party: Array, seed_value: int, first: bool, now: float) -> Dictionary:
 	var tl := Expedition.build_timeline(level, mode, party, seed_value, first)
+	tl["combat_version"] = 9
 	return {"id": "%d_%d" % [seed_value, int(now)], "level": level, "mode": mode, "seed": seed_value, "first": first,
 		"party": party, "started_at": now, "tl": tl, "collected": Expedition.zero_point()}
 
@@ -1215,3 +1231,44 @@ static func _rng(p: Dictionary) -> RandomNumberGenerator:
 
 static func _save_rng(p: Dictionary, r: RandomNumberGenerator) -> void:
 	p["rng"]["state"] = str(r.state)
+
+## Refund old talents; preserve the value of spell upgrades when replacing IDs.
+static func _migrate_combat(p: Dictionary) -> void:
+	p["hero"]["talents"] = {}
+	var aliases := {"poison_cloud":"living_bomb", "drain":"haunt", "twin_strike":"strike", "renew":"wild_growth"}
+	var settings: Dictionary = p["hero"].get("spell_settings",{})
+	for old in aliases:
+		if settings.has(old):
+			settings[aliases[old]] = settings[old]
+			settings.erase(old)
+	p["hero"]["spell_settings"] = settings
+	var col: Dictionary = p["collection"]
+	for old in aliases:
+		var replacement: String = aliases[old]
+		if col.has(old):
+			var previous: Dictionary = col[old]
+			if col.has(replacement):
+				var existing: Dictionary = col[replacement]
+				var best := maxi(int(existing["lvl"]), int(previous["lvl"]))
+				var value := int(existing.get("copies",0)) + int(previous.get("copies",0)) + 1
+				for rank in range(1, mini(int(existing["lvl"]), int(previous["lvl"]))):
+					value += fuse_cost(rank)
+				col[replacement] = {"lvl":best,"copies":value}
+			else:
+				col[replacement] = previous.duplicate()
+			col.erase(old)
+	for i in p["hero"]["rotation"].size():
+		var id: String = p["hero"]["rotation"][i]
+		p["hero"]["rotation"][i] = aliases.get(id,id)
+	var unique := []
+	for id in p["hero"]["rotation"]:
+		if not unique.has(id):
+			unique.append(id)
+	p["hero"]["rotation"] = unique
+	for m in p["board"] + p["hired"]:
+		m.erase("tier")
+		m["talents"] = {}
+		for e in m["spells"]:
+			e["id"] = aliases.get(e["id"],e["id"])
+	# Existing offline timelines retain their original earned rewards. Future runs
+	# use the migrated snapshots; old IDs remain readable for an in-flight run.

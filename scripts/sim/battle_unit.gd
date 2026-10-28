@@ -22,6 +22,7 @@ var cosmetics: Dictionary = {}  # visual only: {"glow": hex, "aura": hex}
 var max_hp: float
 var hp: float
 var atk: float
+var offhand_atk := 0.0
 var atk_speed := ATTACK_INTERVAL  # seconds between basic attacks before haste (from the weapon)
 var power: float
 var stats: Dictionary = {}   # all stats (spells read str / agi / power from here)
@@ -47,6 +48,29 @@ var taunt := 0.0
 var dots: Array = []     # [{id, per_tick, remaining, tick}]
 var hots: Array = []
 
+# Build and runtime state. `spent` survives waves and resets with a new run.
+var talents: Dictionary = {}
+var buffs: Dictionary = {}
+var spent: Dictionary = {}
+var counters: Dictionary = {}
+var damage_history: Array = []
+var silence := 0.0
+var taunt_order := -1
+var channel: Dictionary = {}
+var summons: Array = []
+var shield_owner = null
+var shield_sid := ""
+var shield_absorbed := 0.0
+
+func rank(id: String) -> int:
+	return int(talents.get(id, 0))
+
+func buff(id: String) -> float:
+	return float(buffs.get(id, {}).get("value", 0.0))
+
+func equipped(w: String) -> bool:
+	return weapons.count("sword") >= 2 if w == "dual" else w in weapons
+
 # Stats for the after-battle summary.
 var dealt := 0.0
 var dealt_by := {}       # spell id (or "attack") -> damage, for the meter breakdown
@@ -70,12 +94,14 @@ func _init(p_uid: int, p_side: int, p_slot: int, snap: Dictionary) -> void:
 	max_hp = st["hp"]
 	hp = max_hp
 	atk = st["atk"]
+	offhand_atk = st.get("offhand_atk",0.0)
 	atk_speed = float(st.get("atk_speed", ATTACK_INTERVAL))
 	if atk_speed <= 0.0:
 		atk_speed = ATTACK_INTERVAL
 	power = st["power"]
 	stats = st
 	weapons = snap.get("weapons", [])
+	talents = snap.get("talents", {}).duplicate()
 	armor = st.get("armor", 0.0)
 	haste = st.get("haste", 0.0)
 	crit = st.get("crit", 0.0)
@@ -94,7 +120,7 @@ func hp_frac() -> float:
 	return hp / max_hp
 
 func is_casting() -> bool:
-	return not casting.is_empty()
+	return not casting.is_empty() or not channel.is_empty()
 
 func has_dot(id: String) -> bool:
 	for d in dots:
@@ -112,7 +138,7 @@ func is_debuffed() -> bool:
 	return dots.size() > 0 or stun > 0.0
 
 func attack_interval() -> float:
-	return atk_speed / (1.0 + haste)
+	return atk_speed * (1.0 - 0.03 * rank("quick_hands")) / (1.0 + haste) / maxf(0.1, 1.0 - buff("slow"))
 
 func spell_interval() -> float:
-	return SPELL_INTERVAL / (1.0 + haste)
+	return SPELL_INTERVAL / (1.0 + haste + buff("bloodlust"))
