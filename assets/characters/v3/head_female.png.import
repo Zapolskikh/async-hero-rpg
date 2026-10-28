@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://cssnywto0m0wj"
-path="res://.godot/imported/bow.png-bcd2ff744910b42a9cfd7294e8fa07c3.ctex"
+uid="uid://dygqvor0ttc74"
+path="res://.godot/imported/head_female.png-c18df0c3d9856ff2d6d29083a5603cb4.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/characters/v2/sprites/female/bow.png"
-dest_files=["res://.godot/imported/bow.png-bcd2ff744910b42a9cfd7294e8fa07c3.ctex"]
+source_file="res://assets/characters/v3/head_female.png"
+dest_files=["res://.godot/imported/head_female.png-c18df0c3d9856ff2d6d29083a5603cb4.ctex"]
 
 [params]
 

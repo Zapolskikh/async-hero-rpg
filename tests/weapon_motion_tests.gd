@@ -1,159 +1,143 @@
 extends SceneTree
 var failures := 0
 var assertions := 0
-
+var markers := []
 func check(ok: bool, message: String) -> void:
 	assertions += 1
 	if not ok:
 		failures += 1
-		print("FAIL ",message)
-
+		print('FAIL ',message)
 func _initialize() -> void:
-	_run.call_deferred()
-
-func _run() -> void:
+	run.call_deferred()
+func run() -> void:
 	root.size = Vector2i(1280,720)
-	var view = load("res://scripts/ui/battle_view.gd").new()
-	view.size = Vector2(1280,720)
+	var actor := CharacterActor.new()
+	root.add_child(actor)
+	actor.set_process(false)
+	check(not actor.rig.is_processing(),'Nested rig never owns a second automatic clock')
+	actor.marker.connect(func(id,event,socket,transform): markers.append({'id':id,'event':str(event),'socket':str(socket),'transform':transform}))
+	var weapons := [[],['sword'],['sword','sword'],['sword','shield'],['greatsword'],['bow'],['staff']]
+	for sex in ['male','female']:
+		for held in weapons:
+			actor.configure({'sex':sex},[],held)
+			for hold in [.2,2.,10.]:
+				markers.clear()
+				actor.begin_magic(Color('#ff8a2a'))
+				actor.advance_visual(.6)
+				check(actor.clip=='cast_hold','Begin enters native hold')
+				actor.advance_visual(hold)
+				check(markers.is_empty(),'Hold never releases a spell')
+				if actor.preset=='greatsword': check(actor.rig.right_grip_weight < .001,'Right grip releases greatsword')
+				actor.begin_magic(Color('#ff8a2a'),false)
+				actor.advance_visual(2.)
+				check(markers.size()==1 and markers[0]['event']=='spell_release','One release after variable hold')
+				check(actor.clip=='idle','Release returns to matching loadout')
+			for before_cancel in [.2,.7,3.]:
+				markers.clear()
+				actor.begin_magic(Color.WHITE)
+				actor.advance_visual(before_cancel)
+				actor.cancel_cast()
+				actor.advance_visual(10.)
+				check(markers.is_empty(),'Cancel does not emit a spell release')
+			markers.clear()
+			actor.begin_magic(Color.WHITE,false)
+			actor.advance_visual(.1)
+			actor.begin_magic(Color.WHITE,false)
+			actor.advance_visual(2.)
+			check(markers.size()==1,'Repeated instant cancels stale pending marker')
+			var action: int = markers[0]['id']
+			actor.begin_magic(Color.WHITE,false)
+			actor.advance_visual(2.)
+			check(markers.size()==2 and markers[1]['id']!=action,'Replay gets unique action id')
+			actor.begin_magic(Color.WHITE)
+			actor.advance_visual(.7)
+			actor.play('death')
+			markers.clear()
+			actor.advance_visual(5.)
+			check(markers.is_empty() and actor.clip=='death','Death drops pending cast events')
+			actor.play('idle')
+			for rate in [.25,1.,2.,4.,8.]:
+				actor.begin_magic(Color.WHITE,false)
+				markers.clear()
+				var time := 0.
+				while time < .8:
+					actor.advance_visual((1./60.)*rate)
+					time += (1./60.)*rate
+				check(markers.size()==1,'Exactly one marker at every playback speed')
+			actor.position=Vector2(320,410)
+			for flip in [-1.,1.]:
+				actor.scale=Vector2(flip*.6,.6)
+				var socket := actor.socket_world('right_hand')
+				var raw: Array = actor.rig.sockets['right_hand']
+				var expected := actor.to_global(Vector2(raw[0],raw[1])-CharacterActor.PIVOT)
+				check(socket.origin.distance_to(expected)<.001,'Mirrored sockets follow the visual transform')
+		actor.configure({'sex':sex},[],['bow'])
+		for rate in [.25,1.,2.,4.,8.]:
+			markers.clear()
+			actor.play('shoot')
+			var time := 0.
+			while time < 2.:
+				actor.advance_visual((1./60.)*rate)
+				time += (1./60.)*rate
+			check(markers.size()==1 and markers[0]['event']=='arrow_release','Bow draw/release emits exactly one arrow '+sex+' rate '+str(rate)+' events '+str(markers.size())+' clip '+actor.rig.current_clip)
+		markers.clear()
+		actor.play('shoot')
+		actor.advance_visual(20.)
+		check(markers.size()==1 and actor.clip=='idle','Large delta crosses bow phases without losing release')
+		check(not actor.rig.arrow_loaded,'The released arrow stays hidden after returning idle')
+		actor.begin_aim()
+		check(actor.rig.arrow_loaded,'A new arrow appears only on the next preparation')
+		actor.configure({'sex':sex},[],['sword','sword'])
+		actor.play('attack')
+		var first := actor.rig.current_clip
+		actor.play('attack')
+		check(first=='sword_right_slash' and actor.rig.current_clip=='sword_left_slash','Second sword uses its own native clip')
+		actor.play_native('dual_combo','idle_dual')
+		markers.clear()
+		actor.advance_visual(3.)
+		check(markers.size()==3,'Combo retains its three visual contacts')
+		actor.configure({'sex':sex},[],['staff'])
+		actor.play('attack')
+		check(actor.clip=='idle','Staff does not gain physical autoattacks')
+		actor.begin_staff_magic(Color('#b68aff'))
+		actor.advance_visual(.8)
+		check(actor.rig.current_clip=='staff_cast_hold','Staff casting is separate from hand casting')
+		actor.begin_staff_magic(Color('#b68aff'),false)
+		markers.clear()
+		actor.advance_visual(2.)
+		check(markers.size()==1 and markers[0]['socket']=='staff_tip','Staff releases from staff_tip')
+	actor.queue_free()
+	await process_frame
+	var view = load('res://scripts/ui/battle_view.gd').new()
 	root.add_child(view)
 	view.set_process(false)
 	var allies := []
 	for i in 4:
-		allies.append(BattleUnit.new(i,0,i,{"name":"Test","sprite":"hero","stats":{"hp":1000.,"atk":10.,"power":100.},"weapons":[["staff"],["bow"],["sword"],["sword","shield"]][i]}))
+		allies.append(BattleUnit.new(i,0,i,{'name':'Test','sprite':'hero','stats':{'hp':1000.,'atk':10.,'power':100.},'weapons':[['staff'],['bow'],['sword'],['sword','shield']][i]}))
 	var sim := BattleSim.new()
-	sim.setup(allies,[{"name":"Dummy","stats":{"hp":1.e9,"atk":0.,"power":0.}}],7)
-	view.training_sim = sim
-	view._sync_characters(sim.units)
-	for i in [0,1]:
-		view._melee_motion(allies[i])
-		check(view._anim(i)["lunge"] == 0., "Staff/bow never start melee lunge")
-		check(view._lunge_offset(allies[i],.2) == Vector2.ZERO, "Legacy melee effects cannot move staff/bow forward")
-	check(view.characters[0]["actor"].clip == "cast", "Staff uses spell motion")
+	sim.setup(allies,[{'name':'Dummy','stats':{'hp':1.e9,'atk':0.,'power':0.}}],7)
+	view.training_sim=sim
+	view._sync_characters(sim.units,false)
+	for unit in allies: check(view._lunge_offset(unit,.2)==Vector2.ZERO,'V3 feet stay planted; no old root tween')
+	view._shoot(allies[1],sim.units[4],Color.WHITE,'arrow')
+	check(view.projectiles.is_empty(),'Arrow waits for native release event')
+	view.characters[1]['actor'].advance_visual(.91)
+	check(view.projectiles.size()==1,'Native bow event creates one projectile')
+	view.characters[1]['actor'].advance_visual(10.)
+	check(view.projectiles.size()==1,'Idle cannot duplicate projectile')
+	view._shoot(allies[1],sim.units[4],Color.WHITE,'arrow')
+	view.characters[1]['actor'].cancel_cast()
+	view.characters[1]['actor'].advance_visual(10.)
+	check(view.projectiles.size()==1,'Cancelled bow cannot spawn a late arrow')
 	view._melee_motion(allies[2])
-	check(view.characters[2]["actor"].clip == "attack", "Sword uses full wind-up, strike and recovery")
-	check(view._lunge_offset(allies[2],.26).x > 40., "Sword retains lunge")
-	view._melee_motion(allies[3],true)
-	check(view.characters[3]["actor"].clip == "shield_bash", "Shield hit has its own animation")
-	var shield_offset: Vector2 = view._lunge_offset(allies[3],.2)
-	check(shield_offset.x > 0. and shield_offset.x < 20. and shield_offset.y < 0., "Shield bash is a short forward/upward movement")
-	view._shoot(allies[1],sim.units[4],Color.WHITE,"arrow")
-	check(view.characters[1]["actor"].clip == "shoot", "Arrow plays bow draw and release")
-	check(view.projectiles[-1]["t"] == -.22, "Projectile waits for string release")
-	for target in [Vector2(304,216),Vector2(281,234),Vector2(250,169),Vector2(305,222),Vector2(232,174),Vector2(160,263),Vector2(175,180),Vector2(240,220),Vector2(212,145)]:
-		for shoulder in [Vector2(169,195),Vector2(237,195)]:
-			var solved := WeaponMotion.solve_arm(shoulder,target)
-			check(solved["elbow"].y >= (shoulder.y+solved["hand"].y)*.5-.01,"Elbow chooses the lower anatomical bend")
-	var before_pole := WeaponMotion.solve_arm(Vector2(169,195),Vector2(168,215))
-	var after_pole := WeaponMotion.solve_arm(Vector2(169,195),Vector2(170,215))
-	check(before_pole["elbow"].distance_to(after_pole["elbow"]) < 12.,"Elbow does not pop across the shoulder when the wrist crosses vertically")
-	for u in allies:
-		u.casting = {"spell":"fireball","remaining":1.,"total":1.5,"target":sim.units[4],"lvl":1}
-	view._sync_characters(sim.units)
-	for u in allies:
-		var actor: CharacterActor = view.characters[u.uid]["actor"]
-		check(actor.clip == "cast" and actor.magic_color == Color(Db.SPELLS["fireball"]["color"]),"All weapons prepare magic with the spell color")
-		actor.elapsed = .7
-	view._sync_characters(sim.units)
-	check(view.characters[0]["actor"].clip == "cast_hold","Long casts hold the raised hand")
-	view._on_spell(sim,{"uid":0,"sid":"heal","text":"Heal"})
-	check(view.characters[0]["actor"].clip == "cast_release" and view.characters[0]["actor"].magic_color == Color(Db.SPELLS["heal"]["color"]),"Release gesture uses the actual spell color")
+	var hp: float = sim.units[4].hp
+	view.pending_actions[2]['damage'].append({'uid':4,'v':20.,'src':2})
+	var count: int = view.floats.size()
+	view.characters[2]['actor'].advance_visual(2.)
+	check(view.floats.size()==count+1,'Melee label is synchronized to contact')
+	check(sim.units[4].hp==hp and allies[2].dealt==0.,'Visual markers never deal extra damage')
 	view.queue_free()
 	await process_frame
 	sim.release()
-	for sex in ["male","female"]:
-		var gallery := UI.card(Style.CARD,8)
-		gallery.set_anchors_preset(Control.PRESET_FULL_RECT)
-		root.add_child(gallery)
-		var grid := UI.grid(5,4)
-		gallery.add_child(grid)
-		for row in 3:
-			for phase in [0.,.2,.5,.72,.95]:
-				var cell := UI.vbox(0)
-				cell.custom_minimum_size = Vector2(245,225)
-				grid.add_child(cell)
-				var canvas := Control.new()
-				canvas.custom_minimum_size = Vector2(245,203)
-				cell.add_child(canvas)
-				var actor := CharacterActor.new()
-				canvas.add_child(actor)
-				actor.configure({"sex":sex},[],[["sword"],["bow"],["sword","shield"]][row])
-				actor.position = Vector2(130,200)
-				actor.scale = Vector2.ONE * .54
-				actor.set_process(false)
-				if phase > 0.:
-					actor.play(["attack","shoot","shield_bash"][row])
-					actor.elapsed = phase * actor.DURATIONS[actor.clip]
-					actor._apply_pose()
-				check(actor.motion.preset == actor.preset, "Weapon motion matches equipment")
-				check(actor.pose.scale == Vector2.ONE and actor.body.scale == Vector2.ONE, "Torso retains V2 proportions")
-				cell.add_child(UI.label(["Меч","Лук","Щит"][row]+" · "+str(phase),16))
-		await create_timer(.2).timeout
-		if DisplayServer.get_name() != "headless":
-			DirAccess.make_dir_recursive_absolute("res://build/qa/weapon-motion")
-			root.get_texture().get_image().save_png("res://build/qa/weapon-motion/"+sex+".png")
-		gallery.queue_free()
-		await process_frame
-	if ("--motion-preview" in OS.get_cmdline_user_args() or "--magic-preview" in OS.get_cmdline_user_args()) and DisplayServer.get_name() != "headless":
-		await _record_preview()
-	print("WEAPON MOTION: %d assertions, %d failures" % [assertions,failures])
+	print('WEAPON MOTION V3: %d assertions, %d failures' % [assertions,failures])
 	quit(1 if failures else 0)
-
-func _record_preview() -> void:
-	var magic_preview := "--magic-preview" in OS.get_cmdline_user_args()
-	var gallery := UI.card(Style.CARD,12)
-	gallery.set_anchors_preset(Control.PRESET_FULL_RECT)
-	root.add_child(gallery)
-	var grid := UI.grid(3,8)
-	gallery.add_child(grid)
-	var actors := []
-	for sex in ["male","female"]:
-		for i in 3:
-			var cell := UI.vbox()
-			grid.add_child(cell)
-			var canvas := Control.new()
-			canvas.custom_minimum_size = Vector2(405,290)
-			cell.add_child(canvas)
-			var actor := CharacterActor.new()
-			canvas.add_child(actor)
-			actor.configure({"sex":sex},[],([["staff"],["sword","shield"],["greatsword"]] if magic_preview else [["sword"],["bow"],["sword","shield"]])[i])
-			actor.position = Vector2(210,285)
-			actor.scale = Vector2.ONE * .75
-			actor.set_process(false)
-			actor.magic_color = Color(["#ff8a2a","#83efa0","#b68aff"][i])
-			actors.append({"actor":actor,"clip":["attack","shoot","shield_bash"][i]})
-			cell.add_child(UI.label((["Посох · правая рука","Щит остаётся в левой","Двуручник · отпускает правую"] if magic_preview else ["Меч · замах и удар","Лук · натяжение и выстрел","Щит · вперёд и вверх"])[i],22))
-	var directory := "res://build/qa/weapon-motion/" + ("magic-frames" if magic_preview else "frames")
-	DirAccess.make_dir_recursive_absolute(directory)
-	for frame in 90:
-		var time := fmod(frame/30.,1.5)-.3
-		for item in actors:
-			var actor: CharacterActor = item["actor"]
-			var action: String = item["clip"]
-			actor.clip = action if time >= 0. and time < actor.DURATIONS[action] else "idle"
-			actor.elapsed = maxf(0.,time)
-			if magic_preview:
-				var t := fmod(frame/30.,1.5)
-				if t < .65:
-					actor.clip = "cast"
-					actor.elapsed = t
-				elif t < .9:
-					actor.clip = "cast_hold"
-					actor.elapsed = t-.65
-				elif t < 1.3:
-					actor.clip = "cast_release"
-					actor.elapsed = .12+(t-.9)*.7
-				else:
-					actor.clip = "idle"
-					actor.elapsed = t-1.3
-			actor._apply_pose()
-			var phase := clampf(time / actor.DURATIONS[action],0.,1.)
-			actor.position = Vector2(210,285)
-			if actor.clip == "attack":
-				actor.position.x += sin(phase*PI)*40.
-			elif actor.clip == "shield_bash":
-				actor.position += Vector2(14,-5)*sin(phase*PI)
-		await process_frame
-		await RenderingServer.frame_post_draw
-		root.get_texture().get_image().save_png(directory+"/%03d.png" % frame)
-	gallery.queue_free()
-	await process_frame

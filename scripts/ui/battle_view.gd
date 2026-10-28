@@ -48,6 +48,12 @@ var _last_n := 0
 var _preview_units: Array = []
 var _preview_key := ""
 var characters := {}
+var animation_rate := 1.0
+var pending_actions := {}
+var _pose_time := 0.
+var _display_time := 0.
+var _advance_origin := 0.
+var _processing_time := 0.
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -63,10 +69,16 @@ func tex(name: String) -> Texture2D:
 	return textures[name]
 
 func _process(delta: float) -> void:
-	clock += delta
+	var dt := delta * (animation_rate if training_sim != null else Game.watch_speed)
+	clock += dt
 	var sim := active_sim()
 	if sim != null:
 		if sim != _sim_ref:
+			_pose_time = 0.
+			_display_time = 0.
+			pending_actions.clear()
+			for item in characters.values():
+				item["actor"].play("idle")
 			_sim_ref = sim
 			_last_n = 0
 			floats.clear()
@@ -76,32 +88,43 @@ func _process(delta: float) -> void:
 			for u in sim.units:
 				if u.side == 1 or not anim.has(u.uid):
 					anim[u.uid] = {"lunge": 0.0, "hurt": 0.0, "dead": 0.0 if u.alive() else DEATH_TIME}
+		_display_time = maxf(sim.time+sim._acc,_display_time+dt if sim.finished else 0.)
+		_sync_characters(sim.units,false)
 		_consume_events(sim)
 		for u in sim.units:
 			var a: Dictionary = _anim(u.uid)
-			a["lunge"] = max(0.0, a["lunge"] - delta)
-			a["hurt"] = max(0.0, a["hurt"] - delta)
+			a["lunge"] = max(0.0, a["lunge"] - dt)
+			a["hurt"] = max(0.0, a["hurt"] - dt)
 			if not u.alive():
-				a["dead"] = min(DEATH_TIME, a["dead"] + delta)
+				a["dead"] = min(DEATH_TIME, a["dead"] + dt)
 			else:
 				a["dead"] = 0.0
 	for f in floats.duplicate():
-		f["life"] -= delta
+		f["life"] -= dt
 		if f["life"] <= 0.0:
 			floats.erase(f)
 	for p in projectiles.duplicate():
-		p["t"] += delta
+		p["t"] = maxf(0.,_display_time-p["born"]) if p.has("born") else float(p["t"])+dt
 		if p["t"] >= PROJ_TIME:
 			projectiles.erase(p)
+			for damage in p.get("damage",[]): _show_damage(damage)
 			effects.append({"pos": p["to"], "t": 0.0, "dur": 0.25, "kind": "burst", "color": p["color"], "radius": 18.0})
 	for e in effects.duplicate():
-		e["t"] += delta
+		e["t"] += dt
 		if e["t"] >= e["dur"]:
 			effects.erase(e)
 	_sync_characters(sim.units if sim != null else (_get_preview_units() if preview_mode else []))
+	if sim == null:
+		for item in characters.values(): item["actor"].advance_visual(dt)
 	queue_redraw()
 
-func _sync_characters(units: Array) -> void:
+func _advance_characters_to(target: float) -> void:
+	var amount := maxf(0.,target-_pose_time)
+	_advance_origin = _pose_time
+	for item in characters.values(): item["actor"].advance_visual(amount)
+	_pose_time = maxf(_pose_time,target)
+
+func _sync_characters(units: Array, synchronize_state: bool = true) -> void:
 	var present := []
 	for u in units:
 		if u.side != 0:
@@ -111,6 +134,9 @@ func _sync_characters(units: Array) -> void:
 		if not characters.has(u.uid):
 			var actor := Character.new()
 			add_child(actor)
+			actor.set_process(false)
+			actor.marker.connect(_on_character_marker.bind(u.uid))
+			actor.action_cancelled.connect(_on_character_cancelled.bind(u.uid))
 			characters[u.uid] = {"actor":actor, "key":""}
 		var item: Dictionary = characters[u.uid]
 		var actor: CharacterActor = item["actor"]
@@ -119,62 +145,99 @@ func _sync_characters(units: Array) -> void:
 			item["key"] = key
 		var a := _anim(u.uid)
 		var offset := Vector2.ZERO
-		if u.alive():
-			if actor.clip == "death":
-				actor.play("idle")
-			if a["lunge"] > 0.:
-				offset += _lunge_offset(u,a["lunge"])
-			if u.is_casting():
-				var casting: Dictionary = u.casting if not u.casting.is_empty() else u.channel
-				var spell: Dictionary = Db.SPELLS[casting["spell"]]
-				if spell.get("weapon",false):
-					if u.equipped("bow") and actor.clip != "aim_hold":
-						actor.play("aim_hold")
-				else:
-					var color := Color(spell.get("color","#99cfff"))
-					if actor.clip not in ["cast","cast_hold"] or actor.magic_color != color:
-						actor.begin_magic(color)
-					elif actor.clip == "cast" and actor.elapsed >= .65:
-						actor.play("cast_hold")
-			elif actor.clip in ["cast","cast_hold","aim_hold"]:
-				actor.play("idle")
-		else:
-			if actor.clip != "death":
-				actor.play("death")
+		if synchronize_state:
+			if u.alive():
+				if actor.clip == "death":
+					actor.play("idle")
+				if a["lunge"] > 0.:
+					offset += _lunge_offset(u,a["lunge"])
+				if u.stun > 0.:
+					if actor.clip != "idle": actor.play("idle")
+				elif u.is_casting() and not (_sim_ref != null and _sim_ref.finished):
+					var casting: Dictionary = u.casting if not u.casting.is_empty() else u.channel
+					var spell: Dictionary = Db.SPELLS[casting["spell"]]
+					if spell.get("weapon",false):
+						if u.equipped("bow") and actor.clip != "aim_hold": actor.begin_aim()
+					else:
+						var color := Color(spell.get("color","#99cfff"))
+						if actor.clip not in ["cast","cast_hold"] or actor.magic_color != color: _magic_motion(u,spell,true)
+				elif actor.clip in ["cast","cast_hold","aim_hold"]:
+					actor.cancel_cast()
+			else:
+				if actor.clip != "death":
+					actor.play("death")
 		actor.position = _home(u) + offset
 		actor.scale = Vector2.ONE * (_sprite_size(u).y / 350.)
 		actor.modulate = Color(1., .55, .55) if a["hurt"] > 0. else Color.WHITE
-		actor.modulate.a = 1. if u.alive() else .5
+		actor.modulate.a = 1. if u.alive() else maxf(0.,1.-float(a["dead"])/DEATH_TIME)
 	for id in characters.keys():
 		if id not in present:
 			characters[id]["actor"].queue_free()
 			characters.erase(id)
 
-func _character_animation(uid: int, clip: String, start: float = 0.) -> void:
-	if characters.has(uid):
-		var actor: CharacterActor = characters[uid]["actor"]
-		actor.play(clip)
-		actor.elapsed = start
+func _character_animation(uid: int, clip: String, _start: float = 0.) -> void:
+	if characters.has(uid): characters[uid]["actor"].play(clip)
 
 func _lunge_offset(u: BattleUnit, remaining: float) -> Vector2:
-	if u.side == 0 and (u.equipped("staff") or u.equipped("bow")):
-		return Vector2.ZERO
-	var state := _anim(u.uid)
-	var duration: float = state.get("lunge_duration",CHARACTER_LUNGE_TIME if u.side == 0 else LUNGE_TIME)
-	var pulse := sin(clampf(1.-remaining/duration,0.,1.)*PI)
-	if state.get("motion","") == "shield_bash":
-		return Vector2(14.,-5.) * pulse
-	return Vector2(46. if u.side == 0 else -46.,0.) * pulse
+	if u.side == 0: return Vector2.ZERO # V3 moves torso/arms over planted feet.
+	return Vector2(-46.*sin(clampf(1.-remaining/LUNGE_TIME,0.,1.)*PI),0.)
+
+func _packet(uid: int, kind: String) -> void:
+	var actor: CharacterActor = characters[uid]["actor"]
+	pending_actions[uid] = {"id":actor.action_serial,"kind":kind,"projectiles":[],"effects":[],"damage":[]}
+
+func _magic_motion(src: BattleUnit, spell: Dictionary, preparing: bool) -> void:
+	var actor: CharacterActor = characters[src.uid]["actor"]
+	var color := Color(spell.get("color","#99cfff"))
+	if src.equipped("staff") and spell.get("group","") == "arcane" and spell.get("cast",0.) > 0.:
+		actor.begin_staff_magic(color,preparing)
+	else:
+		actor.begin_magic(color,preparing)
 
 func _melee_motion(src: BattleUnit, shield: bool = false) -> void:
-	_character_animation(src.uid,"shield_bash" if shield else "attack")
-	var state := _anim(src.uid)
-	state["motion"] = "shield_bash" if shield else "attack"
-	state["lunge_duration"] = (.4 if shield else CHARACTER_LUNGE_TIME) if src.side == 0 else LUNGE_TIME
-	if src.side == 0 and (src.equipped("staff") or src.equipped("bow")):
-		_anim(src.uid)["lunge"] = 0.
+	if not characters.has(src.uid):
+		_anim(src.uid)["lunge"] = LUNGE_TIME
 		return
-	state["lunge"] = state["lunge_duration"]
+	var actor: CharacterActor = characters[src.uid]["actor"]
+	if src.equipped("staff") or src.equipped("bow"):
+		actor.begin_magic(Color("#ffe7a1"),false)
+	else:
+		actor.play("shield_bash" if shield else "attack")
+	_packet(src.uid,"melee")
+
+func _on_character_cancelled(action_id: int, uid: int) -> void:
+	if not pending_actions.has(uid) or pending_actions[uid]["id"] != action_id: return
+	# Damage has already been calculated by BattleSim; cancel only its pending visuals.
+	for event in pending_actions[uid]["damage"]: _show_damage(event)
+	pending_actions.erase(uid)
+
+func _on_character_marker(action_id: int, event: StringName, _socket: StringName, transform: Transform2D, uid: int) -> void:
+	if not pending_actions.has(uid) or pending_actions[uid]["id"] != action_id: return
+	if str(event) not in ["melee_impact","offhand_impact","dual_impact","shield_impact","arrow_release","spell_release"]: return
+	var packet: Dictionary = pending_actions[uid]
+	pending_actions.erase(uid) # A logical action releases each visual packet exactly once.
+	var origin: Vector2 = get_global_transform().affine_inverse() * transform.origin
+	var released_at: float = _advance_origin + characters[uid]["actor"].rig.last_event_offset
+	var assigned := []
+	for projectile in packet["projectiles"]:
+		projectile["from"] = origin
+		projectile["t"] = 0.
+		projectile["born"] = released_at
+		projectile["damage"] = []
+		for damage in packet["damage"]:
+			if damage["uid"] == projectile["target_uid"] and damage not in assigned:
+				projectile["damage"].append(damage)
+				assigned.append(damage)
+		projectiles.append(projectile)
+	for effect in packet["effects"]: effects.append(effect)
+	for damage in packet["damage"]:
+		if damage not in assigned: _show_damage(damage)
+
+func _show_damage(e: Dictionary) -> void:
+	var color := Color("#ffd27a") if e.get("dot",false) else Color.WHITE
+	if e.get("crit",false): color = Color("#ff7b4a")
+	_float(e["uid"],str(roundi(float(e["v"])))+("!" if e.get("crit",false) else ""),color,26 if e.get("crit",false) else 20)
+	if not e.get("dot",false): _anim(e["uid"])["hurt"] = HURT_TIME
 
 func _anim(uid: int) -> Dictionary:
 	if not anim.has(uid):
@@ -186,9 +249,10 @@ func _consume_events(sim: BattleSim) -> void:
 		if e.get("n", 0) <= _last_n:
 			continue
 		_last_n = e.get("n", 0)
+		_processing_time = float(e.get("time",sim.time))
+		_advance_characters_to(_processing_time)
 		match e["t"]:
 			"attack":
-				_character_animation(e["uid"], "attack")
 				var src := sim.unit_by_uid(e["uid"])
 				var dst := sim.unit_by_uid(e["tgt"])
 				if src != null and dst != null:
@@ -201,15 +265,9 @@ func _consume_events(sim: BattleSim) -> void:
 			"spell":
 				_on_spell(sim, e)
 			"dmg":
-				var col := Color("#ffd27a") if e.get("dot", false) else Color.WHITE
-				if e.get("crit", false):
-					col = Color("#ff7b4a")
-				_float(e["uid"], ("%d" % e["v"]) + ("!" if e.get("crit", false) else ""), col, 26 if e.get("crit", false) else 20)
-				if not e.get("dot", false):
-					_anim(e["uid"])["hurt"] = HURT_TIME
-					var hurt_unit := sim.unit_by_uid(e["uid"])
-					if hurt_unit == null or not hurt_unit.is_casting():
-						_character_animation(e["uid"], "hit")
+				var source: int = e.get("src",-1)
+				if not e.get("dot",false) and pending_actions.has(source): pending_actions[source]["damage"].append(e)
+				else: _show_damage(e)
 			"heal":
 				_float(e["uid"], "+%d" % e["v"], UI.GOOD, 20)
 				_effect_on(sim, e["uid"], "sparkle", UI.GOOD, 0.5)
@@ -218,24 +276,48 @@ func _consume_events(sim: BattleSim) -> void:
 			"shield":
 				_effect_on(sim, e["uid"], "bubble", Color("#8fd0ff"), 0.45)
 			"interrupt":
+				if characters.has(e["uid"]): characters[e["uid"]]["actor"].cancel_cast()
 				_float(e["uid"], e["text"], Color("#ff5ad1"), 26)
 				_effect_on(sim, e["uid"], "burst", Color("#ff5ad1"), 0.35)
 			"status":
 				_float(e["uid"], e["text"], Color("#c9b6ff"), 18)
+				if characters.has(e["uid"]):
+					var actor: CharacterActor = characters[e["uid"]]["actor"]
+					if e["text"] == "Оглушён": actor.play("idle")
+					elif e["text"] == "Безмолвие" and actor.clip in ["cast","cast_hold","cast_release","aim_hold"]: actor.cancel_cast()
 			"cast":
-				pass # synchronized from the current cast, including its school color
+				if characters.has(e["uid"]):
+					var spell: Dictionary = Db.SPELLS.get(e.get("sid",""),{})
+					var actor: CharacterActor = characters[e["uid"]]["actor"]
+					if spell.get("weapon",false) and actor.preset == "bow": actor.begin_aim()
+					elif not spell.get("weapon",false): _magic_motion(sim.unit_by_uid(e["uid"]),spell,true)
 			"death":
+				_character_animation(e["uid"],"death")
 				_float(e["uid"], "Пал", UI.BAD, 22)
 	if floats.size() > 60:
 		floats = floats.slice(floats.size() - 60)
+	_advance_characters_to(_display_time)
 
 func _on_spell(sim: BattleSim, e: Dictionary) -> void:
 	var src := sim.unit_by_uid(e["uid"])
-	if src != null:
-		_float(src.uid,e["text"],UI.ACCENT,17,-44.)
-		var spell: Dictionary = Db.SPELLS.get(e.get("sid",""),{})
-		if not spell.get("weapon",false) and spell.get("fx","") not in ["slash","heavy","bleed","shield_hit","whirlwind"] and characters.has(src.uid):
-			characters[src.uid]["actor"].begin_magic(Color(spell.get("color","#99cfff")),false)
+	if src == null: return
+	_float(src.uid,e["text"],UI.ACCENT,17,-44.)
+	if not characters.has(src.uid): return
+	var spell: Dictionary = Db.SPELLS.get(e.get("sid",""),{})
+	var actor: CharacterActor = characters[src.uid]["actor"]
+	if spell.get("weapon",false) and src.equipped("bow"):
+		if actor.clip == "aim_hold": actor.release_aim()
+		else: actor.play("shoot")
+		_packet(src.uid,"bow")
+	elif spell.get("fx","") in ["slash","heavy","bleed","shield_hit","whirlwind"]:
+		if src.equipped("dual") and spell.get("fx","") == "whirlwind" and spell.get("kind","") == "aoe_damage":
+			actor.play_native("dual_combo","idle_dual")
+			_packet(src.uid,"melee")
+		else:
+			_melee_motion(src,spell.get("fx","") == "shield_hit")
+	else:
+		_magic_motion(src,spell,false)
+		_packet(src.uid,"magic")
 
 func _on_fx(sim: BattleSim, e: Dictionary) -> void:
 	var src := sim.unit_by_uid(e["uid"])
@@ -245,37 +327,43 @@ func _on_fx(sim: BattleSim, e: Dictionary) -> void:
 	var kind: String = e["kind"]
 	var col := Color(e["color"])
 	if kind in ["slash","heavy","bleed","shield_hit","whirlwind"]:
-		_melee_motion(src,kind == "shield_hit")
-		_effect_on(sim,dst.uid,kind,col,.42)
+		if not pending_actions.has(src.uid): _melee_motion(src,kind == "shield_hit")
+		_effect_on(sim,dst.uid,kind,col,.42,src.uid)
 	elif kind in ["shout","shield","cleanse","curse","shockwave","explosion","nature","earth","resurrect"]:
-		_effect_on(sim,dst.uid,kind,col,.65)
+		_effect_on(sim,dst.uid,kind,col,.65,src.uid)
 	elif kind in ["lightning","heal_chain"]:
-		effects.append({"pos":_center(dst),"from":_center(src),"t":0.,"dur":.38,"kind":kind,"color":col,"radius":40.})
+		_put_effect(src.uid,{"pos":_center(dst),"from":_center(src),"t":0.,"dur":.38,"kind":kind,"color":col,"radius":40.})
 	else:
-		_shoot(src,dst,col,kind)
 		if e.get("summon","") != "":
+			var origin := _home(src)+Vector2(-34.,-30.)
 			for i in src.summons.size():
 				if src.summons[i]["id"] == e["summon"]:
-					projectiles[-1]["from"] = _home(src) + Vector2(-34.-i*25.,-30.)
+					origin = _home(src) + Vector2(-34.-i*25.,-30.)
 					break
+			projectiles.append({"from":origin,"to":_center(dst),"t":0.,"kind":kind,"color":col,"born":_processing_time})
+		else:
+			_shoot(src,dst,col,kind)
 
 func _shoot(src: BattleUnit, dst: BattleUnit, col: Color, kind: String) -> void:
-	var start := _center(src) + Vector2(0, -10)
-	var delay := 0.
-	if src.side == 0 and src.equipped("bow") and kind in ["arrow","poison_arrow","fire_arrow","arrow_rain"]:
-		_character_animation(src.uid,"shoot")
-		_anim(src.uid)["lunge"] = 0.
-		delay = .22 # draw, release, then fly; the simulation's hit timing is unchanged
-		if characters.has(src.uid):
+	var projectile := {"from":_center(src)+Vector2(0,-10),"to":_center(dst),"t":0.,"color":col,"kind":kind,"target_uid":dst.uid,"born":_processing_time}
+	if characters.has(src.uid) and src.equipped("bow") and kind in ["arrow","poison_arrow","fire_arrow","arrow_rain"]:
+		if not pending_actions.has(src.uid):
 			var actor: CharacterActor = characters[src.uid]["actor"]
-			start = actor.position + Vector2(48,-184)*actor.scale
-	projectiles.append({"from": start, "to": _center(dst), "t": -delay, "color": col, "kind": kind})
+			if actor.clip == "aim_hold": actor.release_aim()
+			else: actor.play("shoot")
+			_packet(src.uid,"bow")
+	if pending_actions.has(src.uid): pending_actions[src.uid]["projectiles"].append(projectile)
+	else: projectiles.append(projectile)
 
-func _effect_on(sim: BattleSim, uid: int, kind: String, col: Color, dur: float) -> void:
+func _put_effect(source: int, effect: Dictionary) -> void:
+	if pending_actions.has(source): pending_actions[source]["effects"].append(effect)
+	else: effects.append(effect)
+
+func _effect_on(sim: BattleSim, uid: int, kind: String, col: Color, dur: float, source: int = -1) -> void:
 	var u := sim.unit_by_uid(uid)
 	if u == null:
 		return
-	effects.append({"pos": _center(u), "t": 0.0, "dur": dur, "kind": kind, "color": col, "radius": 40.0})
+	_put_effect(source,{"pos": _center(u), "t": 0.0, "dur": dur, "kind": kind, "color": col, "radius": 40.0})
 
 func _float(uid: int, text: String, col: Color, size: int, y_off: float = 0.0) -> void:
 	var stack := 0

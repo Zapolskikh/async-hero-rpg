@@ -48,17 +48,10 @@ func _run() -> void:
 	for sex in ["male","female"]:
 		for i in weapon_sets.size():
 			actor.configure({"sex":sex}, [], weapon_sets[i])
-			check(actor.preset == CharacterActor.PRESETS[i], "Weapon selects V2 preset")
-			check(actor.body.texture.resource_path == CharacterActor.ROOT + "sprites/" + sex + "/" + ("base" if actor.preset == "bow" else actor.preset) + ".png", "Supplied V2 torso with shared bow stance")
-			check(actor.body.texture.get_size() == Vector2(512,512), "Full source canvas preserved")
-			check(actor.body.position == -CharacterActor.PIVOT, "Shared ground pivot preserved")
-		var texture := actor.body.texture
-		for clip in CharacterActor.DURATIONS:
-			actor.play(clip)
-			actor.elapsed = .4
-			actor._apply_pose()
-			check(actor.body.texture.resource_path == CharacterActor.ROOT + "sprites/" + sex + "/base.png" if actor.motion.active else actor.body.texture == texture, "Combat gestures preserve the supplied V2 torso")
-			check(actor.pose.scale == Vector2.ONE and actor.body.scale == Vector2.ONE, "No nonuniform deformation or joint transforms")
+			check(actor.preset == CharacterActor.PRESETS[i], "Weapon selects V3 loadout")
+			check(actor.rig.current_clip == "idle_"+actor.loadout, "Equipment changes reset the native clip")
+			check(actor.rig.head_texture.resource_path.ends_with("head_"+sex+".png"), "Original V2 face retained")
+			check(actor.rig.position == -CharacterActor.PIVOT, "Shared ground pivot preserved")
 	actor.queue_free()
 	var gallery := UI.card(Style.CARD, 12)
 	gallery.set_anchors_preset(Control.PRESET_FULL_RECT)
@@ -77,7 +70,7 @@ func _run() -> void:
 			portrait.custom_minimum_size.x = 172
 			column.add_child(portrait)
 			column.add_child(UI.label(("М · " if sex == "male" else "Ж · ") + ["Без оружия","Меч","Два меча","Меч и щит","Двуручник","Лук","Посох"][i],15))
-	await shot("00_all_presets_v2")
+	await shot("00_all_loadouts_v3")
 	gallery.queue_free()
 	await process_frame
 	var main = load("res://scenes/main.tscn").instantiate()
@@ -93,7 +86,7 @@ func _run() -> void:
 	var panel = dim.get_child(0).get_child(0).get_child(0).get_child(1)
 	panel._select_sex(1)
 	check(game.hero["appearance"]["sex"] == "male", "Preview does not mutate profile")
-	check(panel.value == {"sex":"female","hair":"f01"}, "Editor switches complete V2 model")
+	check(panel.value == {"sex":"female","hair":"f01"}, "Editor switches V3 model")
 	await shot("02_appearance_preview")
 	main._modal_action(dim, main._apply_appearance.bind(panel))
 	await process_frame

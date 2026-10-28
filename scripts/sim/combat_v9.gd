@@ -321,7 +321,7 @@ func _try_rotation(u: BattleUnit) -> bool:
 		duration /= 1.+u.haste+u.buff("bloodlust")
 		if duration > 0.:
 			u.casting = {"spell":sid,"lvl":e.get("lvl",1),"remaining":duration,"total":duration,"target":t,"interruptible":s.get("interruptible",true),"threshold":e.get("threshold",-1.)}
-			_emit({"t":"cast","uid":u.uid,"text":s["name"]})
+			_emit({"t":"cast","uid":u.uid,"text":s["name"],"sid":sid})
 		else:
 			_cast(u,sid,e.get("lvl",1),t)
 		return true
@@ -1002,6 +1002,7 @@ func _emit(e: Dictionary) -> void:
 	if record_events:
 		event_seq += 1
 		e["n"] = event_seq
+		e["time"] = time # Visual timeline metadata only; never drives combat resolution.
 		events.append(e)
 		if events.size() > 500:
 			events = events.slice(250)

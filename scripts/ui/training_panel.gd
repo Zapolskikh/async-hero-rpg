@@ -10,6 +10,8 @@ var selected_slot := 0
 var group := "all"
 var search := ""
 var spell_list: VBoxContainer
+var training_speed := 1.
+var speed_picker: OptionButton
 
 func configure(snapshot: Dictionary) -> void:
 	session = Session.new(snapshot)
@@ -70,6 +72,11 @@ func _ready() -> void:
 	pause.text = "Пауза"
 	pause.toggled.connect(func(on): session.paused = on)
 	controls.add_child(pause)
+	speed_picker = OptionButton.new()
+	for rate in [.25,1.,2.,4.,8.]: speed_picker.add_item("×%s" % rate)
+	speed_picker.selected = 1
+	speed_picker.item_selected.connect(func(i): training_speed = [.25,1.,2.,4.,8.][i])
+	controls.add_child(speed_picker)
 	left.add_child(controls)
 	var row := UI.hbox(6)
 	left.add_child(row)
@@ -138,7 +145,8 @@ func _catalog() -> void:
 func _process(delta: float) -> void:
 	if session == null or summary == null:
 		return
-	session.advance(delta)
+	view.animation_rate = 0. if session.paused else training_speed
+	session.advance(delta * training_speed)
 	var hero: BattleUnit = session.sim.units[0]
 	var elapsed := maxf(.1, session.sim.time)
 	summary.text = "%.1f с · Урон %d · DPS %.1f · Лечение %d · HPS %.1f%s" % [session.sim.time, hero.dealt, hero.dealt / elapsed, hero.healed, hero.healed / elapsed, " · Бой завершён — сбрось" if session.sim.finished else ""]
