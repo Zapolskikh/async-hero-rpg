@@ -1,0 +1,315 @@
+{
+  "version": 1,
+  "style": "B — smooth simple geometric 2D",
+  "canvas": [
+    256,
+    256
+  ],
+  "facing": "right",
+  "models": [
+    "male",
+    "female"
+  ],
+  "hairstyles": [
+    {
+      "id": "m01",
+      "sex": "male",
+      "name": "Короткий пробор",
+      "front": "hair/male/m01_front.png",
+      "back": "hair/male/m01_back.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        72
+      ],
+      "attach_to": "head",
+      "guide_eye": [
+        945.0,
+        532.5
+      ],
+      "guide_scale": 0.0761904761904762
+    },
+    {
+      "id": "m02",
+      "sex": "male",
+      "name": "Короткая стрижка",
+      "front": "hair/male/m02_front.png",
+      "back": "hair/male/m02_back.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        72
+      ],
+      "attach_to": "head",
+      "guide_eye": [
+        879.5,
+        607.0
+      ],
+      "guide_scale": 0.0625
+    },
+    {
+      "id": "m03",
+      "sex": "male",
+      "name": "Зачёс назад",
+      "front": "hair/male/m03_front.png",
+      "back": "hair/male/m03_back.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        72
+      ],
+      "attach_to": "head",
+      "guide_eye": [
+        864.0,
+        678.0
+      ],
+      "guide_scale": 0.06349206349206349
+    },
+    {
+      "id": "m04",
+      "sex": "male",
+      "name": "Средние волнистые",
+      "front": "hair/male/m04_front.png",
+      "back": "hair/male/m04_back.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        72
+      ],
+      "attach_to": "head",
+      "guide_eye": [
+        930.0,
+        643.5
+      ],
+      "guide_scale": 0.0761904761904762
+    },
+    {
+      "id": "m05",
+      "sex": "male",
+      "name": "Низкий хвост",
+      "front": "hair/male/m05_front.png",
+      "back": "hair/male/m05_back.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        72
+      ],
+      "attach_to": "head",
+      "guide_eye": [
+        952.5,
+        633.0
+      ],
+      "guide_scale": 0.0625
+    },
+    {
+      "id": "f01",
+      "sex": "female",
+      "name": "Короткая пикси",
+      "front": "hair/female/f01_front.png",
+      "back": "hair/female/f01_back.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        72
+      ],
+      "attach_to": "head",
+      "guide_eye": [
+        873.5,
+        660.0
+      ],
+      "guide_scale": 0.05172413793103448
+    },
+    {
+      "id": "f02",
+      "sex": "female",
+      "name": "Каре",
+      "front": "hair/female/f02_front.png",
+      "back": "hair/female/f02_back.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        72
+      ],
+      "attach_to": "head",
+      "guide_eye": [
+        883.5,
+        630.5
+      ],
+      "guide_scale": 0.05217391304347826
+    },
+    {
+      "id": "f03",
+      "sex": "female",
+      "name": "До плеч",
+      "front": "hair/female/f03_front.png",
+      "back": "hair/female/f03_back.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        72
+      ],
+      "attach_to": "head",
+      "guide_eye": [
+        894.5,
+        625.5
+      ],
+      "guide_scale": 0.05405405405405406
+    },
+    {
+      "id": "f04",
+      "sex": "female",
+      "name": "Высокий хвост",
+      "front": "hair/female/f04_front.png",
+      "back": "hair/female/f04_back.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        72
+      ],
+      "attach_to": "head",
+      "guide_eye": [
+        978.0,
+        726.5
+      ],
+      "guide_scale": 0.06604838709677419
+    },
+    {
+      "id": "f05",
+      "sex": "female",
+      "name": "Коса",
+      "front": "hair/female/f05_front.png",
+      "back": "hair/female/f05_back.png",
+      "size": [
+        128,
+        128
+      ],
+      "pivot": [
+        64,
+        72
+      ],
+      "attach_to": "head",
+      "guide_eye": [
+        842.0,
+        576.0
+      ],
+      "guide_scale": 0.06604838709677419
+    }
+  ],
+  "clips": {
+    "idle": {
+      "fps": 24,
+      "loop": true,
+      "duration": 1.0,
+      "events": []
+    },
+    "walk": {
+      "fps": 24,
+      "loop": true,
+      "duration": 1.0,
+      "events": [
+        {
+          "frame": 0,
+          "name": "step_far"
+        },
+        {
+          "frame": 12,
+          "name": "step_near"
+        }
+      ]
+    },
+    "attack": {
+      "fps": 24,
+      "loop": false,
+      "duration": 0.6666666666666666,
+      "events": [
+        {
+          "frame": 8,
+          "name": "impact"
+        }
+      ]
+    },
+    "cast": {
+      "fps": 24,
+      "loop": false,
+      "duration": 1.0,
+      "events": [
+        {
+          "frame": 16,
+          "name": "release"
+        }
+      ]
+    },
+    "cast_hold": {
+      "fps": 24,
+      "loop": true,
+      "duration": 1.0,
+      "events": []
+    },
+    "hit": {
+      "fps": 24,
+      "loop": false,
+      "duration": 0.5,
+      "events": []
+    },
+    "death": {
+      "fps": 24,
+      "loop": false,
+      "duration": 1.0,
+      "events": [
+        {
+          "frame": 18,
+          "name": "land"
+        }
+      ]
+    }
+  },
+  "part_draw_order": [
+    "hand_far",
+    "forearm_far",
+    "upper_arm_far",
+    "foot_far",
+    "shin_far",
+    "thigh_far",
+    "foot_near",
+    "shin_near",
+    "thigh_near",
+    "upper_arm_near",
+    "pelvis",
+    "torso",
+    "head",
+    "hand_near",
+    "forearm_near"
+  ],
+  "palette": {
+    "skin": "neutral greyscale + per-part and per-frame skin mask",
+    "hair": "neutral greyscale, separate front/back overlays"
+  },
+  "integration_status": "Engine-independent asset pack; not imported or tested inside the game project."
+}

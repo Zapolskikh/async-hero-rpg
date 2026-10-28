@@ -44,6 +44,17 @@ def test_validation(client):
     assert act(client, h, "start", level=5, mode="push")["ok"] is False
 
 
+def test_character_appearance(client):
+    set_clock(client, 0)
+    _, headers = guest(client, "Внешность")
+    result = act(client, headers, "set_appearance", sex="female", hair="f05")
+    assert result["ok"], result
+    saved = client.get("/v1/me", headers=headers).json()["profile"]["hero"]["appearance"]
+    assert saved == {"sex": "female", "hair": "f05"}
+    assert act(client, headers, "set_appearance", sex="female", hair="m01")["ok"] is False
+    assert client.get("/v1/me", headers=headers).json()["profile"]["hero"]["appearance"] == saved
+
+
 def test_push_farm_and_assists(client):
     set_clock(client, 0)
     owner, ho = guest(client, "Владелец")

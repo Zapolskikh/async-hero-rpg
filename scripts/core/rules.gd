@@ -35,7 +35,7 @@ const REAL_SLOTS := 3            # up to 3 of 6 board places go to real players
 
 ## Actions without randomness: the client may apply them locally right away.
 const LOCAL_ACTIONS := ["set_rotation", "move_party", "equip", "unequip", "sell", "hire", "fire", "replace", "fuse", "set_name",
-	"talent_up", "talent_reset", "set_threshold", "set_cosmetic"]
+	"talent_up", "talent_reset", "set_threshold", "set_cosmetic", "set_appearance"]
 ## Actions with randomness or rewards: only the authority (server or offline client) runs them.
 const AUTHORITY_ACTIONS := ["reroll", "open_box", "open_pack", "start", "collect", "stop",
 	"gather_start", "gather_claim", "gather_cancel", "craft_start", "craft_claim", "use_item",
@@ -52,7 +52,7 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 		"v": VERSION, "name": name, "created": now,
 		"gold": 100, "boxes": 1, "closed_level": 0,
 		"hero": {"name": name, "level": 1, "xp": 0, "rotation": ["kick", "fireball", "strike"], "talents": {}, "spell_settings": {}, "cosmetics": {},
-			"equipped": _empty_equipment()},
+			"equipped": _empty_equipment(), "appearance": CharacterAppearance.normalize({})},
 		"collection": {}, "inventory": [], "board": [], "hired": [], "party_order": [],
 		"rerolls_today": 0, "reroll_day": "", "free_box_day": "",
 		"expedition": null, "reports": [], "stats": {"hired_total": 0, "assist_gold_total": 0},
@@ -97,6 +97,7 @@ static func migrate(p: Dictionary, now: float) -> void:
 	if int(p.get("v", 0)) < 9:
 		_migrate_combat(p)
 	var hero: Dictionary = p["hero"]
+	hero["appearance"] = CharacterAppearance.normalize(hero.get("appearance"))
 	hero["level"] = int(hero["level"])
 	if typeof(hero.get("talents")) != TYPE_DICTIONARY:
 		hero["talents"] = {}
@@ -414,6 +415,7 @@ static func apply(p: Dictionary, action: String, args: Dictionary, now: float, c
 		"talent_reset": res = _talent_reset(p)
 		"set_threshold": res = _set_threshold(p, str(args.get("sid", "")), float(args.get("value", 0.0)))
 		"set_cosmetic": res = _set_cosmetic(p, str(args.get("slot", "")), str(args.get("id", "")))
+		"set_appearance": res = _set_appearance(p, args)
 		"fake_purchase": res = _fake_purchase(p, str(args.get("pack", "")))
 		"buy_cosmetic": res = _buy_cosmetic(p, str(args.get("id", "")))
 		"rush": res = _rush(p, str(args.get("what", "")), str(args.get("prof", "")), now)
@@ -638,6 +640,18 @@ static func _set_cosmetic(p: Dictionary, slot: String, id: String) -> Dictionary
 	if not id in p["cosmetics_owned"] or Shop.COSMETICS[id]["slot"] != slot:
 		return _err("not owned")
 	p["hero"]["cosmetics"][slot] = id
+	return _ok()
+
+static func _set_appearance(p: Dictionary, args: Dictionary) -> Dictionary:
+	var sex := str(args.get("sex", ""))
+	var hair := str(args.get("hair", ""))
+	if not CharacterAppearance.valid(sex, hair):
+		return _err("invalid appearance")
+	p["hero"]["appearance"] = {"sex": sex, "hair": hair}
+	if p.get("expedition") != null:
+		for snapshot in p["expedition"]["party"]:
+			if snapshot.get("is_hero", false) and not snapshot.has("owner"):
+				snapshot["appearance"] = p["hero"]["appearance"].duplicate()
 	return _ok()
 
 ## Finish the current gathering ("gather") or a profession's craft ("craft") now.

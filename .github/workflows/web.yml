@@ -42,6 +42,7 @@ jobs:
           godot --headless --script res://tests/rules_tests.gd
           godot --headless --script res://tests/combat_revision_tests.gd
           godot --headless --script res://tests/training_tests.gd -- --qa
+          godot --headless --script res://tests/character_tests.gd -- --qa
           python3 -m unittest discover -s tests -p 'test_web_build.py'
 
       - name: Export versioned Web build

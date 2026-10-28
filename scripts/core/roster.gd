@@ -100,6 +100,7 @@ static func hero_snapshot(hero: Dictionary, collection: Dictionary) -> Dictionar
 		"talents": hero.get("talents", {}).duplicate(),
 		"look": look(hero["equipped"]),
 		"cosmetics": cosmetic_colors(hero.get("cosmetics", {})),
+		"appearance": CharacterAppearance.normalize(hero.get("appearance")),
 	}
 
 static func make_merc(rng: RandomNumberGenerator, _template_idx: int, level: int, _tier: int = -1) -> Dictionary:
@@ -111,7 +112,9 @@ static func relevel(rng: RandomNumberGenerator, merc: Dictionary, level: int) ->
 	fresh["spells"] = merc["spells"].duplicate(true)
 	for entry in fresh["spells"]:
 		entry["lvl"] = maxi(int(entry["lvl"]),baseline_spell_level(level))
-	for k in ["name", "color", "id"]:
+	for k in ["name", "color", "id", "appearance"]:
+		if not merc.has(k):
+			continue
 		fresh[k] = merc[k]
 	return fresh
 
@@ -163,6 +166,7 @@ const RANGED_ROLES := ["Лекарь", "Пиромант", "Охотник"]
 
 ## Fills visual fields for snapshots saved before sprites existed.
 static func ensure_visuals(snap: Dictionary) -> void:
+	snap["appearance"] = CharacterAppearance.normalize(snap.get("appearance", CharacterAppearance.for_identity(str(snap.get("id", snap.get("name", "")))) if snap.get("npc", false) else {}))
 	if not snap.has("sprite") or snap["sprite"] == "":
 		snap["sprite"] = ROLE_SPRITES.get(snap.get("role", ""), "hero")
 	if not snap.has("ranged"):

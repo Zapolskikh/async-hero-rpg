@@ -1,0 +1,222 @@
+[
+  {
+    "id": "m01",
+    "sex": "male",
+    "name": "Короткий пробор",
+    "front": "hair/male/m01_front.png",
+    "back": "hair/male/m01_back.png",
+    "size": [
+      128,
+      128
+    ],
+    "pivot": [
+      64,
+      72
+    ],
+    "attach_to": "head",
+    "guide_eye": [
+      945.0,
+      532.5
+    ],
+    "guide_scale": 0.0761904761904762,
+    "prompt": "Use case: stylized-concept. ONE hairstyle production reference for the APPROVED simple smooth geometric 2D RPG character in the attached image (style B). Show ONLY ONE floating adult HEAD and the complete hairstyle, three-quarter SIDE view facing RIGHT, with a tiny single dark rectangular eye and a modest stepped nose. Keep the reference's simple rounded-rectangular head shape and ordinary adult proportions, no anime, no large eyes, no makeup, no earrings, no decorative accessories. No torso, shoulders, UI, text, labels, drop shadow, halo or glow. Genuine transparent background. The FACE/NECK guide MUST be flat WARM PEACH skin with one warm tan shadow (#f2c99b / #dbaa77), so it can be separated from hair. The HAIR MUST be entirely NEUTRAL LIGHT GREY (#e8e8e8) with one NEUTRAL MID-GREY shadow (#b6b6b6), plus a dark charcoal contour (#25252b). NO brown, gold, colored or dark-grey interior hair fills. These neutral hair tones will be tinted in the game engine. No eyebrows, beard or facial hair. Maintain a clean crisp opaque silhouette, no texture or gradients, one or two flat planes per lock, thick simple readable shapes suited to a small game character. Entire hair and head visible with safe margin. A production hairstyle guide, not a detailed portrait. Adult male head. Haircut: Short plain side-parted hair, compact squared crown, short back, one clear broad swept forelock. Similar to the approved male reference but a clean separate haircut."
+  },
+  {
+    "id": "m02",
+    "sex": "male",
+    "name": "Короткая стрижка",
+    "front": "hair/male/m02_front.png",
+    "back": "hair/male/m02_back.png",
+    "size": [
+      128,
+      128
+    ],
+    "pivot": [
+      64,
+      72
+    ],
+    "attach_to": "head",
+    "guide_eye": [
+      879.5,
+      607.0
+    ],
+    "guide_scale": 0.0625,
+    "prompt": "Use case: stylized-concept. ONE hairstyle production reference for the APPROVED simple smooth geometric 2D RPG character in the attached image (style B). Show ONLY ONE floating adult HEAD and the complete hairstyle, three-quarter SIDE view facing RIGHT, with a tiny single dark rectangular eye and a modest stepped nose. Keep the reference's simple rounded-rectangular head shape and ordinary adult proportions, no anime, no large eyes, no makeup, no earrings, no decorative accessories. No torso, shoulders, UI, text, labels, drop shadow, halo or glow. Genuine transparent background. The FACE/NECK guide MUST be flat WARM PEACH skin with one warm tan shadow (#f2c99b / #dbaa77), so it can be separated from hair. The HAIR MUST be entirely NEUTRAL LIGHT GREY (#e8e8e8) with one NEUTRAL MID-GREY shadow (#b6b6b6), plus a dark charcoal contour (#25252b). NO brown, gold, colored or dark-grey interior hair fills. These neutral hair tones will be tinted in the game engine. No eyebrows, beard or facial hair. Maintain a clean crisp opaque silhouette, no texture or gradients, one or two flat planes per lock, thick simple readable shapes suited to a small game character. Entire hair and head visible with safe margin. A production hairstyle guide, not a detailed portrait. Adult male head. Haircut: Very short cropped haircut, a close flat rounded cap following the skull, minimal sideburn, no dramatic spikes."
+  },
+  {
+    "id": "m03",
+    "sex": "male",
+    "name": "Зачёс назад",
+    "front": "hair/male/m03_front.png",
+    "back": "hair/male/m03_back.png",
+    "size": [
+      128,
+      128
+    ],
+    "pivot": [
+      64,
+      72
+    ],
+    "attach_to": "head",
+    "guide_eye": [
+      864.0,
+      678.0
+    ],
+    "guide_scale": 0.06349206349206349,
+    "prompt": "Use case: stylized-concept. ONE hairstyle production reference for the APPROVED simple smooth geometric 2D RPG character in the attached image (style B). Show ONLY ONE floating adult HEAD and the complete hairstyle, three-quarter SIDE view facing RIGHT, with a tiny single dark rectangular eye and a modest stepped nose. Keep the reference's simple rounded-rectangular head shape and ordinary adult proportions, no anime, no large eyes, no makeup, no earrings, no decorative accessories. No torso, shoulders, UI, text, labels, drop shadow, halo or glow. Genuine transparent background. The FACE/NECK guide MUST be flat WARM PEACH skin with one warm tan shadow (#f2c99b / #dbaa77), so it can be separated from hair. The HAIR MUST be entirely NEUTRAL LIGHT GREY (#e8e8e8) with one NEUTRAL MID-GREY shadow (#b6b6b6), plus a dark charcoal contour (#25252b). NO brown, gold, colored or dark-grey interior hair fills. These neutral hair tones will be tinted in the game engine. No eyebrows, beard or facial hair. Maintain a clean crisp opaque silhouette, no texture or gradients, one or two flat planes per lock, thick simple readable shapes suited to a small game character. Entire hair and head visible with safe margin. A production hairstyle guide, not a detailed portrait. Adult male head. Haircut: Short hair swept backward from the forehead, one smooth raised front ridge and two broad backward planes. No pompadour exaggeration."
+  },
+  {
+    "id": "m04",
+    "sex": "male",
+    "name": "Средние волнистые",
+    "front": "hair/male/m04_front.png",
+    "back": "hair/male/m04_back.png",
+    "size": [
+      128,
+      128
+    ],
+    "pivot": [
+      64,
+      72
+    ],
+    "attach_to": "head",
+    "guide_eye": [
+      930.0,
+      643.5
+    ],
+    "guide_scale": 0.0761904761904762,
+    "prompt": "Use case: stylized-concept. ONE hairstyle production reference for the APPROVED simple smooth geometric 2D RPG character in the attached image (style B). Show ONLY ONE floating adult HEAD and the complete hairstyle, three-quarter SIDE view facing RIGHT, with a tiny single dark rectangular eye and a modest stepped nose. Keep the reference's simple rounded-rectangular head shape and ordinary adult proportions, no anime, no large eyes, no makeup, no earrings, no decorative accessories. No torso, shoulders, UI, text, labels, drop shadow, halo or glow. Genuine transparent background. The FACE/NECK guide MUST be flat WARM PEACH skin with one warm tan shadow (#f2c99b / #dbaa77), so it can be separated from hair. The HAIR MUST be entirely NEUTRAL LIGHT GREY (#e8e8e8) with one NEUTRAL MID-GREY shadow (#b6b6b6), plus a dark charcoal contour (#25252b). NO brown, gold, colored or dark-grey interior hair fills. These neutral hair tones will be tinted in the game engine. No eyebrows, beard or facial hair. Maintain a clean crisp opaque silhouette, no texture or gradients, one or two flat planes per lock, thick simple readable shapes suited to a small game character. Entire hair and head visible with safe margin. A production hairstyle guide, not a detailed portrait. Adult male head. Haircut: Medium length casually wavy hair, two or three broad gentle locks, slightly longer at nape, no tiny individual strands."
+  },
+  {
+    "id": "m05",
+    "sex": "male",
+    "name": "Низкий хвост",
+    "front": "hair/male/m05_front.png",
+    "back": "hair/male/m05_back.png",
+    "size": [
+      128,
+      128
+    ],
+    "pivot": [
+      64,
+      72
+    ],
+    "attach_to": "head",
+    "guide_eye": [
+      952.5,
+      633.0
+    ],
+    "guide_scale": 0.0625,
+    "prompt": "Use case: stylized-concept. ONE hairstyle production reference for the APPROVED simple smooth geometric 2D RPG character in the attached image (style B). Show ONLY ONE floating adult HEAD and the complete hairstyle, three-quarter SIDE view facing RIGHT, with a tiny single dark rectangular eye and a modest stepped nose. Keep the reference's simple rounded-rectangular head shape and ordinary adult proportions, no anime, no large eyes, no makeup, no earrings, no decorative accessories. No torso, shoulders, UI, text, labels, drop shadow, halo or glow. Genuine transparent background. The FACE/NECK guide MUST be flat WARM PEACH skin with one warm tan shadow (#f2c99b / #dbaa77), so it can be separated from hair. The HAIR MUST be entirely NEUTRAL LIGHT GREY (#e8e8e8) with one NEUTRAL MID-GREY shadow (#b6b6b6), plus a dark charcoal contour (#25252b). NO brown, gold, colored or dark-grey interior hair fills. These neutral hair tones will be tinted in the game engine. No eyebrows, beard or facial hair. Maintain a clean crisp opaque silhouette, no texture or gradients, one or two flat planes per lock, thick simple readable shapes suited to a small game character. Entire hair and head visible with safe margin. A production hairstyle guide, not a detailed portrait. Adult male head. Haircut: Hair gathered into a short LOW ponytail at back of neck, plain compact crown, one small simple band, tail is a short thick bent shape behind the head."
+  },
+  {
+    "id": "f01",
+    "sex": "female",
+    "name": "Короткая пикси",
+    "front": "hair/female/f01_front.png",
+    "back": "hair/female/f01_back.png",
+    "size": [
+      128,
+      128
+    ],
+    "pivot": [
+      64,
+      72
+    ],
+    "attach_to": "head",
+    "guide_eye": [
+      873.5,
+      660.0
+    ],
+    "guide_scale": 0.05172413793103448,
+    "prompt": "Use case: stylized-concept. ONE hairstyle production reference for the APPROVED simple smooth geometric 2D RPG character in the attached image (style B). Show ONLY ONE floating adult HEAD and the complete hairstyle, three-quarter SIDE view facing RIGHT, with a tiny single dark rectangular eye and a modest stepped nose. Keep the reference's simple rounded-rectangular head shape and ordinary adult proportions, no anime, no large eyes, no makeup, no earrings, no decorative accessories. No torso, shoulders, UI, text, labels, drop shadow, halo or glow. Genuine transparent background. The FACE/NECK guide MUST be flat WARM PEACH skin with one warm tan shadow (#f2c99b / #dbaa77), so it can be separated from hair. The HAIR MUST be entirely NEUTRAL LIGHT GREY (#e8e8e8) with one NEUTRAL MID-GREY shadow (#b6b6b6), plus a dark charcoal contour (#25252b). NO brown, gold, colored or dark-grey interior hair fills. These neutral hair tones will be tinted in the game engine. No eyebrows, beard or facial hair. Maintain a clean crisp opaque silhouette, no texture or gradients, one or two flat planes per lock, thick simple readable shapes suited to a small game character. Entire hair and head visible with safe margin. A production hairstyle guide, not a detailed portrait. Adult female head. Haircut: Short adult pixie haircut, compact back and one asymmetrical side-swept fringe, a few broad clean planes, not anime spikes."
+  },
+  {
+    "id": "f02",
+    "sex": "female",
+    "name": "Каре",
+    "front": "hair/female/f02_front.png",
+    "back": "hair/female/f02_back.png",
+    "size": [
+      128,
+      128
+    ],
+    "pivot": [
+      64,
+      72
+    ],
+    "attach_to": "head",
+    "guide_eye": [
+      883.5,
+      630.5
+    ],
+    "guide_scale": 0.05217391304347826,
+    "prompt": "Use case: stylized-concept. ONE hairstyle production reference for the APPROVED simple smooth geometric 2D RPG character in the attached image (style B). Show ONLY ONE floating adult HEAD and the complete hairstyle, three-quarter SIDE view facing RIGHT, with a tiny single dark rectangular eye and a modest stepped nose. Keep the reference's simple rounded-rectangular head shape and ordinary adult proportions, no anime, no large eyes, no makeup, no earrings, no decorative accessories. No torso, shoulders, UI, text, labels, drop shadow, halo or glow. Genuine transparent background. The FACE/NECK guide MUST be flat WARM PEACH skin with one warm tan shadow (#f2c99b / #dbaa77), so it can be separated from hair. The HAIR MUST be entirely NEUTRAL LIGHT GREY (#e8e8e8) with one NEUTRAL MID-GREY shadow (#b6b6b6), plus a dark charcoal contour (#25252b). NO brown, gold, colored or dark-grey interior hair fills. These neutral hair tones will be tinted in the game engine. No eyebrows, beard or facial hair. Maintain a clean crisp opaque silhouette, no texture or gradients, one or two flat planes per lock, thick simple readable shapes suited to a small game character. Entire hair and head visible with safe margin. A production hairstyle guide, not a detailed portrait. Adult female head. Haircut: Straight chin-length bob with a simple side part, blunt broad bottom contour, front opening clearly showing the face."
+  },
+  {
+    "id": "f03",
+    "sex": "female",
+    "name": "До плеч",
+    "front": "hair/female/f03_front.png",
+    "back": "hair/female/f03_back.png",
+    "size": [
+      128,
+      128
+    ],
+    "pivot": [
+      64,
+      72
+    ],
+    "attach_to": "head",
+    "guide_eye": [
+      894.5,
+      625.5
+    ],
+    "guide_scale": 0.05405405405405406,
+    "prompt": "Use case: stylized-concept. ONE hairstyle production reference for the APPROVED simple smooth geometric 2D RPG character in the attached image (style B). Show ONLY ONE floating adult HEAD and the complete hairstyle, three-quarter SIDE view facing RIGHT, with a tiny single dark rectangular eye and a modest stepped nose. Keep the reference's simple rounded-rectangular head shape and ordinary adult proportions, no anime, no large eyes, no makeup, no earrings, no decorative accessories. No torso, shoulders, UI, text, labels, drop shadow, halo or glow. Genuine transparent background. The FACE/NECK guide MUST be flat WARM PEACH skin with one warm tan shadow (#f2c99b / #dbaa77), so it can be separated from hair. The HAIR MUST be entirely NEUTRAL LIGHT GREY (#e8e8e8) with one NEUTRAL MID-GREY shadow (#b6b6b6), plus a dark charcoal contour (#25252b). NO brown, gold, colored or dark-grey interior hair fills. These neutral hair tones will be tinted in the game engine. No eyebrows, beard or facial hair. Maintain a clean crisp opaque silhouette, no texture or gradients, one or two flat planes per lock, thick simple readable shapes suited to a small game character. Entire hair and head visible with safe margin. A production hairstyle guide, not a detailed portrait. Adult female head. Haircut: Loose shoulder-length straight hair, simple broad back mass, one clean side-swept front section, no individual wispy strands."
+  },
+  {
+    "id": "f04",
+    "sex": "female",
+    "name": "Высокий хвост",
+    "front": "hair/female/f04_front.png",
+    "back": "hair/female/f04_back.png",
+    "size": [
+      128,
+      128
+    ],
+    "pivot": [
+      64,
+      72
+    ],
+    "attach_to": "head",
+    "guide_eye": [
+      978.0,
+      726.5
+    ],
+    "guide_scale": 0.06604838709677419,
+    "prompt": "Use case: stylized-concept. ONE hairstyle production reference for the APPROVED simple smooth geometric 2D RPG character in the attached image (style B). Show ONLY ONE floating adult HEAD and the complete hairstyle, three-quarter SIDE view facing RIGHT, with a tiny single dark rectangular eye and a modest stepped nose. Keep the reference's simple rounded-rectangular head shape and ordinary adult proportions, no anime, no large eyes, no makeup, no earrings, no decorative accessories. No torso, shoulders, UI, text, labels, drop shadow, halo or glow. Genuine transparent background. The FACE/NECK guide MUST be flat WARM PEACH skin with one warm tan shadow (#f2c99b / #dbaa77), so it can be separated from hair. The HAIR MUST be entirely NEUTRAL LIGHT GREY (#e8e8e8) with one NEUTRAL MID-GREY shadow (#b6b6b6), plus a dark charcoal contour (#25252b). NO brown, gold, colored or dark-grey interior hair fills. These neutral hair tones will be tinted in the game engine. No eyebrows, beard or facial hair. Maintain a clean crisp opaque silhouette, no texture or gradients, one or two flat planes per lock, thick simple readable shapes suited to a small game character. Entire hair and head visible with safe margin. A production hairstyle guide, not a detailed portrait. Adult female head. Haircut: Hair drawn into a HIGH ponytail at upper back of the head, one plain band, a single thick tail curving downward behind, compact clean crown."
+  },
+  {
+    "id": "f05",
+    "sex": "female",
+    "name": "Коса",
+    "front": "hair/female/f05_front.png",
+    "back": "hair/female/f05_back.png",
+    "size": [
+      128,
+      128
+    ],
+    "pivot": [
+      64,
+      72
+    ],
+    "attach_to": "head",
+    "guide_eye": [
+      842.0,
+      576.0
+    ],
+    "guide_scale": 0.06604838709677419,
+    "prompt": "Use case: stylized-concept. ONE hairstyle production reference for the APPROVED simple smooth geometric 2D RPG character in the attached image (style B). Show ONLY ONE floating adult HEAD and the complete hairstyle, three-quarter SIDE view facing RIGHT, with a tiny single dark rectangular eye and a modest stepped nose. Keep the reference's simple rounded-rectangular head shape and ordinary adult proportions, no anime, no large eyes, no makeup, no earrings, no decorative accessories. No torso, shoulders, UI, text, labels, drop shadow, halo or glow. Genuine transparent background. The FACE/NECK guide MUST be flat WARM PEACH skin with one warm tan shadow (#f2c99b / #dbaa77), so it can be separated from hair. The HAIR MUST be entirely NEUTRAL LIGHT GREY (#e8e8e8) with one NEUTRAL MID-GREY shadow (#b6b6b6), plus a dark charcoal contour (#25252b). NO brown, gold, colored or dark-grey interior hair fills. These neutral hair tones will be tinted in the game engine. No eyebrows, beard or facial hair. Maintain a clean crisp opaque silhouette, no texture or gradients, one or two flat planes per lock, thick simple readable shapes suited to a small game character. Entire hair and head visible with safe margin. A production hairstyle guide, not a detailed portrait. Adult female head. Haircut: One thick simple braid hanging down the back side of the head, at most FOUR broad interlocking braid lobes, plain crown and side part, one small plain tie."
+  }
+]

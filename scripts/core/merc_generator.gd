@@ -57,4 +57,6 @@ static func make(rng: RandomNumberGenerator, level: int, forced_weapons: Array =
 	var st := Roster.apply_gear(base,gear)
 	Talents.apply_stats(st,talents,weapons)
 	st.merge(Loot.attack_of(st,gear),true)
-	return {"name":Db.MERC_NAMES[rng.randi_range(0,Db.MERC_NAMES.size()-1)],"color":Roster.MERC_COLORS[rng.randi_range(0,Roster.MERC_COLORS.size()-1)],"npc":true,"role":"Наёмник","level":level,"base_stats":base,"gear":gear,"stats":st,"weapons":weapons,"talents":talents,"spells":spells,"target":"front","id":"m%d"%rng.randi(),"sprite":"hero","ranged":weapons.has("bow") or weapons.has("staff"),"look":Roster.look(gear)}
+	var result := {"name":Db.MERC_NAMES[rng.randi_range(0,Db.MERC_NAMES.size()-1)],"color":Roster.MERC_COLORS[rng.randi_range(0,Roster.MERC_COLORS.size()-1)],"npc":true,"role":"Наёмник","level":level,"base_stats":base,"gear":gear,"stats":st,"weapons":weapons,"talents":talents,"spells":spells,"target":"front","id":"m%d"%rng.randi(),"sprite":"hero","ranged":weapons.has("bow") or weapons.has("staff"),"look":Roster.look(gear)}
+	result["appearance"] = CharacterAppearance.for_identity(result["id"])
+	return result

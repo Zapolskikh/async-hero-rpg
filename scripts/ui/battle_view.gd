@@ -11,6 +11,7 @@ const LUNGE_TIME := 0.28
 const HURT_TIME := 0.22
 const DEATH_TIME := 0.6
 const PROJ_TIME := 0.28
+const Character := preload("res://scripts/ui/character_actor.gd")
 
 const SPELL_COLORS := {
 	"fireball": Color("#ff8a2a"), "ignite": Color("#ff5a2a"), "poison_cloud": Color("#7ccf3a"),
@@ -45,6 +46,7 @@ var _sim_ref: BattleSim = null
 var _last_n := 0
 var _preview_units: Array = []
 var _preview_key := ""
+var characters := {}
 
 func _ready() -> void:
 	texture_filter = CanvasItem.TEXTURE_FILTER_NEAREST
@@ -95,7 +97,53 @@ func _process(delta: float) -> void:
 		e["t"] += delta
 		if e["t"] >= e["dur"]:
 			effects.erase(e)
+	_sync_characters(sim.units if sim != null else (_get_preview_units() if preview_mode else []))
 	queue_redraw()
+
+func _sync_characters(units: Array) -> void:
+	var present := []
+	for u in units:
+		if u.side != 0:
+			continue
+		present.append(u.uid)
+		var key := str(u.appearance) + str(u.look)
+		if not characters.has(u.uid):
+			var actor := Character.new()
+			add_child(actor)
+			characters[u.uid] = {"actor":actor, "key":""}
+		var item: Dictionary = characters[u.uid]
+		var actor: CharacterActor = item["actor"]
+		if item["key"] != key:
+			actor.configure(u.appearance, u.look)
+			item["key"] = key
+		var a := _anim(u.uid)
+		var offset := Vector2.ZERO
+		if u.alive():
+			if actor.clip == "death":
+				actor.play("idle")
+			if a["lunge"] > 0.:
+				offset.x += 46. * sin((1. - a["lunge"] / LUNGE_TIME) * PI)
+			if u.is_casting() and (actor.clip not in ["cast", "cast_hold"] or (actor.clip == "cast" and actor.elapsed >= 16. / 24.)):
+				actor.play("cast_hold")
+			elif not u.is_casting() and actor.clip == "cast_hold":
+				actor.play("idle")
+		else:
+			if actor.clip != "death":
+				actor.play("death")
+		actor.position = _home(u) + offset
+		actor.scale = Vector2.ONE * (_sprite_size(u).y / 190.)
+		actor.modulate = Color(1., .55, .55) if a["hurt"] > 0. else Color.WHITE
+		actor.modulate.a = 1. if u.alive() else .5
+	for id in characters.keys():
+		if id not in present:
+			characters[id]["actor"].queue_free()
+			characters.erase(id)
+
+func _character_animation(uid: int, clip: String, start: float = 0.) -> void:
+	if characters.has(uid):
+		var actor: CharacterActor = characters[uid]["actor"]
+		actor.play(clip)
+		actor.elapsed = start
 
 func _anim(uid: int) -> Dictionary:
 	if not anim.has(uid):
@@ -109,6 +157,7 @@ func _consume_events(sim: BattleSim) -> void:
 		_last_n = e.get("n", 0)
 		match e["t"]:
 			"attack":
+				_character_animation(e["uid"], "attack", 8. / 24.)
 				var src := sim.unit_by_uid(e["uid"])
 				var dst := sim.unit_by_uid(e["tgt"])
 				if src != null and dst != null:
@@ -127,6 +176,7 @@ func _consume_events(sim: BattleSim) -> void:
 				_float(e["uid"], ("%d" % e["v"]) + ("!" if e.get("crit", false) else ""), col, 26 if e.get("crit", false) else 20)
 				if not e.get("dot", false):
 					_anim(e["uid"])["hurt"] = HURT_TIME
+					_character_animation(e["uid"], "hit")
 			"heal":
 				_float(e["uid"], "+%d" % e["v"], UI.GOOD, 20)
 				_effect_on(sim, e["uid"], "sparkle", UI.GOOD, 0.5)
@@ -140,7 +190,7 @@ func _consume_events(sim: BattleSim) -> void:
 			"status":
 				_float(e["uid"], e["text"], Color("#c9b6ff"), 18)
 			"cast":
-				pass
+				_character_animation(e["uid"], "cast")
 			"death":
 				_float(e["uid"], "Пал", UI.BAD, 22)
 	if floats.size() > 60:
@@ -150,6 +200,7 @@ func _on_spell(sim: BattleSim, e: Dictionary) -> void:
 	var src := sim.unit_by_uid(e["uid"])
 	if src != null:
 		_float(src.uid,e["text"],UI.ACCENT,17,-44.)
+		_character_animation(src.uid, "cast", 16. / 24.)
 
 func _on_fx(sim: BattleSim, e: Dictionary) -> void:
 	var src := sim.unit_by_uid(e["uid"])
@@ -159,6 +210,7 @@ func _on_fx(sim: BattleSim, e: Dictionary) -> void:
 	var kind: String = e["kind"]
 	var col := Color(e["color"])
 	if kind in ["slash","heavy","bleed","shield_hit","whirlwind"]:
+		_character_animation(src.uid, "attack", 8. / 24.)
 		_anim(src.uid)["lunge"] = LUNGE_TIME
 		_effect_on(sim,dst.uid,kind,col,.42)
 	elif kind in ["shout","shield","cleanse","curse","shockwave","explosion","nature","earth","resurrect"]:
@@ -200,6 +252,8 @@ func k() -> float:
 	return clamp(size.y / 720.0, 0.5, 1.0)
 
 func _sprite_size(u: BattleUnit) -> Vector2:
+	if u.side == 0:
+		return Vector2(90.,150.) * k()
 	var t := tex(u.sprite)
 	var sc := (BOSS_SCALE if u.is_boss else UNIT_SCALE) * k()
 	if t == null:
@@ -346,37 +400,38 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 			var sx := sin(i * 2.1 + clock) * sz.x * 0.35
 			draw_rect(Rect2(home + Vector2(sx, -st * sz.y * 0.7), Vector2(4, 4) * k()), sp)
 
-	# sprite: rotate to fall over when dead, mirror for enemies
-	var pivot := home + offset
-	var angle := -dir * dead_k * PI / 2.0
-	draw_set_transform(pivot, angle, Vector2(dir, 1.0))
-	var rect := Rect2(Vector2(-sz.x / 2.0, -sz.y), sz)
-	if u.sprite == "training_dummy":
-		var wood := Color("#946338") * tint
-		draw_rect(Rect2(-7, -sz.y * .8, 14, sz.y * .8), wood)
-		draw_rect(Rect2(-sz.x * .45, -sz.y * .64, sz.x * .9, 12), wood)
-		draw_rect(Rect2(-22, -sz.y * .88, 44, 35), Color("#d0b171") * tint)
-		draw_rect(Rect2(-24, -sz.y * .58, 48, 39), Color("#b99a61") * tint)
-		draw_circle(Vector2(0, -sz.y * .43), 13, Color("#a34c3e") * tint)
-		draw_circle(Vector2(0, -sz.y * .43), 6, Color("#e6cf9c") * tint)
-		draw_rect(Rect2(-30, -8, 60, 8), wood)
-	elif not u.look.is_empty():
-		if u.cosmetics.has("glow") and u.alive():
-			var gc := Color(u.cosmetics["glow"])
-			gc.a = 0.7 + 0.25 * sin(clock * 4.0)
+	if u.side != 0:
+		# sprite: rotate to fall over when dead, mirror for enemies
+		var pivot := home + offset
+		var angle := -dir * dead_k * PI / 2.0
+		draw_set_transform(pivot, angle, Vector2(dir, 1.0))
+		var rect := Rect2(Vector2(-sz.x / 2.0, -sz.y), sz)
+		if u.sprite == "training_dummy":
+			var wood := Color("#946338") * tint
+			draw_rect(Rect2(-7, -sz.y * .8, 14, sz.y * .8), wood)
+			draw_rect(Rect2(-sz.x * .45, -sz.y * .64, sz.x * .9, 12), wood)
+			draw_rect(Rect2(-22, -sz.y * .88, 44, 35), Color("#d0b171") * tint)
+			draw_rect(Rect2(-24, -sz.y * .58, 48, 39), Color("#b99a61") * tint)
+			draw_circle(Vector2(0, -sz.y * .43), 13, Color("#a34c3e") * tint)
+			draw_circle(Vector2(0, -sz.y * .43), 6, Color("#e6cf9c") * tint)
+			draw_rect(Rect2(-30, -8, 60, 8), wood)
+		elif not u.look.is_empty():
+			if u.cosmetics.has("glow") and u.alive():
+				var gc := Color(u.cosmetics["glow"])
+				gc.a = 0.7 + 0.25 * sin(clock * 4.0)
+				for l in u.look:
+					var gt := tex("doll_" + str(l[0]) + "_glow")
+					if gt != null:
+						draw_texture_rect(gt, rect, false, gc)
 			for l in u.look:
-				var gt := tex("doll_" + str(l[0]) + "_glow")
-				if gt != null:
-					draw_texture_rect(gt, rect, false, gc)
-		for l in u.look:
-			var lt := tex("doll_" + str(l[0]))
-			if lt != null:
-				draw_texture_rect(lt, rect, false, tint * (Color(l[1]) if str(l[1]) != "" else Color.WHITE))
-	elif t != null:
-		draw_texture_rect(t, rect, false, tint)
-	else:
-		draw_rect(rect, u.color * tint)
-	draw_set_transform(Vector2.ZERO)
+				var lt := tex("doll_" + str(l[0]))
+				if lt != null:
+					draw_texture_rect(lt, rect, false, tint * (Color(l[1]) if str(l[1]) != "" else Color.WHITE))
+		elif t != null:
+			draw_texture_rect(t, rect, false, tint)
+		else:
+			draw_rect(rect, u.color * tint)
+		draw_set_transform(Vector2.ZERO)
 
 	if not u.alive():
 		return
@@ -543,7 +598,7 @@ func _text(font: Font, pos: Vector2, text: String, size_px: int, col: Color, out
 
 func _get_preview_units() -> Array:
 	var snaps: Array = Game.party_snapshots()
-	var key := str(Game.party_order) + str(Game.hero["level"])
+	var key := str(snaps)
 	if key != _preview_key:
 		_preview_key = key
 		_preview_units.clear()

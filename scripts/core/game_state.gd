@@ -339,6 +339,18 @@ func gold_boxes_left() -> int:
 func set_cosmetic(slot: String, id: String) -> void:
 	act("set_cosmetic", {"slot": slot, "id": id})
 
+func set_appearance(sex: String, hair: String) -> Dictionary:
+	var result := act("set_appearance", {"sex": sex, "hair": hair})
+	if result.get("ok", false):
+		if expedition != null:
+			for i in expedition.party.size():
+				var snapshot: Dictionary = expedition.party[i]
+				if snapshot.get("is_hero", false) and not snapshot.has("owner"):
+					snapshot["appearance"] = hero["appearance"].duplicate()
+					expedition.allies[i].appearance = hero["appearance"].duplicate()
+		save_game()
+	return result
+
 func fake_purchase(pack: String) -> Dictionary:
 	return await act_authority("fake_purchase", {"pack": pack})
 

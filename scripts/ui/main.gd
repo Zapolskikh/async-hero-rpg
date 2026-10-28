@@ -134,7 +134,7 @@ func _build_top_bar() -> void:
 	var h := UI.hbox(12)
 	top_bar.add_child(h)
 	var hero: Dictionary = Game.hero
-	var av := UI.avatar("hero", Style.ROLE_COLORS["Герой"], 56, false, Game.hero_snapshot()["look"])
+	var av := UI.avatar("hero", Style.ROLE_COLORS["Герой"], 56, false, Game.hero_snapshot()["look"], Game.hero_snapshot()["appearance"])
 	h.add_child(av)
 	UI.tap_overlay(av, _switch.bind("hero"))
 	var who := UI.vbox(2)
@@ -457,7 +457,7 @@ func _level_card() -> Control:
 		var snap = Game.hero_snapshot() if order[i] == "hero" else Game.merc_by_id(order[i])
 		if snap != null:
 			Roster.ensure_visuals(snap)
-			party.add_child(UI.avatar(snap["sprite"], Style.ROLE_COLORS.get(snap["role"], Style.CARD_3), 48, false, snap.get("look", [])))
+			party.add_child(UI.avatar(snap["sprite"], Style.ROLE_COLORS.get(snap["role"], Style.CARD_3), 48, false, snap.get("look", []), snap.get("appearance", {})))
 	party.add_child(UI.spacer())
 	party.add_child(UI.btn("Состав", _switch.bind("mercs"), "ghost", Style.FONT_SMALL, "nav_mercs", 0, 46))
 	v.add_child(party)
@@ -741,13 +741,14 @@ func _screen_hero() -> Control:
 	doll.add_child(left_col)
 	var stage := UI.vbox(0)
 	stage.alignment = BoxContainer.ALIGNMENT_END
-	var big := UI.portrait("hero", 200, false, Game.hero_snapshot()["look"], Game.hero_snapshot()["cosmetics"].get("glow", ""))
+	var big := UI.portrait("hero", 200, false, Game.hero_snapshot()["look"], Game.hero_snapshot()["cosmetics"].get("glow", ""), Game.hero_snapshot()["appearance"])
 	big.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	stage.add_child(big)
 	var ped := UI.flat(Style.BG_DEEP, 0, 20)
 	ped.custom_minimum_size = Vector2(200, 18)
 	ped.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	stage.add_child(ped)
+	stage.add_child(UI.btn("Внешность", _appearance_popup, "ghost", 18, "", 0, 40))
 	doll.add_child(stage)
 	var right_col := UI.vbox(2)
 	right_col.alignment = BoxContainer.ALIGNMENT_CENTER
@@ -1037,6 +1038,17 @@ func _talents_popup() -> void:
 	_modal("Таланты", panel, [["Сбросить бесплатно", _talent_reset, "danger", Talents.points_spent(Game.hero.get("talents",{})) > 0]])
 	panel.custom_minimum_size.x = 930
 
+func _appearance_popup() -> void:
+	var panel := preload("res://scripts/ui/appearance_panel.gd").new()
+	var snap := Game.hero_snapshot()
+	panel.configure(snap["appearance"], snap["look"])
+	_modal("Внешность героя", panel, [["Сохранить", _apply_appearance.bind(panel), "primary", true]], "Отмена")
+
+func _apply_appearance(panel: Control) -> void:
+	var result := Game.set_appearance(panel.value["sex"], panel.value["hair"])
+	if not result.get("ok", false):
+		_toast("Не удалось сохранить внешность")
+
 func _set_threshold(sid: String, value: float) -> void:
 	Game.set_threshold(sid, value)
 	UI.clear(popup_layer)
@@ -1246,7 +1258,7 @@ func _party_editor() -> Control:
 		slot.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 		var sh := UI.hbox(6)
 		slot.add_child(sh)
-		var av := UI.avatar(snap["sprite"], Style.ROLE_COLORS.get(snap["role"], Style.CARD_3), 56, false, snap.get("look", []))
+		var av := UI.avatar(snap["sprite"], Style.ROLE_COLORS.get(snap["role"], Style.CARD_3), 56, false, snap.get("look", []), snap.get("appearance", {}))
 		sh.add_child(av)
 		if id != "hero":
 			UI.tap_overlay(av, _merc_popup.bind(snap))
@@ -1286,7 +1298,7 @@ func _merc_card(m: Dictionary) -> Control:
 	c.add_child(h)
 	var role_col: Color = Style.ROLE_COLORS.get(m["role"], Style.CARD_3)
 	var left := UI.vbox(6)
-	var av := UI.avatar(m["sprite"], role_col, 100, false, m.get("look", []))
+	var av := UI.avatar(m["sprite"], role_col, 100, false, m.get("look", []), m.get("appearance", {}))
 	left.add_child(av)
 	UI.tap_overlay(av, _merc_popup.bind(m))
 	var gear_row := UI.hbox(4)
@@ -1351,7 +1363,7 @@ func _merc_popup(m: Dictionary) -> void:
 	var st: Dictionary = m["stats"]
 	var body := UI.vbox(12)
 	var top := UI.hbox(14)
-	top.add_child(UI.avatar(m["sprite"], Style.ROLE_COLORS.get(m["role"], Style.CARD_3), 110, false, m.get("look", [])))
+	top.add_child(UI.avatar(m["sprite"], Style.ROLE_COLORS.get(m["role"], Style.CARD_3), 110, false, m.get("look", []), m.get("appearance", {})))
 	var tv := UI.vbox(6)
 	var chips := UI.hbox(6)
 	chips.add_child(UI.chip(m["role"], Style.ROLE_COLORS.get(m["role"], Style.CARD_3), 14))
