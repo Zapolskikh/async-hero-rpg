@@ -35,6 +35,12 @@ var projectiles: Array = []   # {from, to, t, color, kind}
 var effects: Array = []       # {pos, t, dur, kind, color, radius}
 var clock := 0.0
 var preview_mode := false      # embedded on the hub: show the idle party when no expedition runs
+var training_sim: BattleSim = null # isolated sandbox; never replaces Game.expedition
+
+func active_sim() -> BattleSim:
+	if training_sim != null:
+		return training_sim
+	return Game.expedition.sim if Game.expedition != null else null
 var _sim_ref: BattleSim = null
 var _last_n := 0
 var _preview_units: Array = []
@@ -55,19 +61,20 @@ func tex(name: String) -> Texture2D:
 
 func _process(delta: float) -> void:
 	clock += delta
-	var ex: Expedition = Game.expedition
-	if ex != null and ex.sim != null:
-		if ex.sim != _sim_ref:
-			_sim_ref = ex.sim
+	var sim := active_sim()
+	if sim != null:
+		if sim != _sim_ref:
+			_sim_ref = sim
 			_last_n = 0
 			floats.clear()
 			projectiles.clear()
 			effects.clear()
-			for u in ex.sim.units:
+			anim.clear()
+			for u in sim.units:
 				if u.side == 1 or not anim.has(u.uid):
 					anim[u.uid] = {"lunge": 0.0, "hurt": 0.0, "dead": 0.0 if u.alive() else DEATH_TIME}
-		_consume_events(ex.sim)
-		for u in ex.sim.units:
+		_consume_events(sim)
+		for u in sim.units:
 			var a: Dictionary = _anim(u.uid)
 			a["lunge"] = max(0.0, a["lunge"] - delta)
 			a["hurt"] = max(0.0, a["hurt"] - delta)
@@ -225,7 +232,8 @@ func _draw() -> void:
 	_draw_background()
 	var font := ThemeDB.fallback_font
 	var ex: Expedition = Game.expedition
-	if ex == null or ex.sim == null:
+	var sim := active_sim()
+	if sim == null:
 		if preview_mode:
 			for u in _get_preview_units():
 				_draw_unit(u, font)
@@ -233,7 +241,7 @@ func _draw() -> void:
 			_text(font, Vector2(40, 110), "Нет активного похода", 28, Color.WHITE)
 		return
 	# back to front: higher slots first so the frontline overlaps them
-	var order: Array = ex.sim.units.duplicate()
+	var order: Array = sim.units.duplicate()
 	order.sort_custom(func(a, b): return a.slot > b.slot)
 	for u in order:
 		if not u.alive():
@@ -246,7 +254,7 @@ func _draw() -> void:
 	for p in projectiles:
 		_draw_projectile(p)
 	for f in floats:
-		var u := ex.sim.unit_by_uid(f["uid"])
+		var u := sim.unit_by_uid(f["uid"])
 		if u == null:
 			continue
 		var r := unit_rect(u)
@@ -257,7 +265,7 @@ func _draw() -> void:
 		var w := font.get_string_size(f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, f["size"]).x
 		draw_string_outline(font, pos - Vector2(w / 2.0, 0), f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, f["size"], 5, Color(0, 0, 0, col.a))
 		draw_string(font, pos - Vector2(w / 2.0, 0), f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, f["size"], col)
-	if ex.pause > 0.0:
+	if training_sim == null and ex != null and ex.pause > 0.0:
 		var msg := "Волна %d / %d" % [ex.wave_index + 1, ex.total_waves()]
 		var w := font.get_string_size(msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 44).x
 		_text(font, Vector2(size.x / 2.0 - w / 2.0, size.y * 0.33), msg, 44, UI.ACCENT)
@@ -343,7 +351,16 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 	var angle := -dir * dead_k * PI / 2.0
 	draw_set_transform(pivot, angle, Vector2(dir, 1.0))
 	var rect := Rect2(Vector2(-sz.x / 2.0, -sz.y), sz)
-	if not u.look.is_empty():
+	if u.sprite == "training_dummy":
+		var wood := Color("#946338") * tint
+		draw_rect(Rect2(-7, -sz.y * .8, 14, sz.y * .8), wood)
+		draw_rect(Rect2(-sz.x * .45, -sz.y * .64, sz.x * .9, 12), wood)
+		draw_rect(Rect2(-22, -sz.y * .88, 44, 35), Color("#d0b171") * tint)
+		draw_rect(Rect2(-24, -sz.y * .58, 48, 39), Color("#b99a61") * tint)
+		draw_circle(Vector2(0, -sz.y * .43), 13, Color("#a34c3e") * tint)
+		draw_circle(Vector2(0, -sz.y * .43), 6, Color("#e6cf9c") * tint)
+		draw_rect(Rect2(-30, -8, 60, 8), wood)
+	elif not u.look.is_empty():
 		if u.cosmetics.has("glow") and u.alive():
 			var gc := Color(u.cosmetics["glow"])
 			gc.a = 0.7 + 0.25 * sin(clock * 4.0)

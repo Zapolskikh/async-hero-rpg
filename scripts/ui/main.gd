@@ -1020,48 +1020,15 @@ func _shop_wear(slot: String, id: String) -> void:
 	Game.set_cosmetic(slot, id)
 	_shop_popup()
 
-## Training dummy: the hero alone hits dummies for 60 s; DPS and the share of each skill.
+## A separate live sandbox; never changes the saved hero or the active expedition.
 func _dummy_popup() -> void:
-	var lvl := mini(Game.closed_level + 1, Db.level_count())
-	var armor: float = Expedition.enemy_snapshot("brute", lvl)["stats"]["armor"]
-	var v := UI.vbox(8)
-	v.add_child(UI.wrap("Герой один бьёт манекены 60 секунд. Броня манекена как у обычного врага уровня %d (%d). Лечение и щиты тут не считаются." % [lvl, armor], Style.FONT_TINY, Style.MUTED))
-	var cols := UI.hbox(12)
-	for n in [1, 3]:
-		var res := _dummy_run(n, armor)
-		var c := UI.card(Style.BG_DEEP, 10)
-		c.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var cv := UI.vbox(6)
-		c.add_child(cv)
-		cv.add_child(UI.label("%s: %d урона в сек" % ["1 цель" if n == 1 else "3 цели", roundi(res["dps"])], Style.FONT_BODY, Style.TEXT, true))
-		var by: Dictionary = res["by"]
-		var keys: Array = by.keys()
-		keys.sort_custom(func(a, b): return by[a] > by[b])
-		for k in keys:
-			var row := UI.hbox(6)
-			row.add_child(UI.icon("atk" if k == "attack" else UI.spell_icon(k), 24))
-			row.add_child(UI.expand(UI.label("Автоатака" if k == "attack" else Db.SPELLS[k]["name"], Style.FONT_SMALL, Style.TEXT)))
-			row.add_child(UI.label("%d/с · %d%%" % [roundi(by[k] / 60.0), roundi(by[k] / max(1.0, res["total"]) * 100)], Style.FONT_SMALL, Style.MUTED))
-			cv.add_child(row)
-		cols.add_child(c)
-	v.add_child(cols)
-	_modal("Манекен", v)
-
-func _dummy_run(targets: int, armor: float) -> Dictionary:
-	var snap := Game.hero_snapshot()
-	var sim := BattleSim.new()
-	sim.record_events = false
-	var hero := BattleUnit.new(0, 0, 0, snap)
-	var dummies := []
-	for i in targets:
-		dummies.append({"name": "Манекен", "stats": {"hp": 1.0e9, "atk": 0.0, "power": 0.0, "armor": armor}, "spells": []})
-	sim.setup([hero], dummies, 7)
-	for i in 600:
-		sim.step()
-	var total := 0.0
-	for k in hero.dealt_by:
-		total += float(hero.dealt_by[k])
-	return {"dps": total / sim.time, "by": hero.dealt_by, "total": total}
+	var backdrop := UI.card(Style.BG, 16)
+	backdrop.set_anchors_preset(Control.PRESET_FULL_RECT)
+	popup_layer.add_child(backdrop)
+	var panel := preload("res://scripts/ui/training_panel.gd").new()
+	panel.configure(Game.hero_snapshot())
+	backdrop.add_child(panel)
+	panel.tree_exited.connect(backdrop.queue_free)
 
 func _talents_popup() -> void:
 	UI.clear(popup_layer)
