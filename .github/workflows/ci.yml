@@ -25,6 +25,7 @@ jobs:
           godot --headless --script res://tests/combat_revision_tests.gd
           godot --headless --script res://tests/training_tests.gd -- --qa
           godot --headless --script res://tests/character_tests.gd -- --qa
+          godot --headless --script res://tests/weapon_motion_tests.gd -- --qa
       - uses: actions/setup-python@v5
         with: {python-version: "3.12"}
       - name: Server tests

@@ -8,6 +8,7 @@ const UNIT_SCALE := 3.0          # 34x42 sprites -> ~102x126 on a 720px tall vie
 const BOSS_SCALE := 1.9          # bosses are generated at 2x already
 const FLOAT_LIFE := 1.1
 const LUNGE_TIME := 0.28
+const CHARACTER_LUNGE_TIME := .52
 const HURT_TIME := 0.22
 const DEATH_TIME := 0.6
 const PROJ_TIME := 0.28
@@ -122,7 +123,7 @@ func _sync_characters(units: Array) -> void:
 			if actor.clip == "death":
 				actor.play("idle")
 			if a["lunge"] > 0.:
-				offset.x += 46. * sin((1. - a["lunge"] / LUNGE_TIME) * PI)
+				offset += _lunge_offset(u,a["lunge"])
 			if u.is_casting() and (actor.clip not in ["cast", "cast_hold"] or (actor.clip == "cast" and actor.elapsed >= 16. / 24.)):
 				actor.play("cast_hold")
 			elif not u.is_casting() and actor.clip == "cast_hold":
@@ -145,6 +146,26 @@ func _character_animation(uid: int, clip: String, start: float = 0.) -> void:
 		actor.play(clip)
 		actor.elapsed = start
 
+func _lunge_offset(u: BattleUnit, remaining: float) -> Vector2:
+	if u.side == 0 and (u.equipped("staff") or u.equipped("bow")):
+		return Vector2.ZERO
+	var state := _anim(u.uid)
+	var duration: float = state.get("lunge_duration",CHARACTER_LUNGE_TIME if u.side == 0 else LUNGE_TIME)
+	var pulse := sin(clampf(1.-remaining/duration,0.,1.)*PI)
+	if state.get("motion","") == "shield_bash":
+		return Vector2(14.,-5.) * pulse
+	return Vector2(46. if u.side == 0 else -46.,0.) * pulse
+
+func _melee_motion(src: BattleUnit, shield: bool = false) -> void:
+	_character_animation(src.uid,"shield_bash" if shield else "attack")
+	var state := _anim(src.uid)
+	state["motion"] = "shield_bash" if shield else "attack"
+	state["lunge_duration"] = (.4 if shield else CHARACTER_LUNGE_TIME) if src.side == 0 else LUNGE_TIME
+	if src.side == 0 and (src.equipped("staff") or src.equipped("bow")):
+		_anim(src.uid)["lunge"] = 0.
+		return
+	state["lunge"] = state["lunge_duration"]
+
 func _anim(uid: int) -> Dictionary:
 	if not anim.has(uid):
 		anim[uid] = {"lunge": 0.0, "hurt": 0.0, "dead": 0.0}
@@ -157,14 +178,14 @@ func _consume_events(sim: BattleSim) -> void:
 		_last_n = e.get("n", 0)
 		match e["t"]:
 			"attack":
-				_character_animation(e["uid"], "attack", 8. / 24.)
+				_character_animation(e["uid"], "attack")
 				var src := sim.unit_by_uid(e["uid"])
 				var dst := sim.unit_by_uid(e["tgt"])
 				if src != null and dst != null:
-					if src.ranged:
+					if src.equipped("bow") or src.ranged:
 						_shoot(src, dst, Color("#e8dcc0"), "arrow")
-					else:
-						_anim(src.uid)["lunge"] = LUNGE_TIME
+					elif not src.equipped("staff"):
+						_melee_motion(src)
 			"fx":
 				_on_fx(sim,e)
 			"spell":
@@ -210,8 +231,7 @@ func _on_fx(sim: BattleSim, e: Dictionary) -> void:
 	var kind: String = e["kind"]
 	var col := Color(e["color"])
 	if kind in ["slash","heavy","bleed","shield_hit","whirlwind"]:
-		_character_animation(src.uid, "attack", 8. / 24.)
-		_anim(src.uid)["lunge"] = LUNGE_TIME
+		_melee_motion(src,kind == "shield_hit")
 		_effect_on(sim,dst.uid,kind,col,.42)
 	elif kind in ["shout","shield","cleanse","curse","shockwave","explosion","nature","earth","resurrect"]:
 		_effect_on(sim,dst.uid,kind,col,.65)
@@ -226,7 +246,16 @@ func _on_fx(sim: BattleSim, e: Dictionary) -> void:
 					break
 
 func _shoot(src: BattleUnit, dst: BattleUnit, col: Color, kind: String) -> void:
-	projectiles.append({"from": _center(src) + Vector2(0, -10), "to": _center(dst), "t": 0.0, "color": col, "kind": kind})
+	var start := _center(src) + Vector2(0, -10)
+	var delay := 0.
+	if src.side == 0 and src.equipped("bow") and kind in ["arrow","poison_arrow","fire_arrow","arrow_rain"]:
+		_character_animation(src.uid,"shoot")
+		_anim(src.uid)["lunge"] = 0.
+		delay = .22 # draw, release, then fly; the simulation's hit timing is unchanged
+		if characters.has(src.uid):
+			var actor: CharacterActor = characters[src.uid]["actor"]
+			start = actor.position + Vector2(48,-184)*actor.scale
+	projectiles.append({"from": start, "to": _center(dst), "t": -delay, "color": col, "kind": kind})
 
 func _effect_on(sim: BattleSim, uid: int, kind: String, col: Color, dur: float) -> void:
 	var u := sim.unit_by_uid(uid)
@@ -354,8 +383,7 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 	if u.alive():
 		offset.y = -abs(sin(clock * 3.0 + u.uid)) * 3.0   # idle breathing
 		if a["lunge"] > 0.0:
-			var k: float = sin((1.0 - a["lunge"] / LUNGE_TIME) * PI)
-			offset.x += dir * 46.0 * k
+			offset += _lunge_offset(u,a["lunge"])
 		if a["hurt"] > 0.0:
 			offset.x -= dir * 8.0 * (a["hurt"] / HURT_TIME)
 		if u.is_casting():
@@ -484,6 +512,8 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 		_text(font, Vector2(home.x - sw2 / 2.0, cb.end.y + 17), sname, 15, Color.WHITE, 4)
 
 func _draw_projectile(p: Dictionary) -> void:
+	if p["t"] < 0.:
+		return
 	var k: float = p["t"] / PROJ_TIME
 	var from: Vector2 = p["from"]
 	var to: Vector2 = p["to"]
