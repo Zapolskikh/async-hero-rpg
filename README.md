@@ -4,7 +4,7 @@
 
 ## Как запустить
 
-**В браузере (в том числе с телефона):** https://zapolskikh.github.io/async-hero-rpg/ — веб-сборка лежит в ветке `gh-pages`. Чтобы ссылка заработала, один раз включите GitHub Pages: Settings → Pages → Source: Deploy from a branch → `gh-pages` / `(root)`. Телефон лучше повернуть горизонтально.
+**В браузере (в том числе с телефона):** https://zapolskikh.github.io/async-hero-rpg/ — каждый push в `main` автоматически собирает и публикует Web через GitHub Actions. В Settings → Pages выбран Source: GitHub Actions. Телефон лучше повернуть горизонтально.
 
 **В редакторе:**
 
@@ -117,7 +117,7 @@ godot --headless --script res://tests/balance_report.gd   # минимальны
 godot --headless --export-release "Web" build/web/index.html
 ```
 
-Потом содержимое `build/web` кладётся в ветку `gh-pages`.
+Публикация выполняется автоматически из `main` workflow-файлом `.github/workflows/web.yml`: проверки → экспорт с версией в именах файлов → GitHub Pages. Ветка `gh-pages` больше не используется для актуального сайта. Версию опубликованной сборки можно проверить в `/async-hero-rpg/version.json`. Обновление кэша не удаляет сохранения; для уже открытой игры появляется кнопка обновления.
 
 ## Темп прохождения
 
