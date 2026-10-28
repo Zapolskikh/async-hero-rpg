@@ -39,6 +39,24 @@ func _run() -> void:
 	view._shoot(allies[1],sim.units[4],Color.WHITE,"arrow")
 	check(view.characters[1]["actor"].clip == "shoot", "Arrow plays bow draw and release")
 	check(view.projectiles[-1]["t"] == -.22, "Projectile waits for string release")
+	for target in [Vector2(304,216),Vector2(281,234),Vector2(250,169),Vector2(305,222),Vector2(232,174),Vector2(160,263),Vector2(175,180),Vector2(240,220),Vector2(212,145)]:
+		for shoulder in [Vector2(169,195),Vector2(237,195)]:
+			var solved := WeaponMotion.solve_arm(shoulder,target)
+			check(solved["elbow"].y >= (shoulder.y+solved["hand"].y)*.5-.01,"Elbow chooses the lower anatomical bend")
+	var before_pole := WeaponMotion.solve_arm(Vector2(169,195),Vector2(168,215))
+	var after_pole := WeaponMotion.solve_arm(Vector2(169,195),Vector2(170,215))
+	check(before_pole["elbow"].distance_to(after_pole["elbow"]) < 12.,"Elbow does not pop across the shoulder when the wrist crosses vertically")
+	for u in allies:
+		u.casting = {"spell":"fireball","remaining":1.,"total":1.5,"target":sim.units[4],"lvl":1}
+	view._sync_characters(sim.units)
+	for u in allies:
+		var actor: CharacterActor = view.characters[u.uid]["actor"]
+		check(actor.clip == "cast" and actor.magic_color == Color(Db.SPELLS["fireball"]["color"]),"All weapons prepare magic with the spell color")
+		actor.elapsed = .7
+	view._sync_characters(sim.units)
+	check(view.characters[0]["actor"].clip == "cast_hold","Long casts hold the raised hand")
+	view._on_spell(sim,{"uid":0,"sid":"heal","text":"Heal"})
+	check(view.characters[0]["actor"].clip == "cast_release" and view.characters[0]["actor"].magic_color == Color(Db.SPELLS["heal"]["color"]),"Release gesture uses the actual spell color")
 	view.queue_free()
 	await process_frame
 	sim.release()
@@ -75,12 +93,13 @@ func _run() -> void:
 			root.get_texture().get_image().save_png("res://build/qa/weapon-motion/"+sex+".png")
 		gallery.queue_free()
 		await process_frame
-	if "--motion-preview" in OS.get_cmdline_user_args() and DisplayServer.get_name() != "headless":
+	if ("--motion-preview" in OS.get_cmdline_user_args() or "--magic-preview" in OS.get_cmdline_user_args()) and DisplayServer.get_name() != "headless":
 		await _record_preview()
 	print("WEAPON MOTION: %d assertions, %d failures" % [assertions,failures])
 	quit(1 if failures else 0)
 
 func _record_preview() -> void:
+	var magic_preview := "--magic-preview" in OS.get_cmdline_user_args()
 	var gallery := UI.card(Style.CARD,12)
 	gallery.set_anchors_preset(Control.PRESET_FULL_RECT)
 	root.add_child(gallery)
@@ -96,13 +115,14 @@ func _record_preview() -> void:
 			cell.add_child(canvas)
 			var actor := CharacterActor.new()
 			canvas.add_child(actor)
-			actor.configure({"sex":sex},[],[["sword"],["bow"],["sword","shield"]][i])
+			actor.configure({"sex":sex},[],([["staff"],["sword","shield"],["greatsword"]] if magic_preview else [["sword"],["bow"],["sword","shield"]])[i])
 			actor.position = Vector2(210,285)
 			actor.scale = Vector2.ONE * .75
 			actor.set_process(false)
+			actor.magic_color = Color(["#ff8a2a","#83efa0","#b68aff"][i])
 			actors.append({"actor":actor,"clip":["attack","shoot","shield_bash"][i]})
-			cell.add_child(UI.label(["Меч · замах и удар","Лук · натяжение и выстрел","Щит · вперёд и вверх"][i],22))
-	var directory := "res://build/qa/weapon-motion/frames"
+			cell.add_child(UI.label((["Посох · правая рука","Щит остаётся в левой","Двуручник · отпускает правую"] if magic_preview else ["Меч · замах и удар","Лук · натяжение и выстрел","Щит · вперёд и вверх"])[i],22))
+	var directory := "res://build/qa/weapon-motion/" + ("magic-frames" if magic_preview else "frames")
 	DirAccess.make_dir_recursive_absolute(directory)
 	for frame in 90:
 		var time := fmod(frame/30.,1.5)-.3
@@ -111,6 +131,20 @@ func _record_preview() -> void:
 			var action: String = item["clip"]
 			actor.clip = action if time >= 0. and time < actor.DURATIONS[action] else "idle"
 			actor.elapsed = maxf(0.,time)
+			if magic_preview:
+				var t := fmod(frame/30.,1.5)
+				if t < .65:
+					actor.clip = "cast"
+					actor.elapsed = t
+				elif t < .9:
+					actor.clip = "cast_hold"
+					actor.elapsed = t-.65
+				elif t < 1.3:
+					actor.clip = "cast_release"
+					actor.elapsed = .12+(t-.9)*.7
+				else:
+					actor.clip = "idle"
+					actor.elapsed = t-1.3
 			actor._apply_pose()
 			var phase := clampf(time / actor.DURATIONS[action],0.,1.)
 			actor.position = Vector2(210,285)

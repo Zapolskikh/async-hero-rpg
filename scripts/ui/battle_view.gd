@@ -124,9 +124,19 @@ func _sync_characters(units: Array) -> void:
 				actor.play("idle")
 			if a["lunge"] > 0.:
 				offset += _lunge_offset(u,a["lunge"])
-			if u.is_casting() and (actor.clip not in ["cast", "cast_hold"] or (actor.clip == "cast" and actor.elapsed >= 16. / 24.)):
-				actor.play("cast_hold")
-			elif not u.is_casting() and actor.clip == "cast_hold":
+			if u.is_casting():
+				var casting: Dictionary = u.casting if not u.casting.is_empty() else u.channel
+				var spell: Dictionary = Db.SPELLS[casting["spell"]]
+				if spell.get("weapon",false):
+					if u.equipped("bow") and actor.clip != "aim_hold":
+						actor.play("aim_hold")
+				else:
+					var color := Color(spell.get("color","#99cfff"))
+					if actor.clip not in ["cast","cast_hold"] or actor.magic_color != color:
+						actor.begin_magic(color)
+					elif actor.clip == "cast" and actor.elapsed >= .65:
+						actor.play("cast_hold")
+			elif actor.clip in ["cast","cast_hold","aim_hold"]:
 				actor.play("idle")
 		else:
 			if actor.clip != "death":
@@ -197,7 +207,9 @@ func _consume_events(sim: BattleSim) -> void:
 				_float(e["uid"], ("%d" % e["v"]) + ("!" if e.get("crit", false) else ""), col, 26 if e.get("crit", false) else 20)
 				if not e.get("dot", false):
 					_anim(e["uid"])["hurt"] = HURT_TIME
-					_character_animation(e["uid"], "hit")
+					var hurt_unit := sim.unit_by_uid(e["uid"])
+					if hurt_unit == null or not hurt_unit.is_casting():
+						_character_animation(e["uid"], "hit")
 			"heal":
 				_float(e["uid"], "+%d" % e["v"], UI.GOOD, 20)
 				_effect_on(sim, e["uid"], "sparkle", UI.GOOD, 0.5)
@@ -211,7 +223,7 @@ func _consume_events(sim: BattleSim) -> void:
 			"status":
 				_float(e["uid"], e["text"], Color("#c9b6ff"), 18)
 			"cast":
-				_character_animation(e["uid"], "cast")
+				pass # synchronized from the current cast, including its school color
 			"death":
 				_float(e["uid"], "Пал", UI.BAD, 22)
 	if floats.size() > 60:
@@ -221,7 +233,9 @@ func _on_spell(sim: BattleSim, e: Dictionary) -> void:
 	var src := sim.unit_by_uid(e["uid"])
 	if src != null:
 		_float(src.uid,e["text"],UI.ACCENT,17,-44.)
-		_character_animation(src.uid, "cast", 16. / 24.)
+		var spell: Dictionary = Db.SPELLS.get(e.get("sid",""),{})
+		if not spell.get("weapon",false) and spell.get("fx","") not in ["slash","heavy","bleed","shield_hit","whirlwind"] and characters.has(src.uid):
+			characters[src.uid]["actor"].begin_magic(Color(spell.get("color","#99cfff")),false)
 
 func _on_fx(sim: BattleSim, e: Dictionary) -> void:
 	var src := sim.unit_by_uid(e["uid"])

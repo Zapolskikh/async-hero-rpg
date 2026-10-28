@@ -49,7 +49,7 @@ func _run() -> void:
 		for i in weapon_sets.size():
 			actor.configure({"sex":sex}, [], weapon_sets[i])
 			check(actor.preset == CharacterActor.PRESETS[i], "Weapon selects V2 preset")
-			check(actor.body.texture.resource_path == CharacterActor.ROOT + "sprites/" + sex + "/" + actor.preset + ".png", "Exact supplied V2 artwork")
+			check(actor.body.texture.resource_path == CharacterActor.ROOT + "sprites/" + sex + "/" + ("base" if actor.preset == "bow" else actor.preset) + ".png", "Supplied V2 torso with shared bow stance")
 			check(actor.body.texture.get_size() == Vector2(512,512), "Full source canvas preserved")
 			check(actor.body.position == -CharacterActor.PIVOT, "Shared ground pivot preserved")
 		var texture := actor.body.texture
@@ -57,7 +57,7 @@ func _run() -> void:
 			actor.play(clip)
 			actor.elapsed = .4
 			actor._apply_pose()
-			check(actor.body.texture == texture, "Combat motion retains the complete V2 drawing")
+			check(actor.body.texture.resource_path == CharacterActor.ROOT + "sprites/" + sex + "/base.png" if actor.motion.active else actor.body.texture == texture, "Combat gestures preserve the supplied V2 torso")
 			check(actor.pose.scale == Vector2.ONE and actor.body.scale == Vector2.ONE, "No nonuniform deformation or joint transforms")
 	actor.queue_free()
 	var gallery := UI.card(Style.CARD, 12)

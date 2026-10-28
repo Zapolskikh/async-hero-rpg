@@ -10,6 +10,7 @@ var sex := "male"
 var clip := "idle"
 var phase := 0.
 var active := false
+var magic_color := Color("#99cfff")
 
 func _blend(a: Vector2, b: Vector2, c: Vector2, p: float) -> Vector2:
 	if p < .3:
@@ -21,12 +22,23 @@ func _blend(a: Vector2, b: Vector2, c: Vector2, p: float) -> Vector2:
 func _angle(a: float, b: float, c: float, p: float) -> float:
 	return _blend(Vector2(a,0),Vector2(b,0),Vector2(c,0),p).x
 
-func _arm(shoulder: Vector2, target: Vector2, bend: float) -> Vector2:
+static func solve_arm(shoulder: Vector2, target: Vector2, _bend: float = 1.) -> Dictionary:
 	var delta := target - shoulder
 	var distance := clampf(delta.length(), 4., 79.)
 	var hand := shoulder + delta.normalized() * distance
 	var direction_to_hand := delta.normalized()
-	var elbow := (shoulder + hand) * .5 + Vector2(-direction_to_hand.y,direction_to_hand.x) * sqrt(1600. - distance * distance * .25) * bend
+	var middle := (shoulder + hand) * .5
+	var normal := Vector2(-direction_to_hand.y,direction_to_hand.x) * sqrt(1600. - distance * distance * .25)
+	# Screen Y grows down. The pole remains below the shoulder/wrist line.
+	# Blend through the vertical singularity instead of mirroring the elbow in one frame.
+	var side := clampf(delta.x / 12.,-1.,1.)
+	var elbow := middle + normal * side
+	return {"hand":hand,"elbow":elbow,"shoulder":shoulder}
+
+func _arm(shoulder: Vector2, target: Vector2, bend: float) -> Vector2:
+	var solved := solve_arm(shoulder,target,bend)
+	var hand: Vector2 = solved["hand"]
+	var elbow: Vector2 = solved["elbow"]
 	var points := PackedVector2Array([shoulder,elbow,hand])
 	# Draw the silhouette first, then one continuous sleeve: no internal elbow outline.
 	# Separate strokes + round fills avoid long miter spikes when the elbow folds.
@@ -73,8 +85,8 @@ func _shield(center: Vector2, angle: float = 0.) -> void:
 	draw_set_transform(Vector2.ZERO)
 
 func _bow(bow_hand: Vector2, pull_hand: Vector2, released: bool) -> void:
-	var top := bow_hand + Vector2(-3,-81)
-	var bottom := bow_hand + Vector2(-3,81)
+	var top := bow_hand + Vector2(-3,-112)
+	var bottom := bow_hand + Vector2(-3,112)
 	var curve := PackedVector2Array()
 	for i in 25:
 		var t := i / 24.
@@ -88,6 +100,47 @@ func _bow(bow_hand: Vector2, pull_hand: Vector2, released: bool) -> void:
 		draw_colored_polygon(PackedVector2Array([notch+Vector2(110,0),notch+Vector2(99,-4),notch+Vector2(99,4)]),Color("#d4dce7"))
 		draw_line(notch+Vector2(7,-4),notch+Vector2(15,4),Color("#ddd9c5"),3.,true)
 
+func _staff(hand: Vector2) -> void:
+	draw_line(hand+Vector2(0,145),hand-Vector2(0,140),EDGE,10.,true)
+	draw_line(hand+Vector2(0,143),hand-Vector2(0,138),Color("#94602d"),6.,true)
+	var tip := hand-Vector2(0,145)
+	draw_colored_polygon(PackedVector2Array([tip+Vector2(0,-17),tip+Vector2(10,0),tip+Vector2(0,17),tip+Vector2(-10,0)]),EDGE)
+	draw_colored_polygon(PackedVector2Array([tip+Vector2(0,-12),tip+Vector2(6,0),tip+Vector2(0,12),tip+Vector2(-6,0)]),Color("#a46bf0"))
+
+func _glow(hand: Vector2) -> void:
+	for ring in 4:
+		var color := magic_color
+		color.a = .07 + ring * .07
+		draw_circle(hand, 30. - ring * 7.,color)
+	var bright := magic_color.lightened(.45)
+	bright.a = .85
+	draw_line(hand-Vector2(0,12),hand+Vector2(0,12),bright,2.,true)
+	draw_line(hand-Vector2(12,0),hand+Vector2(12,0),bright,2.,true)
+
+func _magic(left_shoulder: Vector2, right_shoulder: Vector2) -> void:
+	var left_target := Vector2(160,263)
+	if preset == "greatsword":
+		left_target = Vector2(230,244)
+	elif preset in ["sword_shield","staff","bow"]:
+		left_target = Vector2(180,248)
+	var left := _arm(left_shoulder,left_target,1.)
+	match preset:
+		"sword", "dual_swords": _sword(left,135. if preset == "dual_swords" else 26.)
+		"greatsword": _sword(left,-55.,true)
+		"staff": _staff(left)
+		"bow": _bow(left,left,true)
+	var rest := Vector2(260,266)
+	var prepare := Vector2(190,137)
+	var target := prepare
+	if clip == "cast":
+		target = rest.lerp(prepare,smoothstep(0.,.65,phase))
+	elif clip == "cast_release":
+		target = _blend(rest,prepare,Vector2(274,157),phase)
+	var right := _arm(right_shoulder,target,-1.)
+	_glow(right)
+	if preset == "sword_shield":
+		_shield(left+Vector2(4,0))
+
 func _draw() -> void:
 	if not active:
 		if preset == "sword_shield":
@@ -100,10 +153,23 @@ func _draw() -> void:
 		# Restore the small trouser area originally hidden by the baked glove.
 		draw_colored_polygon(PackedVector2Array([Vector2(182,276),Vector2(191,276),Vector2(190,294),Vector2(177,298),Vector2(178,287)]),Color("#343442"))
 		draw_line(Vector2(181,277),Vector2(177,296),EDGE,2.,true)
+	if clip in ["cast","cast_hold","cast_release"]:
+		_magic(left_shoulder,right_shoulder)
+		return
 	if preset == "bow":
+		if clip not in ["shoot","aim_hold"]:
+			var hold := _arm(right_shoulder,Vector2(279,242),-1.)
+			var arrow_hand := _arm(left_shoulder,Vector2(175,270),1.)
+			_bow(hold,hold,true)
+			var end := arrow_hand+Vector2(25,70)
+			draw_line(arrow_hand,end,Color("#805c32"),3.,true)
+			draw_circle(end,3.,Color("#d4dce7"))
+			return
 		var tension := smoothstep(0.,.42,phase)
 		var recoil := maxf(0.,1.-(phase-.44)/.56)
-		var released := phase >= .44
+		var released := phase >= .44 and clip != "aim_hold"
+		if clip == "aim_hold":
+			tension = 1.
 		var hold := _arm(right_shoulder,Vector2(304,216),-1.)
 		var pull := Vector2(276,237).lerp(Vector2(228,206),tension)
 		if released:

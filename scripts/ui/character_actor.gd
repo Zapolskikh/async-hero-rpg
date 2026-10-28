@@ -5,7 +5,7 @@ const Motion := preload("res://scripts/ui/weapon_motion.gd")
 const ARMS_MASK := preload("res://assets/characters/v2/arms_mask.gdshader")
 const ROOT := "res://assets/characters/v2/"
 const PIVOT := Vector2(256,400)
-const DURATIONS := {"idle":1., "walk":1., "attack":.52, "shoot":.5, "shield_bash":.4, "cast":1., "cast_hold":1., "hit":.5, "death":1.}
+const DURATIONS := {"idle":1., "walk":1., "attack":.52, "shoot":.5, "aim_hold":1., "shield_bash":.4, "cast":1., "cast_hold":1., "cast_release":.4, "hit":.5, "death":1.}
 const PRESETS := ["base", "sword", "dual_swords", "sword_shield", "greatsword", "bow", "staff"]
 static var _textures := {}
 static var _metadata: Dictionary = {}
@@ -21,6 +21,15 @@ var motion: WeaponMotion
 var arms_material: ShaderMaterial
 var _idle_texture: Texture2D
 var _base_texture: Texture2D
+var magic_color := Color("#99cfff")
+
+func begin_magic(color: Color, preparing: bool = true) -> void:
+	magic_color = color
+	var was_preparing := clip in ["cast","cast_hold"]
+	play("cast" if preparing else "cast_release")
+	if not preparing and was_preparing:
+		elapsed = DURATIONS["cast_release"] * .3
+	_apply_pose()
 
 static func preset_for(layers: Array, weapons: Array = []) -> String:
 	var held := weapons.duplicate()
@@ -81,6 +90,8 @@ func configure(value: Dictionary, layers: Array = [], weapons: Array = []) -> vo
 	_base_texture = _textures[base_key]
 	var rect: Array = metadata()[key]["alignment"]["bounds"]
 	bounds = Rect2(rect[0], rect[1], rect[2] - rect[0], rect[3] - rect[1])
+	if preset == "bow":
+		bounds = Rect2(140,90,200,310)
 	_apply_pose()
 
 func play(name: String) -> void:
@@ -97,7 +108,7 @@ func play(name: String) -> void:
 
 func _process(delta: float) -> void:
 	elapsed += delta
-	if clip not in ["idle", "walk", "cast_hold", "death"] and elapsed >= DURATIONS[clip]:
+	if clip not in ["idle", "walk", "cast_hold", "aim_hold", "death"] and elapsed >= DURATIONS[clip]:
 		clip = "idle"
 		elapsed = 0.
 	_apply_pose()
@@ -111,7 +122,8 @@ func _apply_pose() -> void:
 	motion.sex = appearance["sex"]
 	motion.clip = clip
 	motion.phase = phase
-	motion.active = clip in ["attack", "shoot", "shield_bash"] and preset in ["sword","dual_swords","sword_shield","greatsword","bow"]
+	motion.magic_color = magic_color
+	motion.active = preset == "bow" or clip in ["cast","cast_hold","cast_release"] or (clip in ["attack", "shoot", "shield_bash"] and preset in ["sword","dual_swords","sword_shield","greatsword"])
 	body.texture = _base_texture if motion.active else _idle_texture
 	body.material = arms_material if motion.active else null
 	motion.queue_redraw()
