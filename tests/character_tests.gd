@@ -44,17 +44,42 @@ func _run() -> void:
 	check(loaded["hero"]["appearance"] == before, "Appearance survives save/load")
 	var actor := CharacterActor.new()
 	root.add_child(actor)
+	var weapon_sets := [[], ["sword"], ["sword","sword"], ["sword","shield"], ["greatsword"], ["bow"], ["staff"]]
 	for sex in ["male","female"]:
-		for hair in CharacterAppearance.hair_ids(sex):
-			actor.configure({"sex":sex,"hair":hair})
-			check(actor.hair_front.texture != null and actor.hair_back.texture != null, "Hair layers load " + hair)
-		for clip in CharacterActor.COUNTS:
+		for i in weapon_sets.size():
+			actor.configure({"sex":sex}, [], weapon_sets[i])
+			check(actor.preset == CharacterActor.PRESETS[i], "Weapon selects V2 preset")
+			check(actor.body.texture.resource_path == CharacterActor.ROOT + "sprites/" + sex + "/" + actor.preset + ".png", "Exact supplied V2 artwork")
+			check(actor.body.texture.get_size() == Vector2(512,512), "Full source canvas preserved")
+			check(actor.body.position == -CharacterActor.PIVOT, "Shared ground pivot preserved")
+		var texture := actor.body.texture
+		for clip in CharacterActor.DURATIONS:
 			actor.play(clip)
 			actor.elapsed = .4
-			actor._update_frame()
-			check(actor.body.texture != null and actor.body.material.get_shader_parameter("skin_mask") != null, "Body and skin mask load " + sex + "/" + clip)
-			check(actor.body.frame < actor.body.hframes * actor.body.vframes, "Frame inside atlas")
+			actor._apply_pose()
+			check(actor.body.texture == texture, "Combat motion retains the complete V2 drawing")
+			check(actor.pose.scale == Vector2.ONE and actor.body.scale == Vector2.ONE, "No nonuniform deformation or joint transforms")
 	actor.queue_free()
+	var gallery := UI.card(Style.CARD, 12)
+	gallery.set_anchors_preset(Control.PRESET_FULL_RECT)
+	root.add_child(gallery)
+	var grid := UI.grid(7,4)
+	gallery.add_child(grid)
+	for sex in ["male","female"]:
+		for i in weapon_sets.size():
+			var column := UI.vbox(6)
+			column.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+			grid.add_child(column)
+			var layers := []
+			for w in weapon_sets[i]:
+				layers.append(["offhand_sword" if w == "sword" and not layers.is_empty() else ("shield" if w == "shield" else "w_" + w), ""])
+			var portrait := UI.portrait("hero",220,false,layers,"",{"sex":sex})
+			portrait.custom_minimum_size.x = 172
+			column.add_child(portrait)
+			column.add_child(UI.label(("М · " if sex == "male" else "Ж · ") + ["Без оружия","Меч","Два меча","Меч и щит","Двуручник","Лук","Посох"][i],15))
+	await shot("00_all_presets_v2")
+	gallery.queue_free()
+	await process_frame
 	var main = load("res://scenes/main.tscn").instantiate()
 	root.add_child(main)
 	await process_frame
@@ -67,14 +92,13 @@ func _run() -> void:
 	var dim = main.popup_layer.get_child(0)
 	var panel = dim.get_child(0).get_child(0).get_child(0).get_child(1)
 	panel._select_sex(1)
-	panel._select_hair(4)
 	check(game.hero["appearance"]["sex"] == "male", "Preview does not mutate profile")
-	check(panel.value == {"sex":"female","hair":"f05"}, "Editor switches sex and hairstyle")
+	check(panel.value == {"sex":"female","hair":"f01"}, "Editor switches complete V2 model")
 	await shot("02_appearance_preview")
 	main._modal_action(dim, main._apply_appearance.bind(panel))
 	await process_frame
 	await process_frame
-	check(game.hero_snapshot()["appearance"] == {"sex":"female","hair":"f05"}, "Editor saves appearance")
+	check(game.hero_snapshot()["appearance"] == {"sex":"female","hair":"f01"}, "Editor saves appearance")
 	check(main.popup_layer.get_child_count() == 0, "Save closes editor")
 	await shot("03_hero_female")
 	main._appearance_popup()
@@ -95,7 +119,14 @@ func _run() -> void:
 	main._dummy_popup()
 	await create_timer(.7).timeout
 	await shot("04_training")
+	var training = main.popup_layer.get_child(0).get_child(0)
+	training.session.weapons = ["staff"]
+	training._restart()
+	await shot("05_training_staff")
+	check(training.view.characters[0]["actor"].preset == "staff", "Live training swaps to the baked staff grip without a face overlay")
 	main.queue_free()
 	await process_frame
+	if game.expedition != null and game.expedition.sim != null:
+		game.expedition.sim.release()
 	print("CHARACTERS: %d assertions, %d failures" % [assertions,failures])
 	quit(1 if failures else 0)

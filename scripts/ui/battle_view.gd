@@ -106,7 +106,7 @@ func _sync_characters(units: Array) -> void:
 		if u.side != 0:
 			continue
 		present.append(u.uid)
-		var key := str(u.appearance) + str(u.look)
+		var key := str(u.appearance) + str(u.look) + str(u.weapons)
 		if not characters.has(u.uid):
 			var actor := Character.new()
 			add_child(actor)
@@ -114,7 +114,7 @@ func _sync_characters(units: Array) -> void:
 		var item: Dictionary = characters[u.uid]
 		var actor: CharacterActor = item["actor"]
 		if item["key"] != key:
-			actor.configure(u.appearance, u.look)
+			actor.configure(u.appearance, u.look, u.weapons)
 			item["key"] = key
 		var a := _anim(u.uid)
 		var offset := Vector2.ZERO
@@ -131,7 +131,7 @@ func _sync_characters(units: Array) -> void:
 			if actor.clip != "death":
 				actor.play("death")
 		actor.position = _home(u) + offset
-		actor.scale = Vector2.ONE * (_sprite_size(u).y / 190.)
+		actor.scale = Vector2.ONE * (_sprite_size(u).y / 350.)
 		actor.modulate = Color(1., .55, .55) if a["hurt"] > 0. else Color.WHITE
 		actor.modulate.a = 1. if u.alive() else .5
 	for id in characters.keys():

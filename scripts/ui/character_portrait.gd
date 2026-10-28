@@ -19,5 +19,8 @@ func _layout() -> void:
 	if actor == null:
 		return
 	actor.position = Vector2(size.x * .5, size.y)
-	var factor := size.y / 190.
+	# The pack shares eye/ground alignment: keep body height stable across weapon presets.
+	var factor := minf(size.y / 350., size.x / (actor.bounds.size.x + 8.))
+	var center_x := actor.bounds.get_center().x - Actor.PIVOT.x
+	actor.position.x -= center_x * factor * (-1. if flipped else 1.)
 	actor.scale = Vector2(-factor if flipped else factor, factor)

@@ -1,0 +1,488 @@
+{
+  "version": 2,
+  "canvas": [
+    512,
+    512
+  ],
+  "facing": "right",
+  "states": "static_idle",
+  "animations": false,
+  "variants": [
+    {
+      "sex": "male",
+      "id": "base",
+      "label_ru": "Без оружия",
+      "file": "sprites/male/base.png",
+      "pivot": [
+        256,
+        400
+      ],
+      "alignment": {
+        "source_eye": [
+          615.0,
+          350.0
+        ],
+        "source_eye_height": 54,
+        "scale": 0.27100271002710025,
+        "offset": [
+          65,
+          43
+        ],
+        "eye": [
+          232,
+          138
+        ],
+        "bounds": [
+          134,
+          91,
+          277,
+          400
+        ],
+        "feet_y": 400
+      },
+      "layers": "layers/male/base/"
+    },
+    {
+      "sex": "male",
+      "id": "sword",
+      "label_ru": "Меч",
+      "file": "sprites/male/sword.png",
+      "pivot": [
+        256,
+        400
+      ],
+      "alignment": {
+        "source_eye": [
+          601.0,
+          326.0
+        ],
+        "source_eye_height": 56,
+        "scale": 0.2613240418118467,
+        "offset": [
+          75,
+          53
+        ],
+        "eye": [
+          232,
+          138
+        ],
+        "bounds": [
+          130,
+          91,
+          309,
+          400
+        ],
+        "feet_y": 400
+      },
+      "layers": "layers/male/sword/"
+    },
+    {
+      "sex": "male",
+      "id": "dual_swords",
+      "label_ru": "Два меча",
+      "file": "sprites/male/dual_swords.png",
+      "pivot": [
+        256,
+        400
+      ],
+      "alignment": {
+        "source_eye": [
+          612.5,
+          347.0
+        ],
+        "source_eye_height": 54,
+        "scale": 0.2695417789757412,
+        "offset": [
+          67,
+          44
+        ],
+        "eye": [
+          232,
+          138
+        ],
+        "bounds": [
+          75,
+          91,
+          337,
+          400
+        ],
+        "feet_y": 400
+      },
+      "layers": "layers/male/dual_swords/"
+    },
+    {
+      "sex": "male",
+      "id": "sword_shield",
+      "label_ru": "Меч и щит",
+      "file": "sprites/male/sword_shield.png",
+      "pivot": [
+        256,
+        400
+      ],
+      "alignment": {
+        "source_eye": [
+          505.0,
+          349.5
+        ],
+        "source_eye_height": 53,
+        "scale": 0.27124773960216997,
+        "offset": [
+          95,
+          42
+        ],
+        "eye": [
+          232,
+          137
+        ],
+        "bounds": [
+          121,
+          91,
+          363,
+          400
+        ],
+        "feet_y": 400
+      },
+      "layers": "layers/male/sword_shield/"
+    },
+    {
+      "sex": "male",
+      "id": "greatsword",
+      "label_ru": "Двуручный меч",
+      "file": "sprites/male/greatsword.png",
+      "pivot": [
+        256,
+        400
+      ],
+      "alignment": {
+        "source_eye": [
+          502.0,
+          373.5
+        ],
+        "source_eye_height": 57,
+        "scale": 0.2579535683576956,
+        "offset": [
+          103,
+          42
+        ],
+        "eye": [
+          232,
+          138
+        ],
+        "bounds": [
+          135,
+          67,
+          360,
+          400
+        ],
+        "feet_y": 400
+      },
+      "layers": "layers/male/greatsword/"
+    },
+    {
+      "sex": "male",
+      "id": "bow",
+      "label_ru": "Лук",
+      "file": "sprites/male/bow.png",
+      "pivot": [
+        256,
+        400
+      ],
+      "alignment": {
+        "source_eye": [
+          634.0,
+          330.0
+        ],
+        "source_eye_height": 58,
+        "scale": 0.2608695652173913,
+        "offset": [
+          67,
+          53
+        ],
+        "eye": [
+          232,
+          139
+        ],
+        "bounds": [
+          128,
+          92,
+          285,
+          400
+        ],
+        "feet_y": 400
+      },
+      "layers": "layers/male/bow/"
+    },
+    {
+      "sex": "male",
+      "id": "staff",
+      "label_ru": "Посох",
+      "file": "sprites/male/staff.png",
+      "pivot": [
+        256,
+        400
+      ],
+      "alignment": {
+        "source_eye": [
+          600.5,
+          350.5
+        ],
+        "source_eye_height": 55,
+        "scale": 0.27051397655545534,
+        "offset": [
+          70,
+          43
+        ],
+        "eye": [
+          232,
+          138
+        ],
+        "bounds": [
+          133,
+          86,
+          319,
+          400
+        ],
+        "feet_y": 400
+      },
+      "layers": "layers/male/staff/"
+    },
+    {
+      "sex": "female",
+      "id": "base",
+      "label_ru": "Без оружия",
+      "file": "sprites/female/base.png",
+      "pivot": [
+        256,
+        400
+      ],
+      "alignment": {
+        "source_eye": [
+          605.0,
+          354.5
+        ],
+        "source_eye_height": 55,
+        "scale": 0.25252525252525254,
+        "offset": [
+          79,
+          53
+        ],
+        "eye": [
+          232,
+          143
+        ],
+        "bounds": [
+          149,
+          92,
+          273,
+          400
+        ],
+        "feet_y": 400
+      },
+      "layers": "layers/female/base/"
+    },
+    {
+      "sex": "female",
+      "id": "sword",
+      "label_ru": "Меч",
+      "file": "sprites/female/sword.png",
+      "pivot": [
+        256,
+        400
+      ],
+      "alignment": {
+        "source_eye": [
+          606.5,
+          354.0
+        ],
+        "source_eye_height": 54,
+        "scale": 0.2514668901927913,
+        "offset": [
+          79,
+          55
+        ],
+        "eye": [
+          232,
+          144
+        ],
+        "bounds": [
+          128,
+          92,
+          304,
+          400
+        ],
+        "feet_y": 400
+      },
+      "layers": "layers/female/sword/"
+    },
+    {
+      "sex": "female",
+      "id": "dual_swords",
+      "label_ru": "Два меча",
+      "file": "sprites/female/dual_swords.png",
+      "pivot": [
+        256,
+        400
+      ],
+      "alignment": {
+        "source_eye": [
+          602.5,
+          353.5
+        ],
+        "source_eye_height": 55,
+        "scale": 0.2523128679562658,
+        "offset": [
+          80,
+          53
+        ],
+        "eye": [
+          232,
+          142
+        ],
+        "bounds": [
+          88,
+          91,
+          332,
+          400
+        ],
+        "feet_y": 400
+      },
+      "layers": "layers/female/dual_swords/"
+    },
+    {
+      "sex": "female",
+      "id": "sword_shield",
+      "label_ru": "Меч и щит",
+      "file": "sprites/female/sword_shield.png",
+      "pivot": [
+        256,
+        400
+      ],
+      "alignment": {
+        "source_eye": [
+          514.0,
+          353.0
+        ],
+        "source_eye_height": 54,
+        "scale": 0.2516778523489933,
+        "offset": [
+          103,
+          53
+        ],
+        "eye": [
+          232,
+          142
+        ],
+        "bounds": [
+          143,
+          91,
+          351,
+          400
+        ],
+        "feet_y": 400
+      },
+      "layers": "layers/female/sword_shield/"
+    },
+    {
+      "sex": "female",
+      "id": "greatsword",
+      "label_ru": "Двуручный меч",
+      "file": "sprites/female/greatsword.png",
+      "pivot": [
+        256,
+        400
+      ],
+      "alignment": {
+        "source_eye": [
+          423.0,
+          419.0
+        ],
+        "source_eye_height": 54,
+        "scale": 0.2564102564102564,
+        "offset": [
+          124,
+          35
+        ],
+        "eye": [
+          232,
+          142
+        ],
+        "bounds": [
+          147,
+          53,
+          382,
+          400
+        ],
+        "feet_y": 400
+      },
+      "layers": "layers/female/greatsword/"
+    },
+    {
+      "sex": "female",
+      "id": "bow",
+      "label_ru": "Лук",
+      "file": "sprites/female/bow.png",
+      "pivot": [
+        256,
+        400
+      ],
+      "alignment": {
+        "source_eye": [
+          605.0,
+          354.0
+        ],
+        "source_eye_height": 54,
+        "scale": 0.2523128679562658,
+        "offset": [
+          79,
+          53
+        ],
+        "eye": [
+          232,
+          142
+        ],
+        "bounds": [
+          149,
+          92,
+          307,
+          400
+        ],
+        "feet_y": 400
+      },
+      "layers": "layers/female/bow/"
+    },
+    {
+      "sex": "female",
+      "id": "staff",
+      "label_ru": "Посох",
+      "file": "sprites/female/staff.png",
+      "pivot": [
+        256,
+        400
+      ],
+      "alignment": {
+        "source_eye": [
+          602.5,
+          351.5
+        ],
+        "source_eye_height": 55,
+        "scale": 0.2514668901927913,
+        "offset": [
+          80,
+          54
+        ],
+        "eye": [
+          232,
+          142
+        ],
+        "bounds": [
+          149,
+          91,
+          318,
+          400
+        ],
+        "feet_y": 400
+      },
+      "layers": "layers/female/staff/"
+    }
+  ]
+}
