@@ -19,7 +19,8 @@ var joints: Dictionary = {}
 var right_grip_weight: float = 1.0
 var _follow: String = ""
 var _blend_from: Array = []
-var _blend_sockets: Dictionary = {}
+var _blend_pose: Dictionary = {}
+var _pose: Dictionary = {}
 var _blend_elapsed: float = 1.0
 var _blend_duration: float = 0.10
 var _done: bool = false
@@ -47,6 +48,7 @@ func set_profile(value: String) -> void:
 	if not parsed is Dictionary:
 		push_error("Animation JSON not found or invalid")
 		return
+	RigPoseMixer.add_loadout_attacks(parsed)
 	_profile_cache[sex] = parsed
 	data = parsed
 	head_texture = load("res://assets/characters/v3/head_%s.png" % sex) as Texture2D
@@ -60,7 +62,7 @@ func play_clip(id: String, follow: String = "", blend: float = 0.10) -> bool:
 		return false
 	action_serial += 1
 	_blend_from = commands.duplicate(true)
-	_blend_sockets = sockets.duplicate(true)
+	_blend_pose = _pose.duplicate(true)
 	_blend_duration = maxf(blend, 0.0)
 	_blend_elapsed = 0.0
 	current_clip = id
@@ -155,38 +157,6 @@ func advance_pose(delta: float) -> void:
 		elif step <= 0.0:
 			break
 
-func _compatible(a: Array, b: Array) -> bool:
-	if a.size() != b.size():
-		return false
-	for i in range(a.size()):
-		if a[i].type != b[i].type or a[i].p.size() != b[i].p.size():
-			return false
-	return true
-
-func _mix_commands(a: Array, b: Array, weight: float) -> Array:
-	if not _compatible(a, b):
-		return b.duplicate(true)
-	var result: Array = b.duplicate(true)
-	for i in range(result.size()):
-		for j in range(result[i].p.size()):
-			result[i].p[j][0] = lerpf(float(a[i].p[j][0]), float(b[i].p[j][0]), weight)
-			result[i].p[j][1] = lerpf(float(a[i].p[j][1]), float(b[i].p[j][1]), weight)
-		if result[i].has("angle"):
-			result[i].angle = rad_to_deg(lerp_angle(deg_to_rad(float(a[i].angle)), deg_to_rad(float(b[i].angle)), weight))
-		if result[i].has("color"):
-			result[i].color = "#" + Color(str(a[i].color)).lerp(Color(str(b[i].color)), weight).to_html(true)
-	return result
-
-func _mix_sockets(a: Dictionary, b: Dictionary, weight: float) -> Dictionary:
-	var result: Dictionary = b.duplicate(true)
-	for key in result:
-		if not a.has(key):
-			continue
-		for k in range(2):
-			result[key][k] = lerpf(float(a[key][k]), float(b[key][k]), weight)
-		result[key][2] = rad_to_deg(lerp_angle(deg_to_rad(float(a[key][2])), deg_to_rad(float(b[key][2])), weight))
-	return result
-
 func _update_pose() -> void:
 	if data.is_empty():
 		return
@@ -196,26 +166,30 @@ func _update_pose() -> void:
 	var index: int = int(floor(frame_time))
 	var next: int = mini(index + 1, frames.size() - 1)
 	var alpha: float = frame_time - float(index)
-	commands = _mix_commands(frames[index].commands, frames[next].commands, alpha)
-	sockets = _mix_sockets(frames[index].sockets, frames[next].sockets, alpha)
-	joints = frames[index].joints
-	right_grip_weight = lerpf(float(frames[index].right_grip_weight), float(frames[next].right_grip_weight), alpha)
-	if not _blend_from.is_empty() and _blend_duration > 0.0 and _blend_elapsed < _blend_duration:
+	var first: Dictionary = frames[index].duplicate(false)
+	var second: Dictionary = frames[next].duplicate(false)
+	first["loadout"] = clip.meta.loadout
+	second["loadout"] = clip.meta.loadout
+	_pose = RigPoseMixer.mix(first, second, alpha)
+	if not _blend_from.is_empty() and not _blend_pose.is_empty() and _blend_duration > 0.0 and _blend_elapsed < _blend_duration:
 		var weight: float = smoothstep(0.0, 1.0, _blend_elapsed / _blend_duration)
-		commands = _mix_commands(_blend_from, commands, weight)
-		sockets = _mix_sockets(_blend_sockets, sockets, weight)
+		_pose = RigPoseMixer.mix(_blend_pose, _pose, weight)
+	commands = _pose.commands
+	sockets = _pose.sockets
+	joints = _pose.joints
+	right_grip_weight = _pose.right_grip_weight
 	queue_redraw()
 
 func _draw() -> void:
 	for command in commands:
+		var color: Color = Color(str(command.get("color", "#ffffff")))
 		if not arrow_loaded and data[current_clip].meta.loadout == "bow":
 			# The V3 command stream identifies the nocked shaft/tip by their dedicated material.
-			if command.type == "line" and command.get("color","") == "#b8a07a": continue
-			if command.type == "poly" and command.p.size() == 3 and command.get("color","") == "#c5cedb": continue
+			if command.type == "line" and color.is_equal_approx(Color("#b8a07a")): continue
+			if command.type == "poly" and command.p.size() == 3 and color.is_equal_approx(Color("#c5cedb")): continue
 		var points: PackedVector2Array = []
 		for p in command.p:
 			points.append(Vector2(float(p[0]), float(p[1])))
-		var color: Color = Color(str(command.get("color", "#ffffff")))
 		match str(command.type):
 			"poly":
 				if color.a > 0.0:
