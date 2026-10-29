@@ -30,17 +30,17 @@ func run() -> void:
    var board := UI.card(Style.CARD,8)
    board.set_anchors_preset(Control.PRESET_FULL_RECT)
    root.add_child(board)
-   var grid := UI.grid(8,2)
+   var grid := UI.grid(7,2)
    board.add_child(grid)
    for id in clips:
     var cell := UI.vbox(0)
-    cell.custom_minimum_size=Vector2(154,108)
+    cell.custom_minimum_size=Vector2(175,94)
     grid.add_child(cell)
     var canvas := Control.new()
-    canvas.custom_minimum_size=Vector2(154,85)
+    canvas.custom_minimum_size=Vector2(175,72)
     cell.add_child(canvas)
     var loadout: String = V3RigActor._profile_cache['male'][id].meta.loadout
-    actor_in(canvas,sex,loadout,id,.5,flip,.22,Vector2(76,83))
+    actor_in(canvas,sex,loadout,id,.5,flip,.19,Vector2(85,71))
     cell.add_child(UI.label(id,10))
    await shot('all_'+sex+('_left' if flip else '_right'))
    board.queue_free()
@@ -93,5 +93,5 @@ func run() -> void:
  await process_frame
  var game = root.get_node('Game')
  if game.expedition!=null and game.expedition.sim!=null: game.expedition.sim.release()
- print('V3 VISUAL: all 47 clips, both profiles, both directions, seven live loadouts, five speeds rendered')
+ print('V3 VISUAL: all runtime clips, both profiles, both directions, seven live loadouts, five speeds rendered')
  quit()

@@ -71,6 +71,7 @@ func configure(value: Dictionary, layers: Array = [], weapons: Array = []) -> vo
 	preset = next_preset
 	loadout = {"base":"unarmed","dual_swords":"dual","sword_shield":"shield"}.get(preset,preset)
 	look = layers.duplicate(true)
+	_alternate = false
 	_auto_bow = false
 	_dead = false
 	if not _configured or rig.sex != appearance["sex"]: rig.set_profile(appearance["sex"])
@@ -162,8 +163,9 @@ func play(name: String) -> void:
 			elif preset == "greatsword": rig.play_clip("greatsword_slash","idle_greatsword")
 			elif preset == "dual_swords":
 				_alternate = not _alternate
-				rig.play_clip("sword_right_slash" if _alternate else "sword_left_slash","idle_dual")
-			elif preset in ["sword","sword_shield"]: rig.play_clip("sword_right_slash","idle_"+loadout)
+				rig.play_clip("sword_right_slash_dual" if _alternate else "sword_left_slash","idle_dual")
+			elif preset == "sword_shield": rig.play_clip("sword_right_slash_shield","idle_shield")
+			elif preset == "sword": rig.play_clip("sword_right_slash","idle_sword")
 			else: rig.play_clip("idle_unarmed")
 
 func play_native(id: String, follow: String = "") -> void:

@@ -91,7 +91,7 @@ func run() -> void:
 		actor.play('attack')
 		var first := actor.rig.current_clip
 		actor.play('attack')
-		check(first=='sword_right_slash' and actor.rig.current_clip=='sword_left_slash','Second sword uses its own native clip')
+		check(first=='sword_right_slash_dual' and actor.rig.current_clip=='sword_left_slash','Second sword uses its own native clip')
 		actor.play_native('dual_combo','idle_dual')
 		markers.clear()
 		actor.advance_visual(3.)
