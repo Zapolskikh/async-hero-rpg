@@ -27,7 +27,7 @@ TWO_HAND_GAP = 25.  # Greatsword: right hand at the guard, left hand towards the
 INK = '#17141d'
 PAL = dict(blue='#2479e4', blue_d='#1a5cc0', blue_l='#3b8bee', gold='#fbd56d', gold_d='#e0ad4e',
            skin='#fdc78a', skin_d='#e7a668', glove='#7b4c24', glove_d='#5f3617', glove_l='#96602f',
-           pants='#3b3750', pants_d='#2b2839', boot='#7c4c24', boot_d='#5f3617', boot_l='#955c2d',
+           pants='#3b3750', pants_d='#2b2839', boot='#8f5a2a', boot_d='#6b3e1a', boot_l='#aa6c33',
            belt='#6e431f', belt_d='#4f2d13', steel='#dfe4ec', steel_m='#b9c2d0', steel_d='#7f8a9c',
            guard='#8d97a8', wood='#8a5a2c', wood_d='#5f3a18', wood_l='#a97238', leather='#5f3617',
            purple='#8b45e6', purple_l='#c79bff', purple_d='#5a21a8', shaft='#b99f77', feather='#f2efe6',
@@ -37,10 +37,10 @@ FAR_SHADE = 0.86  # The far limbs sit a little deeper in the scene.
 
 SEX = {
     'male': dict(L1=35., L2=33., LT=50., LS=48., hipx=(-17., 17.), waist=(0., -27.), neck=(1., -71.), srest=((-32., -49.), (34., -49.)),
-                 arm=13., thigh=19., shin=15., chest=[(-16, -70), (-34, -65), (-46, -54), (-45, -40), (-34, -26), (-29, -2), (-29, 6), (30, 6), (31, -2), (36, -26), (46, -40), (46, -54), (36, -65), (19, -70)],
+                 arm=13., thigh=19., shin=15., boot=1., chest=[(-16, -70), (-34, -65), (-46, -54), (-45, -40), (-34, -26), (-29, -2), (-29, 6), (30, 6), (31, -2), (36, -26), (46, -40), (46, -54), (36, -65), (19, -70)],
                  hem=[(-30, -33), (-35, 5), (36, 5), (31, -33)], belt=(-30.5, -9, 31.5, 3), collar=[(-10, -71), (-5, -60), (11, -60), (15, -71)], neckw=(-20, 17)),
     'female': dict(L1=33., L2=32., LT=49., LS=47., hipx=(-14., 16.), waist=(0., -29.), neck=(1., -68.), srest=((-29., -46.), (31., -46.)),
-                   arm=12., thigh=17., shin=14., chest=[(-15, -67), (-30, -63), (-41, -52), (-40, -39), (-27, -24), (-21, -4), (-21, 7), (22, 7), (23, -4), (30, -24), (43, -39), (42, -52), (32, -63), (17, -67)],
+                   arm=12., thigh=17., shin=14., boot=.94, chest=[(-15, -67), (-30, -63), (-41, -52), (-40, -39), (-27, -24), (-21, -4), (-21, 7), (22, 7), (23, -4), (30, -24), (43, -39), (42, -52), (32, -63), (17, -67)],
                    hem=[(-22, -33), (-31, 8), (32, 8), (23, -33)], belt=(-22.5, -6, 23.5, 5), collar=[(-11, -68), (-3, -57), (13, -57), (16, -68)], neckw=(-17, 15)),
 }
 HIP = (206., 272.)
@@ -194,10 +194,15 @@ def make_parts(sex):
         parts['thigh_' + side] = thigh
         parts['shin_' + side] = limb(s['LS'], sh + 1, sh, 'pants', 'pants_d', shade)
         boot = Part(shade)
-        boot.poly([(-21, -25), (15, -25), (17, -3), (37, 8), (40, 16), (40, 25), (-23, 25)], 'boot')
-        boot.poly([(-21, -25), (-11, -25), (-11, 25), (-23, 25)], 'boot_d')
-        boot.poly([(-11, 2), (17, -3), (37, 8), (40, 16), (40, 18), (-11, 18)], 'boot_l')
-        boot.poly([(-23, 18), (40, 18), (40, 25), (-23, 25)], 'boot_d')
+        k = s['boot']
+
+        def fit(points):
+            return [(x * k, y) for x, y in points]
+
+        boot.poly(fit([(-17, -24), (15, -24), (14, -7), (17, -1), (27, 4), (34, 10), (36, 16), (36, 25), (-19, 25), (-20, 12)]), 'boot')
+        boot.poly(fit([(-17, -24), (-9, -24), (-10, 21), (-19, 21), (-20, 12)]), 'boot_d')
+        boot.poly(fit([(-9, 6), (15, 3), (27, 7), (33, 12), (35, 17), (35, 21), (-9, 21)]), 'boot_l')
+        boot.poly(fit([(-19, 21), (36, 21), (36, 25), (-19, 25)]), 'boot_d')
         parts['boot_' + side] = boot
 
     # Torso coordinates are relative to the waist (hem: to the hip); shoulders stay rounded under the sleeves.
@@ -614,7 +619,7 @@ def within(point, origin, reach):
 def planted(foot):
     """A heel lift rolls over the ball of the foot, a toe lift over the heel; nothing sinks."""
     x, y, angle = foot
-    contact = np.array((31. if angle > 0 else -20., 25.))
+    contact = np.array((34. if angle > 0 else -19., 25.))
     return np.array((x, y)) + contact - rot(contact, angle)
 
 
