@@ -6,7 +6,7 @@ func _initialize() -> void:
 func shot(name: String) -> void:
  await process_frame
  await RenderingServer.frame_post_draw
- if DisplayServer.get_name()!='headless': root.get_texture().get_image().save_png('res://build/qa/v3/'+name+'.png')
+ if DisplayServer.get_name()!='headless': root.get_texture().get_image().save_png('res://build/qa/rig/'+name+'.png')
 func actor_in(canvas: Control, sex: String, loadout: String, clip: String, phase: float, flip: bool, factor: float, ground: Vector2) -> CharacterActor:
  var actor := CharacterActor.new()
  canvas.add_child(actor)
@@ -19,7 +19,7 @@ func actor_in(canvas: Control, sex: String, loadout: String, clip: String, phase
  return actor
 func run() -> void:
  root.size=Vector2i(1280,720)
- DirAccess.make_dir_recursive_absolute('res://build/qa/v3')
+ DirAccess.make_dir_recursive_absolute('res://build/qa/rig')
  var probe := CharacterActor.new()
  root.add_child(probe)
  probe.configure({})
@@ -39,7 +39,7 @@ func run() -> void:
     var canvas := Control.new()
     canvas.custom_minimum_size=Vector2(175,72)
     cell.add_child(canvas)
-    var loadout: String = V3RigActor._profile_cache['male'][id].meta.loadout
+    var loadout: String = CharacterRig._profile_cache['male'].clips[id].meta.loadout
     actor_in(canvas,sex,loadout,id,.5,flip,.19,Vector2(85,71))
     cell.add_child(UI.label(id,10))
    await shot('all_'+sex+('_left' if flip else '_right'))
@@ -93,5 +93,5 @@ func run() -> void:
  await process_frame
  var game = root.get_node('Game')
  if game.expedition!=null and game.expedition.sim!=null: game.expedition.sim.release()
- print('V3 VISUAL: all runtime clips, both profiles, both directions, seven live loadouts, five speeds rendered')
+ print('RIG VISUAL: all clips, both profiles, both directions, seven live loadouts, five speeds rendered')
  quit()

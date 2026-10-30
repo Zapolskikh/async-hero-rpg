@@ -118,7 +118,7 @@ func run() -> void:
 	sim.setup(allies,[{'name':'Dummy','stats':{'hp':1.e9,'atk':0.,'power':0.}}],7)
 	view.training_sim=sim
 	view._sync_characters(sim.units,false)
-	for unit in allies: check(view._lunge_offset(unit,.2)==Vector2.ZERO,'V3 feet stay planted; no old root tween')
+	for unit in allies: check(view._lunge_offset(unit,.2)==Vector2.ZERO,'Feet stay planted; no old root tween')
 	view._shoot(allies[1],sim.units[4],Color.WHITE,'arrow')
 	check(view.projectiles.is_empty(),'Arrow waits for native release event')
 	view.characters[1]['actor'].advance_visual(.91)
@@ -139,5 +139,5 @@ func run() -> void:
 	view.queue_free()
 	await process_frame
 	sim.release()
-	print('WEAPON MOTION V3: %d assertions, %d failures' % [assertions,failures])
+	print('WEAPON MOTION: %d assertions, %d failures' % [assertions,failures])
 	quit(1 if failures else 0)

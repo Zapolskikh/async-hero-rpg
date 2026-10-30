@@ -1,7 +1,3 @@
-﻿# Персонажи V3
+﻿# Персонажи
 
-Текущая интеграция: [INTEGRATION.md](INTEGRATION.md).
-
-Описание пакета: [V3_README_RU.md](V3_README_RU.md).
-
-Инструкции автора: [V3_AGENT_PROMPT_RU.md](V3_AGENT_PROMPT_RU.md).
+Текущая интеграция, риг и проверки: [INTEGRATION.md](INTEGRATION.md).

@@ -2,16 +2,16 @@
 
 importer="texture"
 type="CompressedTexture2D"
-uid="uid://dygqvor0ttc74"
-path="res://.godot/imported/head_female.png-c18df0c3d9856ff2d6d29083a5603cb4.ctex"
+uid="uid://bimur5wum3buu"
+path="res://.godot/imported/atlas_female.png-8f828becef6ae4e391ed3754d7eb2f2a.ctex"
 metadata={
 "vram_texture": false
 }
 
 [deps]
 
-source_file="res://assets/characters/v3/head_female.png"
-dest_files=["res://.godot/imported/head_female.png-c18df0c3d9856ff2d6d29083a5603cb4.ctex"]
+source_file="res://assets/characters/rig/atlas_female.png"
+dest_files=["res://.godot/imported/atlas_female.png-8f828becef6ae4e391ed3754d7eb2f2a.ctex"]
 
 [params]
 
@@ -23,7 +23,7 @@ compress/rdo_quality_loss=0.0
 compress/hdr_compression=1
 compress/normal_map=0
 compress/channel_pack=0
-mipmaps/generate=false
+mipmaps/generate=true
 mipmaps/limit=-1
 roughness/mode=0
 roughness/src_normal=""

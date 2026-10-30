@@ -10,7 +10,8 @@ const FLOAT_LIFE := 1.1
 const LUNGE_TIME := 0.28
 const CHARACTER_LUNGE_TIME := .52
 const HURT_TIME := 0.22
-const DEATH_TIME := 0.6
+const DEATH_TIME := 1.1 # Matches the hero fall clip; the body fades during the last DEATH_FADE seconds.
+const DEATH_FADE := .35
 const PROJ_TIME := 0.28
 const Character := preload("res://scripts/ui/character_actor.gd")
 
@@ -169,7 +170,7 @@ func _sync_characters(units: Array, synchronize_state: bool = true) -> void:
 		actor.position = _home(u) + offset
 		actor.scale = Vector2.ONE * (_sprite_size(u).y / 350.)
 		actor.modulate = Color(1., .55, .55) if a["hurt"] > 0. else Color.WHITE
-		actor.modulate.a = 1. if u.alive() else maxf(0.,1.-float(a["dead"])/DEATH_TIME)
+		actor.modulate.a = 1. if u.alive() else clampf((DEATH_TIME-float(a["dead"]))/DEATH_FADE,0.,1.)
 	for id in characters.keys():
 		if id not in present:
 			characters[id]["actor"].queue_free()
@@ -179,7 +180,7 @@ func _character_animation(uid: int, clip: String, _start: float = 0.) -> void:
 	if characters.has(uid): characters[uid]["actor"].play(clip)
 
 func _lunge_offset(u: BattleUnit, remaining: float) -> Vector2:
-	if u.side == 0: return Vector2.ZERO # V3 moves torso/arms over planted feet.
+	if u.side == 0: return Vector2.ZERO # Clips move the body over planted feet.
 	return Vector2(-46.*sin(clampf(1.-remaining/LUNGE_TIME,0.,1.)*PI),0.)
 
 func _packet(uid: int, kind: String) -> void:

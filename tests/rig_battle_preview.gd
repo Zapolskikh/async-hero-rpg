@@ -26,7 +26,7 @@ func _run() -> void:
 	var sim := BattleSim.new()
 	sim.setup(allies,[{"name":"Манекен","sprite":"training_dummy","stats":{"hp":1.e9,"atk":0.,"power":0.}},{"name":"Заклинатель","sprite":"caster","stats":{"hp":1.e9,"atk":0.,"power":50.},"spells":[{"id":"e_bolt","lvl":1}]}],7)
 	view.training_sim = sim
-	var directory := "res://build/qa/v3/battle-frames"
+	var directory := "res://build/qa/rig/battle-frames"
 	DirAccess.make_dir_recursive_absolute(directory)
 	for frame in 210:
 		sim.advance(1./30.)
@@ -37,5 +37,5 @@ func _run() -> void:
 	view.queue_free()
 	await process_frame
 	sim.release()
-	print("V3 battle preview: 210 frames from the real combat view")
+	print("Rig battle preview: 210 frames from the real combat view")
 	quit()

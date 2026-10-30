@@ -1,12 +1,12 @@
 class_name CharacterActor
 extends Node2D
-## Game-facing controller; poses and events are owned exclusively by the supplied V3 rig.
-const Rig := preload("res://scripts/ui/v3_rig_actor.gd")
-const PIVOT := Vector2(202,400) # V3 torso root is x=202; planted soles remain on y=400.
+## Game-facing controller; poses and events are owned exclusively by CharacterRig.
+const Rig := preload("res://scripts/ui/character_rig.gd")
+const PIVOT := Vector2(206,400) # Hip centre of the rig; planted soles remain on y=400.
 const PRESETS := ["base","sword","dual_swords","sword_shield","greatsword","bow","staff"]
 signal marker(action_id: int, event_name: StringName, socket_name: StringName, socket_transform: Transform2D)
 signal action_cancelled(action_id: int)
-var rig: V3RigActor
+var rig: CharacterRig
 var appearance := {"sex":"male","hair":"m01"}
 var preset := "base"
 var loadout := "unarmed"
@@ -34,7 +34,7 @@ var elapsed: float:
 	get: return rig.elapsed
 	set(value):
 		rig.elapsed = value
-		rig._blend_from = []
+		rig._blend_from = PackedFloat32Array()
 		rig._update_pose()
 
 static func preset_for(layers: Array, weapons: Array = []) -> String:
@@ -53,7 +53,7 @@ static func preset_for(layers: Array, weapons: Array = []) -> String:
 	return "sword" if "sword" in held else "base"
 
 func _init() -> void:
-	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR
+	texture_filter = CanvasItem.TEXTURE_FILTER_LINEAR_WITH_MIPMAPS
 	rig = Rig.new()
 	rig.default_follows = {"bow_release":"idle_bow"}
 	rig.position = -PIVOT
@@ -146,7 +146,7 @@ func play(name: String) -> void:
 	match name:
 		"death":
 			_dead = true
-			# Keep the last pose while BattleView fades it; V3 has no death clip.
+			rig.play_clip("death_"+loadout,"",.12)
 		"idle", "walk": rig.play_clip("idle_"+loadout)
 		"shield_bash": rig.play_clip("shield_bash","idle_"+loadout)
 		"shoot":
@@ -181,7 +181,7 @@ func _on_finished(id: StringName) -> void:
 		rig.glow_visible = false
 
 func advance_visual(delta: float) -> void:
-	if not _dead: rig.advance_pose(delta)
+	rig.advance_pose(delta)
 
 func _process(delta: float) -> void:
 	advance_visual(delta)

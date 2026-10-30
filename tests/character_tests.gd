@@ -48,7 +48,7 @@ func _run() -> void:
 	for sex in ["male","female"]:
 		for i in weapon_sets.size():
 			actor.configure({"sex":sex}, [], weapon_sets[i])
-			check(actor.preset == CharacterActor.PRESETS[i], "Weapon selects V3 loadout")
+			check(actor.preset == CharacterActor.PRESETS[i], "Weapon selects rig loadout")
 			check(actor.rig.current_clip == "idle_"+actor.loadout, "Equipment changes reset the native clip")
 			check(actor.rig.head_texture.resource_path.ends_with("head_"+sex+".png"), "Original V2 face retained")
 			check(actor.rig.position == -CharacterActor.PIVOT, "Shared ground pivot preserved")
@@ -70,7 +70,7 @@ func _run() -> void:
 			portrait.custom_minimum_size.x = 172
 			column.add_child(portrait)
 			column.add_child(UI.label(("М · " if sex == "male" else "Ж · ") + ["Без оружия","Меч","Два меча","Меч и щит","Двуручник","Лук","Посох"][i],15))
-	await shot("00_all_loadouts_v3")
+	await shot("00_all_loadouts")
 	gallery.queue_free()
 	await process_frame
 	var main = load("res://scenes/main.tscn").instantiate()
@@ -86,7 +86,7 @@ func _run() -> void:
 	var panel = dim.get_child(0).get_child(0).get_child(0).get_child(1)
 	panel._select_sex(1)
 	check(game.hero["appearance"]["sex"] == "male", "Preview does not mutate profile")
-	check(panel.value == {"sex":"female","hair":"f01"}, "Editor switches V3 model")
+	check(panel.value == {"sex":"female","hair":"f01"}, "Editor switches model")
 	await shot("02_appearance_preview")
 	main._modal_action(dim, main._apply_appearance.bind(panel))
 	await process_frame
