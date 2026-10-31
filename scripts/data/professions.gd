@@ -9,9 +9,13 @@ extends RefCounted
 ## Cloth and special materials do NOT come from gathering: they drop in combat.
 
 const MAX_LEVEL := 10
-## Crafted stats: the whole item is multiplied by a roll in this range.
+## Hidden roll of crafted gear, on all its bonus stats and damage.
 const CRAFT_ROLL := [0.8, 1.3]
-const CRAFT_EXTRA_STATS := ["crit", "haste", "hp"]
+const CRAFT_ROLE := {"str": "melee", "agi": "ranged", "power": "caster"}
+const CRAFT_HP_SHARE := 0.375   # of the budget of rare and epic gear
+const CRAFT_ANY_STATS := ["hp", "armor", "crit", "haste"]   # with the main stat: the pool of random stats
+## Random stats by quality.
+const CRAFT_RANDOM_STATS := [0, 0, 1, 1, 2, 0]
 ## The first choice of a crafting profession is free, changing it costs this much gold.
 const CRAFT_CHANGE_GOLD := 3000
 ## XP needed to go from level i+1 to i+2 (index 0 = level 1 -> 2).
@@ -22,9 +26,9 @@ const PROFESSIONS := {
 	"herbalism":     {"name": "Травничество",  "type": "gathering", "icon": "prof_herbalism"},
 	"skinning":      {"name": "Свежевание",    "type": "gathering", "icon": "prof_skinning"},
 	"blacksmithing": {"name": "Кузнечное дело", "type": "crafting", "icon": "prof_blacksmithing",
-		"desc": "Латы и оружие на силу: мечи, двуручники, щиты. Для бойцов ближнего боя."},
+		"desc": "Латы на силу и почти всё оружие: мечи, двуручники, посохи, щиты."},
 	"tailoring":     {"name": "Портняжное дело", "type": "crafting", "icon": "prof_tailoring",
-		"desc": "Ткань на силу заклинаний и кожа на ловкость: посохи и луки. Для магов, лекарей и стрелков."},
+		"desc": "Ткань на силу заклинаний, кожа на ловкость и луки. Для магов, лекарей и стрелков."},
 	"alchemy":       {"name": "Алхимия",        "type": "crafting", "icon": "prof_alchemy",
 		"desc": "Зелья на всю группу: урон, лечение, здоровье. Подходит любому герою."},
 }
@@ -122,13 +126,37 @@ const LOCATIONS := {
 
 # ---------------------------------------------------------------- crafting
 
-## "rarity" is the quality of the result: uncommon recipes are cheap, rare and epic ones take a
-## high profession level, many materials, gold and hours. "ilvl" and the shares of "affixes"
-## are not final: see make_item.
+## "rarity" is the quality of the result: common and uncommon recipes are cheap, rare and epic
+## ones take a high profession level, many materials, gold and hours. See make_item for stats:
+## "ilvl" and "affixes" count only on drop_only recipes.
 ## drop_only recipes come from clears: "clear" is the level whose first clear teaches the
 ## recipe, the rest of the time they are a rare boss drop.
 const RECIPES := {
 	# --- Blacksmithing
+	"plain_helm": {"name": "Простой шлем", "prof": "blacksmithing", "req": 1, "gold": 15, "time": 120, "xp": 40,
+		"ingredients": {"copper_ore": 4},
+		"item": {"slot": "head", "atype": "plate", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_cuirass": {"name": "Простые латы", "prof": "blacksmithing", "req": 1, "gold": 25, "time": 120, "xp": 40,
+		"ingredients": {"copper_ore": 7},
+		"item": {"slot": "armor", "atype": "plate", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_gauntlets": {"name": "Простые рукавицы", "prof": "blacksmithing", "req": 1, "gold": 12, "time": 120, "xp": 40,
+		"ingredients": {"copper_ore": 3},
+		"item": {"slot": "hands", "atype": "plate", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_greaves": {"name": "Простые поножи", "prof": "blacksmithing", "req": 1, "gold": 20, "time": 120, "xp": 40,
+		"ingredients": {"copper_ore": 5},
+		"item": {"slot": "legs", "atype": "plate", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_sabatons": {"name": "Простые латные сапоги", "prof": "blacksmithing", "req": 1, "gold": 12, "time": 120, "xp": 40,
+		"ingredients": {"copper_ore": 3},
+		"item": {"slot": "feet", "atype": "plate", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_sword": {"name": "Простой меч", "prof": "blacksmithing", "req": 1, "gold": 20, "time": 120, "xp": 40,
+		"ingredients": {"copper_ore": 5},
+		"item": {"wtype": "sword", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_greatsword": {"name": "Простой двуручник", "prof": "blacksmithing", "req": 1, "gold": 30, "time": 120, "xp": 40,
+		"ingredients": {"copper_ore": 8},
+		"item": {"wtype": "greatsword", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_shield": {"name": "Простой щит", "prof": "blacksmithing", "req": 1, "gold": 20, "time": 120, "xp": 40,
+		"ingredients": {"copper_ore": 5},
+		"item": {"wtype": "shield", "rarity": 1, "ilvl": 1, "affixes": []}},
 	"simple_iron_helmet": {"name": "Простой железный шлем", "prof": "blacksmithing", "req": 1, "gold": 60, "time": 300, "xp": 80,
 		"ingredients": {"iron_ore": 10, "raw_leather": 2},
 		"item": {"slot": "head", "rarity": 2, "ilvl": 6, "affixes": [["armor", 1.0], ["hp", 0.7]]}},
@@ -180,7 +208,49 @@ const RECIPES := {
 	"mithril_greatsword": {"name": "Мифриловый двуручник", "prof": "blacksmithing", "req": 9, "gold": 5000, "time": 28800, "xp": 1120, "drop_only": true, "clear": 28,
 		"ingredients": {"mithril_fragment": 24, "silver_ore": 30, "boss_core": 1},
 		"item": {"wtype": "greatsword", "rarity": 4, "ilvl": 50, "affixes": [["str", 1.0], ["crit", 0.9]]}},
+	"plain_staff": {"name": "Простой посох", "prof": "blacksmithing", "req": 1, "gold": 20, "time": 120, "xp": 40,
+		"ingredients": {"copper_ore": 5},
+		"item": {"wtype": "staff", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"apprentice_staff": {"name": "Посох ученика", "prof": "blacksmithing", "req": 5, "gold": 600, "time": 7200, "xp": 280,
+		"ingredients": {"iron_ore": 16, "greenleaf": 12},
+		"item": {"wtype": "staff", "rarity": 3, "ilvl": 18, "affixes": [["haste", 0.6]]}},
+	"moonweave_staff": {"name": "Посох лунного плетения", "prof": "blacksmithing", "req": 8, "gold": 4500, "time": 28800, "xp": 1040, "drop_only": true, "clear": 20,
+		"ingredients": {"silver_ore": 30, "moonflower": 18, "enchanted_thread": 1},
+		"item": {"wtype": "staff", "rarity": 4, "ilvl": 44, "affixes": [["power", 1.0], ["haste", 0.8]]}},
 	# --- Tailoring (cloth comes from combat)
+	"plain_hood": {"name": "Простой капюшон", "prof": "tailoring", "req": 1, "gold": 12, "time": 120, "xp": 40,
+		"ingredients": {"rough_cloth": 3},
+		"item": {"slot": "head", "atype": "cloth", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_robe": {"name": "Простая роба", "prof": "tailoring", "req": 1, "gold": 20, "time": 120, "xp": 40,
+		"ingredients": {"rough_cloth": 6},
+		"item": {"slot": "armor", "atype": "cloth", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_gloves": {"name": "Простые перчатки", "prof": "tailoring", "req": 1, "gold": 10, "time": 120, "xp": 40,
+		"ingredients": {"rough_cloth": 2},
+		"item": {"slot": "hands", "atype": "cloth", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_trousers": {"name": "Простые штаны", "prof": "tailoring", "req": 1, "gold": 15, "time": 120, "xp": 40,
+		"ingredients": {"rough_cloth": 4},
+		"item": {"slot": "legs", "atype": "cloth", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_shoes": {"name": "Простые башмаки", "prof": "tailoring", "req": 1, "gold": 10, "time": 120, "xp": 40,
+		"ingredients": {"rough_cloth": 2},
+		"item": {"slot": "feet", "atype": "cloth", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_cap": {"name": "Кожаная шапка", "prof": "tailoring", "req": 1, "gold": 12, "time": 120, "xp": 40,
+		"ingredients": {"light_hide": 3},
+		"item": {"slot": "head", "atype": "leather", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_jerkin": {"name": "Кожаная куртка", "prof": "tailoring", "req": 1, "gold": 20, "time": 120, "xp": 40,
+		"ingredients": {"light_hide": 6},
+		"item": {"slot": "armor", "atype": "leather", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_mitts": {"name": "Кожаные перчатки", "prof": "tailoring", "req": 1, "gold": 10, "time": 120, "xp": 40,
+		"ingredients": {"light_hide": 2},
+		"item": {"slot": "hands", "atype": "leather", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_breeches": {"name": "Кожаные штаны", "prof": "tailoring", "req": 1, "gold": 15, "time": 120, "xp": 40,
+		"ingredients": {"light_hide": 4},
+		"item": {"slot": "legs", "atype": "leather", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_boots": {"name": "Кожаные сапоги", "prof": "tailoring", "req": 1, "gold": 10, "time": 120, "xp": 40,
+		"ingredients": {"light_hide": 2},
+		"item": {"slot": "feet", "atype": "leather", "rarity": 1, "ilvl": 1, "affixes": []}},
+	"plain_bow": {"name": "Простой лук", "prof": "tailoring", "req": 1, "gold": 20, "time": 120, "xp": 40,
+		"ingredients": {"light_hide": 5},
+		"item": {"wtype": "bow", "rarity": 1, "ilvl": 1, "affixes": []}},
 	"rough_cloth_hood": {"name": "Капюшон из грубой ткани", "prof": "tailoring", "req": 1, "gold": 50, "time": 300, "xp": 80,
 		"ingredients": {"rough_cloth": 10},
 		"item": {"slot": "head", "rarity": 2, "ilvl": 6, "affixes": [["power", 1.0], ["hp", 0.5]]}},
@@ -202,15 +272,9 @@ const RECIPES := {
 	"hunting_bow": {"name": "Охотничий лук", "prof": "tailoring", "req": 2, "gold": 90, "time": 480, "xp": 110,
 		"ingredients": {"raw_leather": 6, "rough_cloth": 6},
 		"item": {"wtype": "bow", "rarity": 2, "ilvl": 12, "affixes": [["agi", 0.8]]}},
-	"apprentice_staff": {"name": "Посох ученика", "prof": "tailoring", "req": 5, "gold": 600, "time": 7200, "xp": 280,
-		"ingredients": {"linen_cloth": 16, "greenleaf": 12},
-		"item": {"wtype": "staff", "rarity": 3, "ilvl": 18, "affixes": [["haste", 0.6]]}},
 	"pristine_longbow": {"name": "Безупречный длинный лук", "prof": "tailoring", "req": 8, "gold": 3500, "time": 28800, "xp": 880, "drop_only": true, "clear": 15,
 		"ingredients": {"pristine_hide": 18, "fine_cloth": 12},
 		"item": {"wtype": "bow", "rarity": 4, "ilvl": 38, "affixes": [["agi", 1.0], ["crit", 0.8]]}},
-	"moonweave_staff": {"name": "Посох лунного плетения", "prof": "tailoring", "req": 8, "gold": 4500, "time": 28800, "xp": 1040, "drop_only": true, "clear": 20,
-		"ingredients": {"fine_cloth": 30, "moonflower": 18, "enchanted_thread": 1},
-		"item": {"wtype": "staff", "rarity": 4, "ilvl": 44, "affixes": [["power", 1.0], ["haste", 0.8]]}},
 	"enchanted_robe": {"name": "Зачарованная мантия", "prof": "tailoring", "req": 8, "gold": 3500, "time": 28800, "xp": 960, "drop_only": true, "clear": 25,
 		"ingredients": {"fine_cloth": 72, "enchanted_thread": 1},
 		"item": {"slot": "armor", "rarity": 4, "ilvl": 42, "affixes": [["power", 1.0], ["hp", 1.0], ["crit", 0.8]]}},
@@ -404,40 +468,65 @@ static func gather_xp(loc_id: String, sec: int) -> int:
 	var d := duration(sec)
 	return max(5, int(round(float(LOCATIONS[loc_id]["xp_per_hour"]) * sec / 3600.0 * float(d.get("eff", 1.0)))))
 
-## Crafted gear is made at the crafter's level. Its stats are rolled from the recipe's pool
-## and one extra secondary stat, so every craft is a gamble. Without rng: the average result.
+## What a crafted item carries on top of its armor, by quality:
+##   common: nothing; uncommon: one random stat
+##   rare: health, the main stat and one random stat; epic: the same with two random stats
+## Random stats come on top of the budget, each on its own line, even if the item already
+## has that stat. A hidden roll scales the result. Gear is made at the crafter's level.
+## drop_only recipes are the exception: a known item with known stats. Without rng: a typical result.
 static func make_item(recipe_id: String, item_id: String, ilvl: int, rng: RandomNumberGenerator = null) -> Dictionary:
 	var r: Dictionary = RECIPES[recipe_id]
 	var spec: Dictionary = r["item"]
-	var weights := {}
-	for a in spec["affixes"]:
-		weights[a[0]] = rng.randf_range(0.3, 1.0) if rng != null else 1.0
-	if rng != null:
-		var extra: String = CRAFT_EXTRA_STATS[rng.randi_range(0, CRAFT_EXTRA_STATS.size() - 1)]
-		weights[extra] = float(weights.get(extra, 0.0)) + rng.randf_range(0.0, 0.5)
-	var total := 0.0
-	for stat in weights:
-		total += float(weights[stat])
-	var shares := {}
-	for stat in weights:
-		shares[stat] = float(weights[stat]) / total
+	var quality := int(spec["rarity"])
+	var fixed: bool = r.get("drop_only", false)
 	var wtype: String = spec.get("wtype", "")
 	var slot: String = spec.get("slot", "")
 	if wtype != "":
 		slot = "offhand" if Loot.WEAPON_TYPES[wtype].get("offhand", false) else "weapon"
-	var agile := weights.has("agi")
-	var role := ("ranged" if agile else "caster") if r["prof"] == "tailoring" else ("melee" if weights.has("str") else "tank")
-	var atype := "" if wtype != "" else (("leather" if agile else "cloth") if r["prof"] == "tailoring" else "plate")
-	var it := Items.assemble(item_id, r["name"], slot, wtype, atype, role, int(spec["rarity"]), ilvl, shares, "crafted_" + recipe_id)
-	var roll := rng.randf_range(CRAFT_ROLL[0], CRAFT_ROLL[1]) if rng != null else 1.0
-	for a in it["affixes"]:
-		if not a.get("imp", false):
-			a["value"] = snappedf(a["value"] * roll, 0.001) if Loot.FLAT_STATS.has(a["stat"]) else round(a["value"] * roll)
-	if it.has("dmg"):
-		it["dmg"] = round(it["dmg"] * roll)
+	var atype: String = spec.get("atype", "")
+	if atype == "" and wtype == "":
+		atype = ("leather" if _has_stat(spec, "agi") else "cloth") if r["prof"] == "tailoring" else "plate"
+	var main := _main_stat(wtype, atype)
+	var shares := {}
+	if fixed:
+		ilvl = int(spec["ilvl"])
+		var total := 0.0
+		for a in spec["affixes"]:
+			total += float(a[1])
+		for a in spec["affixes"]:
+			shares[a[0]] = float(a[1]) / total
+	elif quality >= Items.RARE:
+		shares = {main: 1.0 - CRAFT_HP_SHARE, "hp": CRAFT_HP_SHARE}
+	elif quality == Items.UNCOMMON and rng == null:
+		shares = {main: 1.0}
+	var tier := Items.tier_of(ilvl) + 1
+	var look: String = "crafted_" + recipe_id
+	if quality == Items.COMMON:
+		look = "%s_t%d" % [wtype, tier] if wtype != "" else "%s_%s_t%d" % [atype, slot, tier]
+	var it := Items.assemble(item_id, r["name"], slot, wtype, atype, CRAFT_ROLE[main], quality, ilvl, shares, look)
+	if rng != null and not fixed and quality >= Items.UNCOMMON:
+		for i in CRAFT_RANDOM_STATS[quality]:
+			var pool: Array = [main] + CRAFT_ANY_STATS
+			var stat: String = pool[rng.randi_range(0, pool.size() - 1)]
+			var share := rng.randf_range(0.7, 1.0) if quality == Items.UNCOMMON else rng.randf_range(0.3, 0.5)
+			it["affixes"].append({"stat": stat, "value": Items.stat_value(stat, share, quality, slot, ilvl)})
+		var roll := rng.randf_range(CRAFT_ROLL[0], CRAFT_ROLL[1])
+		for a in it["affixes"]:
+			if not a.get("imp", false):
+				a["value"] = snappedf(a["value"] * roll, 0.001) if Loot.FLAT_STATS.has(a["stat"]) else round(a["value"] * roll)
+		if it.has("dmg"):
+			it["dmg"] = round(it["dmg"] * roll)
 	it["crafted"] = true
-	it["roll"] = snappedf(roll, 0.01)
 	return it
+
+static func _has_stat(spec: Dictionary, stat: String) -> bool:
+	return spec["affixes"].any(func(a): return a[0] == stat)
+
+## Blacksmiths work for strength, tailors for agility or spell power; a staff is a smith's work.
+static func _main_stat(wtype: String, atype: String) -> String:
+	if wtype != "":
+		return {"bow": "agi", "staff": "power"}.get(wtype, "str")
+	return {"leather": "agi", "cloth": "power"}.get(atype, "str")
 
 # ---------------------------------------------------------------- rare drops
 

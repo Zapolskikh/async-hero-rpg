@@ -145,7 +145,7 @@ func _on_wave_end() -> void:
 			# rewards grow a bit faster than enemy toughness, so a harder level you can
 			# clear always pays more per hour than farming an easy one
 			gold += int(round(5.0 * pow(sc, 1.15) * mult * Db.GOLD_MULT))
-			xp += int(round(6.0 * Db.xp_level_factor(level) * pow(sc, 0.35) * mult))
+			xp += int(round(6.0 * Db.XP_MULT * Db.xp_level_factor(level) * pow(sc, 0.35) * mult))
 			_drop_mats(u)
 	if sim.won:
 		sim.end_wave()
@@ -173,7 +173,7 @@ func _on_run_end(cleared: bool, reason: String) -> void:
 			var table := Prof.cloth_table(level)
 			var best: String = table.keys()[-1]
 			_add_mat(best, Prof.CLOTH_ON_CLEAR)
-		xp += int(round(30.0 * Db.xp_level_factor(level)))
+		xp += int(round(30.0 * Db.XP_MULT * Db.xp_level_factor(level)))
 		if mode == "push":
 			gold += int(round(40 * level * Db.GOLD_MULT))
 		if first_clear_pending:

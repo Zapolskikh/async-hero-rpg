@@ -5664,6 +5664,24 @@
    "render": "in_hand"
   },
   {
+   "key": "apprentice_staff",
+   "name": "Посох ученика",
+   "profession": "blacksmithing",
+   "slot": null,
+   "wtype": "staff",
+   "look": "crafted_apprentice_staff",
+   "render": "in_hand"
+  },
+  {
+   "key": "moonweave_staff",
+   "name": "Посох лунного плетения",
+   "profession": "blacksmithing",
+   "slot": null,
+   "wtype": "staff",
+   "look": "crafted_moonweave_staff",
+   "render": "in_hand"
+  },
+  {
    "key": "rough_cloth_hood",
    "name": "Капюшон из грубой ткани",
    "profession": "tailoring",
@@ -5727,30 +5745,12 @@
    "render": "in_hand"
   },
   {
-   "key": "apprentice_staff",
-   "name": "Посох ученика",
-   "profession": "tailoring",
-   "slot": null,
-   "wtype": "staff",
-   "look": "crafted_apprentice_staff",
-   "render": "in_hand"
-  },
-  {
    "key": "pristine_longbow",
    "name": "Безупречный длинный лук",
    "profession": "tailoring",
    "slot": null,
    "wtype": "bow",
    "look": "crafted_pristine_longbow",
-   "render": "in_hand"
-  },
-  {
-   "key": "moonweave_staff",
-   "name": "Посох лунного плетения",
-   "profession": "tailoring",
-   "slot": null,
-   "wtype": "staff",
-   "look": "crafted_moonweave_staff",
    "render": "in_hand"
   },
   {

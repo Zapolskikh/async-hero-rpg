@@ -421,13 +421,18 @@ func _output_text(rid: String) -> String:
 	var r: Dictionary = Prof.RECIPES[rid]
 	if r.has("item"):
 		var it := Prof.make_item(rid, "preview", int(Game.hero["level"]))
+		var quality := int(r["item"]["rarity"])
 		var parts := []
 		if it.has("wtype"):
 			parts.append(Loot.weapon_text(it))
 		for a in it["affixes"]:
-			parts.append(Loot.affix_text(a))
-		return "%s, уровень героя. В среднем: %s. Итог случайный: от %d%% до %d%%, возможна доп. характеристика" % [Items.QUALITY_NAMES[int(r["item"]["rarity"])],
-			", ".join(parts), roundi(Prof.CRAFT_ROLL[0] * 100), roundi(Prof.CRAFT_ROLL[1] * 100)]
+			if a.get("imp", false) or quality != Items.UNCOMMON or r.get("drop_only", false):
+				parts.append(Loot.affix_text(a))
+		if r.get("drop_only", false):
+			return "%s, уровень %d. %s" % [Items.QUALITY_NAMES[quality], it["ilvl"], ", ".join(parts)]
+		if quality == Items.COMMON:
+			return "%s, уровень героя. Только базовые характеристики: %s" % [Items.QUALITY_NAMES[quality], ", ".join(parts)]
+		return "%s, уровень героя. Основа: %s. Случайных характеристик: %d" % [Items.QUALITY_NAMES[quality], ", ".join(parts), Prof.CRAFT_RANDOM_STATS[quality]]
 	var parts := []
 	for res in r["output"]:
 		var line := "%s ×%d" % [Prof.RESOURCES[res]["name"], r["output"][res]]

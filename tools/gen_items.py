@@ -187,6 +187,8 @@ def crafted_items():
     pattern = r'"(\w+)": \{"name": "([^"]+)", "prof": "(blacksmithing|tailoring)"[^\n]*\n[^\n]*\n\s*"item": \{([^\n]*)'
     for m in re.finditer(pattern, text):
         spec = m.group(4)
+        if '"rarity": 1,' in spec:    # common gear uses the plain look of its tier
+            continue
         slot = re.search(r'"slot": "(\w+)"', spec)
         wtype = re.search(r'"wtype": "(\w+)"', spec)
         out.append(dict(key=m.group(1), name=m.group(2), profession=m.group(3), slot=slot.group(1) if slot else None, wtype=wtype.group(1) if wtype else None))

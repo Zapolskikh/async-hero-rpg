@@ -1836,8 +1836,6 @@ func _item_details(it: Dictionary, compare: bool) -> Control:
 	chips.add_child(UI.chip(Loot.SLOT_NAMES[it["slot"]], Style.CARD_3))
 	if it.has("atype"):
 		chips.add_child(UI.chip(Items.ARMOR_NAMES[it["atype"]], Style.CARD_3))
-	if it.has("roll"):
-		chips.add_child(UI.chip("Ковка %d%%" % roundi(float(it["roll"]) * 100), Style.CARD_3))
 	chips.add_child(UI.chip("ур. %d" % it["ilvl"], Style.CARD_3))
 	tv.add_child(chips)
 	top.add_child(UI.expand(tv))

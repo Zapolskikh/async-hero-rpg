@@ -14,9 +14,11 @@ const EPIC := 4
 const LEGENDARY := 5
 
 ## Sum of stat shares an item of each quality gets, as parts of a full stat at its level.
-const BUDGET := [0.3, 0.7, 1.3, 1.9, 2.6, 3.2]
+## The steps grow on purpose: green is a small step up, blue and purple feel like a find,
+## orange is far above everything.
+const BUDGET := [0.3, 0.8, 1.2, 2.2, 3.4, 5.5]
 ## Weapon damage by quality.
-const WEAPON_QUALITY := [0.75, 0.85, 0.95, 1.0, 1.06, 1.12]
+const WEAPON_QUALITY := [0.75, 0.85, 0.95, 1.1, 1.25, 1.5]
 const SLOT_WEIGHT := {"weapon": 1.0, "offhand": 0.8, "head": 1.0, "armor": 1.0, "legs": 1.0, "hands": 0.8, "feet": 0.8, "trinket": 0.8, "accessory": 0.7}
 ## Armor every piece carries by material, as a share of a full armor stat.
 const ARMOR_SHARE := {"cloth": 0.1, "leather": 0.2, "mail": 0.3, "plate": 0.45}
@@ -222,15 +224,16 @@ static func assemble(id: String, name: String, slot: String, wtype: String, atyp
 	if atype != "":
 		it["atype"] = atype
 		it["affixes"].append({"stat": "armor", "value": maxf(1.0, round(Loot.STAT_PER_ILVL["armor"] * ilvl * float(ARMOR_SHARE[atype]) * float(SLOT_WEIGHT[slot]))), "imp": true})
-	var budget: float = float(BUDGET[quality]) * float(SLOT_WEIGHT[slot])
 	for stat in shares:
-		var value: float
-		if Loot.FLAT_STATS.has(stat):
-			value = snappedf(Loot.FLAT_STATS[stat] * float(shares[stat]) * budget, 0.001)
-		else:
-			value = maxf(1.0, round(Loot.STAT_PER_ILVL[stat] * ilvl * float(shares[stat]) * budget))
-		it["affixes"].append({"stat": stat, "value": value})
+		it["affixes"].append({"stat": stat, "value": stat_value(stat, float(shares[stat]), quality, slot, ilvl)})
 	return it
+
+## A stat taking `share` of the budget of an item.
+static func stat_value(stat: String, share: float, quality: int, slot: String, ilvl: int) -> float:
+	var budget: float = float(BUDGET[quality]) * float(SLOT_WEIGHT[slot])
+	if Loot.FLAT_STATS.has(stat):
+		return snappedf(Loot.FLAT_STATS[stat] * share * budget, 0.001)
+	return maxf(1.0, round(Loot.STAT_PER_ILVL[stat] * ilvl * share * budget))
 
 # ---------------------------------------------------------------- effects
 
