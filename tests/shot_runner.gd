@@ -5,6 +5,7 @@ extends Node
 var out_dir := "user://shots"
 var main: Node
 var crafts_only := false
+var gear_only := false
 var spells_only := false
 var weapons_only := false
 var meter_only := false
@@ -27,6 +28,8 @@ func _ready() -> void:
 			weapons_only = true
 		if a == "--shots-meter":
 			meter_only = true
+		if a == "--shots-gear":
+			gear_only = true
 		if a == "--shots-talents":
 			talents_only = true
 		if a == "--shots-atlas":
@@ -53,6 +56,8 @@ func _ready() -> void:
 		_run_atlas()
 	elif talents_only:
 		_run_talents()
+	elif gear_only:
+		_run_gear()
 	elif meter_only:
 		_run_meter()
 	elif weapons_only:
@@ -204,6 +209,10 @@ func _run_crafts() -> void:
 	CraftsScreen.view = "craft"
 	main._switch("crafts")
 	await _wait(0.4)
+	await _shot("16a_craft_choice")
+	await Game.prof_choose("blacksmithing")
+	main._switch("crafts")
+	await _wait(0.4)
 	await _shot("16a_recipes")
 	r = await Game.craft_start("simple_iron_helmet")
 	print("craft_start ", r.get("ok"), " ", r.get("error", ""))
@@ -261,11 +270,11 @@ func _run_weapons() -> void:
 	rng.seed = 4
 	var p: Dictionary = Game.profile
 	p["hero"]["level"] = 8
-	var gs := Loot.roll_gear(rng, 8, 0.3, "", "greatsword")
-	var sh := Loot.roll_gear(rng, 8, 0.2, "", "shield")
-	var sw := Loot.roll_gear(rng, 8, 0.1, "", "sword")
-	var bow := Loot.roll_gear(rng, 8, 0.4, "", "bow")
-	var st := Loot.roll_gear(rng, 8, 0.2, "", "staff")
+	var gs := Loot.roll_gear(rng, 8, "first", "", "greatsword")
+	var sh := Loot.roll_gear(rng, 8, "first", "", "shield")
+	var sw := Loot.roll_gear(rng, 8, "first", "", "sword")
+	var bow := Loot.roll_gear(rng, 8, "first", "", "bow")
+	var st := Loot.roll_gear(rng, 8, "first", "", "staff")
 	p["inventory"].append_array([gs, sh, sw, bow, st])
 	for sid in ["mortal_strike", "whirlwind", "aimed_shot", "shield_slam", "twin_strike", "arcane_bolt", "shield_wall", "arrow_rain"]:
 		p["collection"][sid] = {"lvl": 1, "copies": 0}
@@ -299,6 +308,25 @@ func _run_weapons() -> void:
 	print("shots done")
 	get_tree().quit()
 
+## Gear art on the hero screen and in battle.
+func _run_gear() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	Game.profile["hero"]["level"] = 12
+	for key in ["tank_t2_0_plate_head", "tank_t2_0_plate_armor", "tank_t2_0_plate_hands", "tank_t2_0_plate_legs", "tank_t2_0_plate_feet", "tank_t2_0_sword", "tank_t2_0_shield"]:
+		var it := Items.make(key, 12, key)
+		Game.profile["inventory"].append(it)
+		Game.equip(it["id"], "offhand" if it["slot"] == "offhand" else "")
+	main._switch("hero")
+	await _wait(0.5)
+	await _shot("40_gear_hero")
+	await Game.start_expedition(1, "push")
+	main._open_watch()
+	await _wait(3.0)
+	await _shot("41_gear_battle")
+	print("shots done")
+	get_tree().quit()
+
 func _run_meter() -> void:
 	Game.reset_progress()
 	UI.clear(main.popup_layer)
@@ -308,6 +336,25 @@ func _run_meter() -> void:
 	await _shot("28_meter_start")
 	await _wait(6.0)
 	await _shot("29_meter_fight")
+	var units: Array = Game.expedition.sim.units
+	for u in units:
+		u.buffs["wall"] = {"value": 0.3, "remaining": 6.0, "src": u}
+		u.hots.append({"id": "renew", "src": u, "per_tick": 1.0, "remaining": 9.0, "duration": 9.0, "tick": 1.0, "decay": 0.0})
+		u.dots.append({"id": "e_plague", "per_tick": 1.0, "remaining": 7.0, "tick": 1.0, "src": u, "school": "magic"})
+		u.buffs["weakness"] = {"value": 0.2, "remaining": 4.0, "src": u}
+		u.shield = 50.0
+		u.shield_time = 8.0
+		u.shield_sid = "barrier"
+		u.silence = 3.0
+	await _wait(0.2)
+	await _shot("29a_statuses")
+	Game.profile["time_warp"] = float(Game.profile.get("time_warp", 0.0)) + 3000.0
+	await _wait(1.5)
+	await _shot("29b_meter_result")
+	UI.clear(main.popup_layer)
+	main._on_expedition_finished({"won": 1, "lost": 0, "closed": true, "level": 1, "gold": 120, "xp": 200, "items": [], "boxes": 1})
+	await _wait(0.5)
+	await _shot("29c_meter_win")
 	print("shots done")
 	get_tree().quit()
 
@@ -361,7 +408,7 @@ func _run_doll() -> void:
 	rng.seed = 8
 	var p: Dictionary = Game.profile
 	for spec in [["armor", "", 0.3], ["head", "", 0.3], ["legs", "", 0.0], ["feet", "", 0.5], ["hands", "", 0.3], ["trinket", "", 0.6], ["", "shield", 0.3]]:
-		var it := Loot.roll_gear(rng, 3, spec[2], spec[0], spec[1])
+		var it := Loot.roll_gear(rng, 3, "first", spec[0], spec[1])
 		p["inventory"].append(it)
 		Game.equip(it["id"])
 	Game.changed.emit()
@@ -392,11 +439,11 @@ func _run_shop() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 8
 	for spec in [["armor", "", 0.3], ["head", "", 0.3], ["legs", "", 0.0], ["feet", "", 0.5], ["", "shield", 0.3]]:
-		var it := Loot.roll_gear(rng, 1, spec[2], spec[0], spec[1])
+		var it := Loot.roll_gear(rng, 1, "first", spec[0], spec[1])
 		Game.profile["inventory"].append(it)
 		Game.equip(it["id"])
 	Game.profile["hero"]["level"] = 9
-	var old := Loot.roll_gear(rng, 2, 0.95, "", "greatsword")
+	var old := Loot.roll_gear(rng, 2, "first", "", "greatsword")
 	Game.profile["inventory"].append(old)
 	main.selected_item = old["id"]
 	Game.changed.emit()
@@ -438,9 +485,9 @@ func _run_fb() -> void:
 	Game.profile["gold"] = 5000
 	Game.profile["closed_level"] = 5
 	for i in 7:
-		Game.profile["inventory"].append(Loot.roll_gear(rng, 5 + i, 0.0, "", "", [], i % 2))
-	Game.profile["inventory"].append(Loot.roll_gear(rng, 10, 0.3, "armor"))
-	Game.profile["inventory"].append(Loot.roll_gear(rng, 8, 0.3, "armor"))
+		Game.profile["inventory"].append(Loot.roll_gear(rng, 5 + i, "drop", "", "", "", i % 2))
+	Game.profile["inventory"].append(Loot.roll_gear(rng, 10, "first", "armor"))
+	Game.profile["inventory"].append(Loot.roll_gear(rng, 8, "first", "armor"))
 	Game.changed.emit()
 	main._switch("hero")
 	await _wait(0.4)

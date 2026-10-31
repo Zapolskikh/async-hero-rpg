@@ -3,6 +3,7 @@ extends SceneTree
 ## so every number comes from the live rules, combat and rewards.
 ##   godot --headless --path . --script res://tests/player_sim.gd -- --runs=8 --target=30
 ## Each seed plays twice, with and without professions, to measure what they give.
+## --craft=blacksmithing|tailoring|alchemy forces the craft; by default it fits the build.
 
 const T0 := 1893456000.0     # Fixed start so daily limits behave the same in every run.
 const MAX_DAYS := 120.0
@@ -14,16 +15,19 @@ const AFK_MIN := 4.*3600.
 const AFK_MAX := 8.*3600.
 const BOX_GOLD_RESERVE := .5 # Share of gold boxes may take; the rest pays for mercs and crafts.
 const BUILDS := {
-	"melee": {"weapons":["sword","greatsword","shield"], "talents":["assault","bulwark","life","arcane"]},
-	"caster": {"weapons":["staff"], "talents":["arcane","life","bulwark","assault"]},
-	"archer": {"weapons":["bow"], "talents":["assault","arcane","life","bulwark"]},
-	"healer": {"weapons":["staff"], "talents":["life","arcane","bulwark","assault"]},
+	"melee": {"weapons":["sword","greatsword","shield"], "talents":["assault","bulwark","life","arcane"], "craft":"blacksmithing"},
+	"caster": {"weapons":["staff"], "talents":["arcane","life","bulwark","assault"], "craft":"tailoring"},
+	"archer": {"weapons":["bow"], "talents":["assault","arcane","life","bulwark"], "craft":"tailoring"},
+	"healer": {"weapons":["staff"], "talents":["life","arcane","bulwark","assault"], "craft":"tailoring"},
 }
+const POTION_ORDER := ["titan_flask","greater_strength_potion","strength_potion","minor_strength_potion"]
 const HEAL_KINDS := ["heal","hot","hot_all","riptide","chain_heal","penance","shield","earth_shield","prayer"]
 const DAMAGE_KINDS := ["damage","aoe_damage","dot","execute","seed","channel_aoe","explosive","summon","prism"]
 
 var rng := RandomNumberGenerator.new()
 var blind := false
+var forced_craft := ""
+var shard_tag := ""
 
 func _init() -> void:
 	var runs := 8
@@ -36,11 +40,14 @@ func _init() -> void:
 		if arg.begins_with("--first="): first = arg.trim_prefix("--first=").to_int()
 		if arg.begins_with("--target="): target = arg.trim_prefix("--target=").to_int()
 		if arg.begins_with("--merge="): merge = arg.trim_prefix("--merge=").to_int()
+		if arg.begins_with("--craft="):
+			forced_craft = arg.trim_prefix("--craft=")
+			shard_tag = forced_craft+"_"
 	var started := Time.get_ticks_msec()
 	var results := {"with":[], "without":[]}
 	if merge > 0: # Parallel runs write one shard each: --first=N --runs=1, then --merge=<count>.
 		for i in merge:
-			var shard = JSON.parse_string(FileAccess.get_file_as_string("res://build/qa/player_sim_%d.json" % i))
+			var shard = JSON.parse_string(FileAccess.get_file_as_string("res://build/qa/player_sim_%s%d.json" % [shard_tag,i]))
 			results["with"].append_array(shard["with"])
 			results["without"].append_array(shard["without"])
 		report(results,target)
@@ -55,7 +62,7 @@ func _init() -> void:
 			print("%-7s %-7s seed %d: L%d за %.1f дн (активно %.1f ч), герой %d, профессии %s" % [mode,build,i,result["closed"],result["hours"]/24.,result["active"]/3600.,result["hero"],result["profs"]])
 	report(results,target)
 	DirAccess.make_dir_recursive_absolute("res://build/qa")
-	var file := FileAccess.open("res://build/qa/player_sim_%d.json" % first,FileAccess.WRITE)
+	var file := FileAccess.open("res://build/qa/player_sim_%s%d.json" % [shard_tag,first],FileAccess.WRITE)
 	file.store_string(JSON.stringify(results))
 	print("готово за %d с" % ((Time.get_ticks_msec()-started)/1000))
 	quit()
@@ -66,7 +73,8 @@ func play(seed_value: int, build: String, professions: bool, target: int) -> Dic
 	rng.seed = seed_value
 	var now := T0
 	var p := Rules.new_profile(seed_value,now)
-	var run := {"build":build,"milestones":{},"attempts":0,"afk_sessions":0,"active":0.,"profs":{},"crafted_worn":0,"crafted_total":0,"potions":0,"upgrades":0,"gold_on_boxes":0,"rerolls":0,"stuck_at":{},"fails":{}}
+	if professions: Rules.apply(p,"prof_choose",{"prof":forced_craft if forced_craft != "" else BUILDS[build]["craft"]},now)
+	var run := {"build":build,"milestones":{},"attempts":0,"afk_sessions":0,"active":0.,"profs":{},"crafted_worn":0,"crafted_total":0,"potions":0,"legendaries":0,"gold_on_boxes":0,"rerolls":0,"stuck_at":{},"fails":{}}
 	var farm_level := 0
 	while int(p["closed_level"]) < target and now-T0 < MAX_DAYS*86400.:
 		housekeeping(p,now,build,professions,run)
@@ -77,7 +85,7 @@ func play(seed_value: int, build: String, professions: bool, target: int) -> Dic
 			var level := int(p["closed_level"])+1
 			prepare_party(p,now,build,tries,run,level)
 			prepare_rotation(p,build,tries,level)
-			if tries > 0 and professions: drink_potions(p,now,run)
+			if tries > 0 and professions: drink_potions(p,now,build,run)
 			var started: Dictionary = Rules.apply(p,"start",{"level":level,"mode":"push"},now)
 			if not started["ok"]:
 				push_error("push refused: "+str(started))
@@ -103,7 +111,7 @@ func play(seed_value: int, build: String, professions: bool, target: int) -> Dic
 		run["stuck_at"][str(int(p["closed_level"])+1)] = int(run["stuck_at"].get(str(int(p["closed_level"])+1),0))+1
 		run["afk_sessions"] += 1
 		var afk: float = rng.randf_range(AFK_MIN,AFK_MAX)
-		if professions: start_gathering(p,now,afk)
+		if professions: start_gathering(p,now,afk,build)
 		farm_level = maxi(1,mini(int(p["closed_level"]),farm_level+1 if farm_level > 0 else int(p["closed_level"])))
 		if int(p["closed_level"]) > 0:
 			prepare_party(p,now,build,0,run,farm_level)
@@ -124,7 +132,7 @@ func play(seed_value: int, build: String, professions: bool, target: int) -> Dic
 	last["fails"] = run["fails"]
 	last["active"] = run["active"]
 	last["potions"] = run["potions"]
-	last["upgrades"] = run["upgrades"]
+	last["legendaries"] = legendaries(p)
 	last["rerolls"] = run["rerolls"]
 	return last
 
@@ -159,14 +167,13 @@ func housekeeping(p: Dictionary, now: float, build: String, professions: bool, r
 	if p.get("expedition") != null: Rules.apply(p,"stop",{},now)
 	if professions: claim_professions(p,now)
 	equip_best(p,build)
-	merge_and_sell(p,build)
-	upgrade_gear(p,run)
+	merge_and_sell(p,build,now)
 	open_boxes(p,now)
 	for sid in p["collection"]:
 		while Rules.can_fuse(p,sid): Rules.apply(p,"fuse",{"sid":sid},now)
 	spend_talents(p,build)
 	if professions: start_crafts(p,now,build)
-	if professions and p.get("gathering") == null: start_gathering(p,now,AFK_MIN)
+	if professions and p.get("gathering") == null: start_gathering(p,now,AFK_MIN,build)
 
 func stat_value(st: Dictionary, build: String) -> float:
 	var attack: float = float(st.get("atk",0.))/maxf(.5,float(st.get("atk_speed",1.6)))
@@ -184,7 +191,8 @@ func value_with(p: Dictionary, it: Dictionary, build: String) -> float:
 	var hero: Dictionary = p["hero"].duplicate()
 	hero["equipped"] = p["hero"]["equipped"].duplicate()
 	Rules.place_item(hero["equipped"],it,it["slot"])
-	return stat_value(Roster.hero_stats(hero),build)
+	var effects := 1.+.04*Items.effects_of(hero["equipped"]).size() # A player counts an effect as extra stats.
+	return stat_value(Roster.hero_stats(hero),build)*effects
 
 func equip_best(p: Dictionary, build: String) -> void:
 	var weapon = p["hero"]["equipped"]["weapon"]
@@ -192,7 +200,7 @@ func equip_best(p: Dictionary, build: String) -> void:
 	var improved := true
 	while improved:
 		improved = false
-		var current := stat_value(Roster.hero_stats(p["hero"]),build)
+		var current := stat_value(Roster.hero_stats(p["hero"]),build)*(1.+.04*Items.effects_of(p["hero"]["equipped"]).size())
 		var best_id := ""
 		var best := current+.5
 		for it in p["inventory"]:
@@ -207,22 +215,21 @@ func equip_best(p: Dictionary, build: String) -> void:
 			wrong_weapon = false
 			improved = true
 
-func merge_and_sell(p: Dictionary, build: String) -> void:
-	for rarity in 3:
-		while Rules.merge_candidates(p,rarity).size() > 0 and int(p["gold"]) > int(Rules.MERGE_GOLD[rarity])*3:
-			if not Rules.apply(p,"merge_items",{"rarity":rarity},0.)["ok"]: break
+func merge_and_sell(p: Dictionary, build: String, now: float) -> void:
+	if p["merging"] != null: Rules.apply(p,"merge_claim",{},now)
+	for rarity in Rules.MERGE_GOLD.size():
+		if Rules.merge_candidates(p,rarity).size() > 0 and int(p["gold"]) > int(Rules.MERGE_GOLD[rarity])*3:
+			Rules.apply(p,"merge_items",{"rarity":rarity},now)
 	equip_best(p,build)
 	for it in p["inventory"].duplicate():
-		if int(it["rarity"]) < 2 or p["inventory"].size() > 12: Rules.apply(p,"sell",{"id":it["id"]},0.)
+		if int(it["rarity"]) == Items.LEGENDARY: continue
+		if int(it["rarity"]) < Items.RARE or p["inventory"].size() > 12: Rules.apply(p,"sell",{"id":it["id"]},0.)
 
-func upgrade_gear(p: Dictionary, run: Dictionary) -> void:
-	var level := int(p["hero"]["level"])
-	for slot in p["hero"]["equipped"]:
-		var it = p["hero"]["equipped"][slot]
-		if it == null or int(it["ilvl"]) >= level-3: continue
-		var cost: Dictionary = Shop.upgrade_cost(it,level)
-		if cost.is_empty() or int(p["gold"]) < int(cost["gold"])*2: continue
-		if Rules.apply(p,"upgrade_item",{"id":it["id"],"pay":"gold"},0.)["ok"]: run["upgrades"] += 1
+func legendaries(p: Dictionary) -> int:
+	var found := 0
+	for it in p["inventory"]+p["hero"]["equipped"].values():
+		if it != null and int(it["rarity"]) == Items.LEGENDARY: found += 1
+	return found
 
 func open_boxes(p: Dictionary, now: float) -> void:
 	if Rules.free_box_available(p,now): Rules.apply(p,"open_box",{"use":"free"},now)
@@ -381,21 +388,54 @@ func claim_professions(p: Dictionary, now: float) -> void:
 	for prof in p["crafting"].keys():
 		if now >= float(p["crafting"][prof]["ends_at"]): Rules.apply(p,"craft_claim",{"prof":prof},now)
 
-func start_gathering(p: Dictionary, now: float, afk: float) -> void:
+func start_gathering(p: Dictionary, now: float, afk: float, build: String) -> void:
 	if p.get("gathering") != null: return
-	var prof: String = Prof.GATHERING[0]
-	for option in Prof.GATHERING:
-		if Rules.prof_level(p,option) < Rules.prof_level(p,prof): prof = option
-	var loc := ""
-	for id in Prof.locations_of(prof):
-		if Rules.prof_level(p,prof) >= int(Prof.LOCATIONS[id]["req"]): loc = id
+	var loc := gathering_target(p,build)
+	var prof: String = Prof.LOCATIONS[loc]["prof"]
 	var sec := 3600
 	for option in Prof.DURATIONS:
 		if float(option["sec"]) <= afk: sec = int(option["sec"])
 	Rules.apply(p,"gather_start",{"prof":prof,"loc":loc,"sec":sec},now)
 
+## What the recipes this hero really wants lack. A location that covers the shortage
+## wins, then the one that levels the weakest gathering profession.
+func gathering_target(p: Dictionary, build: String) -> String:
+	var missing := {}
+	var craft: String = p["craft_prof"]
+	var level := Rules.prof_level(p,craft)
+	for id in Prof.recipes_of(craft):
+		var r: Dictionary = Prof.RECIPES[id]
+		if int(r["req"]) > level+1 or (r.get("drop_only",false) and not id in p["recipes_known"]): continue
+		if not wanted_recipe(p,id,build): continue
+		for res in r["ingredients"]:
+			var lack: int = int(r["ingredients"][res])-Rules.res_count(p,res)
+			if lack > 0: missing[res] = int(missing.get(res,0))+lack
+	var best := ""
+	var best_score := -1.
+	for id in Prof.LOCATIONS:
+		var loc: Dictionary = Prof.LOCATIONS[id]
+		var skill := Rules.prof_level(p,loc["prof"])
+		if skill < int(loc["req"]): continue
+		var score := 2./skill+.1*int(loc["req"])
+		for res in loc["yields"]:
+			if missing.has(res): score += minf(float(missing[res]),float(loc["yields"][res])*4.)
+		for res in loc["rare"]:
+			if missing.has(res): score += float(missing[res])*4.
+		if score > best_score:
+			best_score = score
+			best = id
+	return best
+
+func wanted_recipe(p: Dictionary, id: String, build: String) -> bool:
+	var r: Dictionary = Prof.RECIPES[id]
+	if not r.has("item"):
+		var res: String = r["output"].keys()[0]
+		return res in POTION_ORDER+potions_of(build) and Rules.res_count(p,res) < 3
+	var it := Prof.make_item(id,"preview",int(p["hero"]["level"]))
+	return allowed(it,build) and value_with(p,it,build) > stat_value(Roster.hero_stats(p["hero"]),build)*(1.+.04*Items.effects_of(p["hero"]["equipped"]).size())+1.
+
 func start_crafts(p: Dictionary, now: float, build: String) -> void:
-	for prof in Prof.CRAFTING:
+	for prof in [p["craft_prof"]]:
 		if p["crafting"].has(prof): continue
 		var recipes: Array = Prof.recipes_of(prof)
 		recipes.reverse()
@@ -405,11 +445,11 @@ func start_crafts(p: Dictionary, now: float, build: String) -> void:
 			if not Rules.can_craft(p,id)["ok"]: continue
 			var r: Dictionary = Prof.RECIPES[id]
 			if r.has("item"):
-				var it := Prof.make_item(id,"preview")
+				var it := Prof.make_item(id,"preview",int(p["hero"]["level"]))
 				if allowed(it,build) and value_with(p,it,build) > current+1.:
 					chosen = id
 					break
-			elif Rules.res_count(p,str(r["output"].keys()[0])) < 3:
+			elif (r["output"].keys()[0] in POTION_ORDER+potions_of(build)) and Rules.res_count(p,str(r["output"].keys()[0])) < 3:
 				chosen = id
 				break
 		if chosen == "" and Rules.prof_level(p,prof) < Prof.MAX_LEVEL:
@@ -420,15 +460,17 @@ func start_crafts(p: Dictionary, now: float, build: String) -> void:
 					break
 		if chosen != "": Rules.apply(p,"craft_start",{"recipe":chosen},now)
 
-func drink_potions(p: Dictionary, now: float, run: Dictionary) -> void:
-	var buffs := Rules.active_buffs(p,now)
-	if not buffs.has("dmg_mult"):
-		for res in ["greater_strength_potion","minor_strength_potion"]:
-			if Rules.res_count(p,res) > 0 and Rules.apply(p,"use_item",{"res":res},now)["ok"]:
-				run["potions"] += 1
-				break
-	if not buffs.has("heal_mult") and Rules.res_count(p,"minor_recovery_potion") > 0 and Rules.apply(p,"use_item",{"res":"minor_recovery_potion"},now)["ok"]:
-		run["potions"] += 1
+## Personal potions worth drinking on this build, best first.
+func potions_of(build: String) -> Array:
+	var key: String = {"melee":"bull","archer":"cat"}.get(build,"mind")
+	return ["greater_elixir_"+key,"elixir_"+key]
+
+func drink_potions(p: Dictionary, now: float, build: String, run: Dictionary) -> void:
+	if Rules.active_buffs(p,now).has("potion"): return
+	for res in POTION_ORDER+potions_of(build):
+		if Rules.res_count(p,res) > 0 and Rules.apply(p,"use_item",{"res":res},now)["ok"]:
+			run["potions"] += 1
+			return
 
 # ------------------------------------------------------------------ report
 
@@ -461,7 +503,7 @@ func report(results: Dictionary, target: int) -> void:
 		var line := []
 		for level in keys: line.append("L%s:%.1f" % [level,float(stuck[level])/runs.size()])
 		print("AFK-сессий на уровень (среднее): ",", ".join(line))
-		print("Зелий за игру: %.0f, улучшений вещей: %.0f, рероллов: %.0f" % [median(runs.map(func(r): return r["potions"])),median(runs.map(func(r): return r["upgrades"])),median(runs.map(func(r): return r["rerolls"]))])
+		print("Зелий за игру: %.0f, легендарок к концу: %.0f, рероллов: %.0f" % [median(runs.map(func(r): return r["potions"])),median(runs.map(func(r): return r["legendaries"])),median(runs.map(func(r): return r["rerolls"]))])
 	var pairs := []
 	for i in results["with"].size():
 		var a: Dictionary = results["with"][i]

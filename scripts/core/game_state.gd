@@ -32,6 +32,7 @@ var profile: Dictionary = {}
 var mode := "offline"               # "online" when connected to a server (see Net)
 var watch_speed := 1.0
 var expedition: Expedition = null   # live copy for the battle view only (rewards come from Rules)
+var last_battle: Expedition = null  # the finished one, still shown with its meters
 var offline_report := {}            # shown once after loading
 var rng := RandomNumberGenerator.new()
 
@@ -136,6 +137,7 @@ func _process(delta: float) -> void:
 func new_game() -> void:
 	profile = Rules.new_profile(rng.randi(), now())
 	expedition = null
+	_drop_last_battle()
 	_view_id = ""
 	save_game()
 	changed.emit()
@@ -165,17 +167,28 @@ func _after_change() -> void:
 	_sync_view()
 	changed.emit()
 
+func _drop_last_battle() -> void:
+	if last_battle != null and last_battle.sim != null:
+		last_battle.sim.release()
+	last_battle = null
+
+## The battle to show: the running one, else the one that just ended.
+func shown_battle() -> Expedition:
+	return expedition if expedition != null else last_battle
+
 ## Keeps the live battle copy in step with the profile's expedition.
 func _sync_view() -> void:
 	var ex = profile.get("expedition")
 	if ex == null:
-		if expedition != null and expedition.sim != null:
-			expedition.sim.release()
+		if expedition != null:
+			_drop_last_battle()
+			last_battle = expedition
 		expedition = null
 		_view_id = ""
 		return
 	if ex["id"] == _view_id:
 		return
+	_drop_last_battle()
 	if expedition != null and expedition.sim != null:
 		expedition.sim.release()
 	_view_id = ex["id"]
@@ -366,8 +379,8 @@ func buy_boost() -> Dictionary:
 func merge_items(rarity: int) -> Dictionary:
 	return await act_authority("merge_items", {"rarity": rarity})
 
-func upgrade_item(id: String, pay: String) -> Dictionary:
-	return await act_authority("upgrade_item", {"id": id, "pay": pay})
+func merge_claim() -> Dictionary:
+	return await act_authority("merge_claim")
 
 func talent_reset() -> void:
 	act("talent_reset")
@@ -411,6 +424,9 @@ func gather_claim() -> Dictionary:
 
 func gather_cancel() -> Dictionary:
 	return await act_authority("gather_cancel")
+
+func prof_choose(prof: String) -> Dictionary:
+	return await act_authority("prof_choose", {"prof": prof})
 
 func craft_start(recipe: String) -> Dictionary:
 	return await act_authority("craft_start", {"recipe": recipe})

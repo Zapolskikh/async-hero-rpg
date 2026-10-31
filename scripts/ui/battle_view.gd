@@ -6,6 +6,14 @@ extends Control
 
 const UNIT_SCALE := 3.0          # 34x42 sprites -> ~102x126 on a 720px tall view
 const BOSS_SCALE := 1.9          # bosses are generated at 2x already
+const UNIT_GAP := 150.0          # between units of one side on a 720px tall view
+const SCREEN_MARGIN := 140.0     # kept free at the screen edge and in the middle
+const STATUS_ICON := 24.0
+const STATUS_MAX := 6            # icons per row, more would run into the neighbour
+const HARMFUL_BUFFS := ["slow", "weakness", "haunt", "sunder", "mortal_wounds"]
+const BUFF_ICONS := {"wall": "sp_shield_wall", "physical": "sp_battle_cry", "bloodlust": "sp_bloodlust", "rally": "sp_rally",
+	"earth_shield": "sp_earth_shield", "prayer": "sp_prayer", "vengeance_charge": "sp_vengeance",
+	"slow": "sp_frostbolt", "weakness": "sp_weakness", "haunt": "sp_haunt", "sunder": "sp_shatter", "mortal_wounds": "sp_mortal_strike"}
 const FLOAT_LIFE := 1.1
 const LUNGE_TIME := 0.28
 const CHARACTER_LUNGE_TIME := .52
@@ -39,11 +47,14 @@ var effects: Array = []       # {pos, t, dur, kind, color, radius}
 var clock := 0.0
 var preview_mode := false      # embedded on the hub: show the idle party when no expedition runs
 var training_sim: BattleSim = null # isolated sandbox; never replaces Game.expedition
+var show_last := false             # keeps the finished battle on screen (watch layer)
 
 func active_sim() -> BattleSim:
 	if training_sim != null:
 		return training_sim
-	return Game.expedition.sim if Game.expedition != null else null
+	if Game.expedition != null:
+		return Game.expedition.sim
+	return Game.last_battle.sim if show_last and Game.last_battle != null else null
 var _sim_ref: BattleSim = null
 var _last_n := 0
 var _preview_units: Array = []
@@ -377,7 +388,7 @@ func _float(uid: int, text: String, col: Color, size: int, y_off: float = 0.0) -
 # ---------------- layout ----------------
 
 func ground_y() -> float:
-	return size.y * 0.76
+	return size.y * 0.70
 
 ## Scale factor relative to a 720px tall full-screen view.
 func k() -> float:
@@ -395,14 +406,67 @@ func _sprite_size(u: BattleUnit) -> Vector2:
 ## Spot on the ground where the unit stands (bottom-centre), without animation.
 func _home(u: BattleUnit) -> Vector2:
 	var mid := size.x / 2.0
-	var gap := _gap()
+	var gap := _gap(u.side)
 	var depth := u.slot * 6.0 * k()   # backline stands slightly higher -> fake depth
 	if u.side == 0:
 		return Vector2(mid - 85.0 * k() - u.slot * gap, ground_y() - depth)
 	return Vector2(mid + 85.0 * k() + u.slot * gap + (30.0 * k() if u.is_boss else 0.0), ground_y() - depth)
 
-func _gap() -> float:
-	return min(125.0 * k(), (size.x / 2.0 - 80.0 * k()) / 4.0)
+## Spacing of one side: wide, but a full line of units still fits on screen.
+func _gap(side: int) -> float:
+	var n := 0
+	var battle := active_sim()
+	if battle != null:
+		for u in battle.units:
+			if u.side == side:
+				n += 1
+	return min(UNIT_GAP * k(), (size.x / 2.0 - SCREEN_MARGIN * k()) / maxf(1.0, n - 1.0))
+
+## Active effects as [icon, seconds left, or -1 when it has no end]: [helpful, harmful].
+func _statuses(u: BattleUnit) -> Array:
+	var good := {}
+	var bad := {}
+	for id in u.buffs:
+		var left: float = u.buffs[id].get("remaining", -1.0)
+		if not BUFF_ICONS.has(id):
+			continue
+		(bad if id in HARMFUL_BUFFS else good)[BUFF_ICONS[id]] = left
+	for d in u.dots:
+		bad["sp_" + str(d["id"])] = maxf(bad.get("sp_" + str(d["id"]), 0.0), d["remaining"])
+	for h in u.hots:
+		good["sp_" + str(h["id"])] = maxf(good.get("sp_" + str(h["id"]), 0.0), h["remaining"])
+	if u.shield > 0.0:
+		good["sp_" + (u.shield_sid if u.shield_sid != "" else "barrier")] = u.shield_time if u.shield_time < 999.0 else -1.0
+	if u.stun > 0.0:
+		bad["sp_bash"] = u.stun
+	if u.silence > 0.0:
+		bad["sp_kick"] = u.silence
+	return [good, bad]
+
+## Row of effect icons above `top`; returns the y the next row starts from.
+func _draw_status_row(effects: Dictionary, x: float, top: float, tint: Color, fallback: String, font: Font) -> float:
+	if effects.is_empty():
+		return top
+	var side: float = STATUS_ICON * k()
+	var keys: Array = effects.keys().slice(0, STATUS_MAX)
+	var y := top - side - 2.0
+	var left := x - keys.size() * (side + 2.0) / 2.0
+	for i in keys.size():
+		var box := Rect2(left + i * (side + 2.0), y, side, side)
+		draw_rect(box.grow(1.5), tint)
+		var icon := UI.icon_tex(keys[i])
+		draw_texture_rect(icon if icon != null else UI.icon_tex(fallback), box, false)
+		var seconds: float = effects[keys[i]]
+		if seconds >= 0.0:
+			_text(font, box.position + Vector2(2.0, side - 2.0), str(ceili(seconds)), 12, Color.WHITE, 3)
+	return y
+
+func _status_height(u: BattleUnit) -> float:
+	var rows := 0
+	for list in _statuses(u):
+		if not list.is_empty():
+			rows += 1
+	return rows * (STATUS_ICON * k() + 2.0)
 
 func _center(u: BattleUnit) -> Vector2:
 	return _home(u) - Vector2(0, _sprite_size(u).y * 0.5)
@@ -445,7 +509,7 @@ func _draw() -> void:
 			continue
 		var r := unit_rect(u)
 		var t: float = 1.0 - f["life"] / FLOAT_LIFE
-		var pos: Vector2 = Vector2(r.position.x + r.size.x / 2.0, r.position.y - 40.0) + f["offset"] + Vector2(0, -36.0 * t)
+		var pos: Vector2 = Vector2(r.position.x + r.size.x / 2.0, r.position.y - 40.0 - _status_height(u)) + f["offset"] + Vector2(0, -36.0 * t)
 		var col: Color = f["color"]
 		col.a = clamp(f["life"] / FLOAT_LIFE * 1.6, 0.0, 1.0)
 		var w := font.get_string_size(f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, f["size"]).x
@@ -578,22 +642,10 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 			var ang := clock * 4.0 + i * TAU / 3.0
 			draw_circle(Vector2(r.get_center().x + cos(ang) * 22.0, r.position.y + 6 + sin(ang) * 6.0), 4.0, Color("#ffe14a"))
 	_draw_summons(u, home)
-	if u.silence > 0.:
-		_text(font, home + Vector2(-18,-sz.y-38), "···", 24, Color("#cc9dff"))
-	# status markers
-	var marks := []
-	for d in u.dots:
-		marks.append(Color("#7ccf3a") if d["id"] in ["poison_cloud", "e_venom"] else Color("#ff8a2a"))
-	if u.hots.size() > 0:
-		marks.append(Color("#b6ffb0"))
-	for i in marks.size():
-		var c := Vector2(r.position.x + 10.0 + i * 15.0, r.end.y + 34.0)
-		draw_circle(c, 6.0, marks[i])
-		draw_arc(c, 6.0, 0.0, TAU, 12, Color.BLACK, 1.5)
 	# HP bar and name above the unit
 	var bar := Rect2(Vector2(home.x - 48, r.position.y - 22), Vector2(96, 11))
 	if u.is_boss:
-		var bw: float = min(160.0, _gap() - 10.0)
+		var bw: float = min(160.0, _gap(u.side) - 10.0)
 		bar = Rect2(Vector2(home.x - bw / 2.0, r.position.y - 22), Vector2(bw, 13))
 	draw_rect(bar.grow(1.5), Color(0, 0, 0, 0.8))
 	draw_rect(Rect2(bar.position, Vector2(bar.size.x * u.hp_frac(), bar.size.y)), UI.GOOD if u.side == 0 else UI.BAD)
@@ -602,6 +654,11 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 		draw_rect(Rect2(bar.position + Vector2(0, bar.size.y - 4), Vector2(sw, 4)), Color("#bfe6ff"))
 	var nw := font.get_string_size(u.name, HORIZONTAL_ALIGNMENT_LEFT, -1, 16).x
 	_text(font, Vector2(home.x - nw / 2.0, bar.position.y - 5), u.name, 16, Color.WHITE, 4)
+	# effects over the head: harmful next to the name, helpful above them
+	if u.alive():
+		var effects := _statuses(u)
+		var row_top := _draw_status_row(effects[1], home.x, bar.position.y - 23.0, Color("#e0413a"), "sp_ignite", font)
+		_draw_status_row(effects[0], home.x, row_top, Color("#3f8cff"), "sp_renew", font)
 	# cast bar under the feet
 	if u.is_casting():
 		var c: Dictionary = u.casting if not u.casting.is_empty() else u.channel

@@ -358,6 +358,8 @@ static func item_line(item: Dictionary) -> String:
 		parts.append("Урон %d" % int(item["dmg"]))
 	for a in item["affixes"]:
 		parts.append(Loot.affix_text(a))
+	if item.has("effect"):
+		parts.append(Items.effect_text(item["effect"]))
 	return ", ".join(parts)
 
 static func item_title(item: Dictionary) -> String:

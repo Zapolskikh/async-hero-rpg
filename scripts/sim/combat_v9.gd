@@ -285,6 +285,8 @@ func _autoattack(u: BattleUnit,t: BattleUnit) -> void:
 	_deal(u,t,a-offhand,true,false,"attack")
 	if offhand > 0.:
 		_deal(u,t,offhand,true,false,"attack")
+	if u.gear_fx.has("double_attack") and rng.randf() < u.gear_fx["double_attack"]:
+		_deal(u,t,a,true,false,"attack",true)
 	for id in u.cooldowns:
 		if Db.SPELLS.has(id):
 			u.cooldowns[id] = maxf(0.,u.cooldowns[id]-.1*u.rank("battle_rhythm")*(2. if offhand > 0. else 1.))
@@ -318,11 +320,11 @@ func _try_rotation(u: BattleUnit) -> bool:
 			continue
 		var s: Dictionary = Db.SPELLS[sid]
 		u.rot_index = idx
-		if s.get("cd",0.) > 0.:
+		if s.get("cd",0.) > 0. and not (u.gear_fx.has("cd_refund") and rng.randf() < u.gear_fx["cd_refund"]):
 			u.cooldowns[sid] = s["cd"]
 		var duration: float = s.get("cast",0.)
 		if not s.get("weapon",false):
-			duration *= 1.-.03*u.rank("fast_cast")
+			duration *= 1.-.03*u.rank("fast_cast")-u.gear_fx.get("cast_speed",0.)
 			if s["kind"] in ["heal","chain_heal"]:
 				duration *= 1.-.05*u.rank("steady_hand")
 			if duration > 0. and u.counters.get("instant",false):
@@ -745,6 +747,7 @@ func _hot_tick(src: BattleUnit,t: BattleUnit,a: float,sid: String) -> void:
 		_heal(src,t,a,false,sid)
 
 func _shield(src: BattleUnit,t: BattleUnit,a: float,dur: float,sid: String,additive: bool = true) -> void:
+	a *= 1.+src.gear_fx.get("shield_bonus",0.)
 	t.shield = t.shield+a if additive else maxf(t.shield,a)
 	t.shield_time = maxf(t.shield_time,dur)
 	t.shield_owner = src
@@ -789,6 +792,8 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 		_status(t,"Блок")
 		return 0.
 	var dmg: float = amount*src.dmg_mult*(1.-src.buff("weakness"))*(1.-t.buff("wall"))
+	if not src.gear_fx.is_empty():
+		dmg *= 1.+Items.damage_bonus(src.gear_fx,sid,s.get("kind",""),is_dot,school,t.is_boss,t.hp_frac())
 	if school == "physical":
 		dmg *= 1.+src.buff("physical")
 		if not is_dot:
@@ -817,7 +822,7 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 		chance = .1*src.rank("hot_flame") if school == "magic" else 0.
 	var crit: bool = (can_crit or is_dot and school == "magic") and rng.randf() < chance
 	if crit:
-		dmg *= 2.
+		dmg *= 2.+src.gear_fx.get("crit_power",0.)
 	if not proc and not is_dot and not weapon and src.rank("spark") and not src.counters.has("spark"):
 		dmg += src.power*.3*src.rank("spark")
 		src.counters["spark"] = true
@@ -870,6 +875,8 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 			for other in foes_of(src):
 				if other != t:
 					_deal(src,other,amount,can_crit,false,sid,true,school)
+	if lost > 0.:
+		_gear_procs(src,t,lost,proc or is_dot)
 	if lost > 0. and t.alive():
 		_reactive_heals(t)
 	if lost > 0. and not proc and not is_dot and school == "physical" and t.rank("retaliation"):
@@ -916,10 +923,29 @@ func _reactive_heals(t: BattleUnit) -> void:
 		elif b["charges"] <= 0:
 			t.buffs.erase(id)
 
+## Lifesteal, thorns and free spells of worn gear. `quiet` hits (procs, dots) start no new procs.
+func _gear_procs(src: BattleUnit,t: BattleUnit,lost: float,quiet: bool) -> void:
+	if src.gear_fx.has("lifesteal") and src.alive():
+		_heal(src,src,lost*src.gear_fx["lifesteal"],false,"lifesteal")
+	if quiet:
+		return
+	if t.gear_fx.has("thorns") and src.alive():
+		_deal(t,src,lost*t.gear_fx["thorns"],false,false,"attack",true,"physical")
+	for p in src.gear_fx.get("procs",[]):
+		if t.alive() and not src.counters.has("gear_proc") and rng.randf() < p["chance"]:
+			src.counters["gear_proc"] = true
+			var lvl := 1
+			for e in src.spells:
+				lvl = maxi(lvl,int(e["lvl"]))
+			_cast(src,p["sid"],lvl,t,p["scale"],true)
+			src.counters.erase("gear_proc")
+
 func _heal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,sid: String = "",direct: bool = false) -> void:
 	if not t.alive():
 		return
 	var h: float = amount*src.heal_mult*(1.+.03*src.rank("life_gift"))*(1.-t.buff("mortal_wounds"))
+	if not src.gear_fx.is_empty():
+		h *= 1.+src.gear_fx.get("heal_bonus",0.)+src.gear_fx.get("spell:"+sid,0.)
 	var crit: bool = can_crit and rng.randf() < src.crit
 	if crit:
 		h *= 2.

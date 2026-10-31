@@ -22,6 +22,8 @@ const HP_ALLY := Color("#4fd27b")
 const HP_ENEMY := Color("#ef5b5b")
 
 const RARITY := [Color("#8d96a8"), Color("#3f8cff"), Color("#a65cff"), Color("#ff9f1c")]
+## Item quality, WoW Classic colours.
+const QUALITY := [Color("#8d96a8"), Color("#e6e8ec"), Color("#3fcf5e"), Color("#3f8cff"), Color("#a65cff"), Color("#ff9f1c")]
 const TIER_COLORS := [Color("#6b4a4a"), Color("#465072"), Color("#2f9e64"), Color("#ffb630")]
 const TIER_TEXT := [Color("#f3d0d0"), Color("#f3f5fa"), Color("#f3f5fa"), Color("#3a2500")]
 const ROLE_COLORS := {

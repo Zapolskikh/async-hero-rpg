@@ -7,12 +7,12 @@ static func make(rng: RandomNumberGenerator, level: int, forced_weapons: Array =
 	if not forced_weapons.is_empty():
 		weapons = forced_weapons.duplicate()
 	var gear := Roster.empty_gear()
-	var pref: Array = ["power","haste","hp"] if weapons.has("staff") else (["agi","crit","hp"] if weapons.has("bow") else ["str","hp","armor"])
-	gear["weapon"] = Loot.roll_gear(rng,level,0.,"weapon",weapons[0],pref)
+	var role := Items.role_of(weapons)
+	gear["weapon"] = Loot.roll_gear(rng,level,"merc","weapon",weapons[0],role)
 	if weapons.size() > 1:
-		gear["offhand"] = Loot.roll_gear(rng,level,0.,"offhand",weapons[1],pref)
+		gear["offhand"] = Loot.roll_gear(rng,level,"merc","offhand",weapons[1],role)
 	for slot in ["armor","trinket"]:
-		gear[slot] = Loot.roll_gear(rng,level,0.,slot,"",pref)
+		gear[slot] = Loot.roll_gear(rng,level,"merc",slot,"",role)
 	var talents := {}
 	var budget := Talents.points_total(level)
 	var preferred: String = "arcane" if weapons.has("staff") else ("assault" if weapons.has("bow") or weapons.count("sword") == 2 else "bulwark")
@@ -57,6 +57,6 @@ static func make(rng: RandomNumberGenerator, level: int, forced_weapons: Array =
 	var st := Roster.apply_gear(base,gear)
 	Talents.apply_stats(st,talents,weapons)
 	st.merge(Loot.attack_of(st,gear),true)
-	var result := {"name":Db.MERC_NAMES[rng.randi_range(0,Db.MERC_NAMES.size()-1)],"color":Roster.MERC_COLORS[rng.randi_range(0,Roster.MERC_COLORS.size()-1)],"npc":true,"role":"Наёмник","level":level,"base_stats":base,"gear":gear,"stats":st,"weapons":weapons,"talents":talents,"spells":spells,"target":"front","id":"m%d"%rng.randi(),"sprite":"hero","ranged":weapons.has("bow") or weapons.has("staff"),"look":Roster.look(gear)}
+	var result := {"name":Db.MERC_NAMES[rng.randi_range(0,Db.MERC_NAMES.size()-1)],"color":Roster.MERC_COLORS[rng.randi_range(0,Roster.MERC_COLORS.size()-1)],"npc":true,"role":"Наёмник","level":level,"base_stats":base,"gear":gear,"stats":st,"weapons":weapons,"talents":talents,"effects":Items.effects_of(gear),"spells":spells,"target":"front","id":"m%d"%rng.randi(),"sprite":"hero","ranged":weapons.has("bow") or weapons.has("staff"),"look":Roster.look(gear)}
 	result["appearance"] = CharacterAppearance.for_identity(result["id"])
 	return result

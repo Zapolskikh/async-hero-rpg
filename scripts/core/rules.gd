@@ -12,7 +12,7 @@ extends RefCounted
 ## so a server keeps it secret by stripping it before sending the profile.
 ## `ctx` (server only): {"account": id, "real_pool": [public snapshots of other players]}
 
-const VERSION := 9
+const VERSION := 10
 const OFFLINE_CAP := 12.0 * 3600.0
 const BOX_PRICE := 300
 const BOX_PACK := 10
@@ -40,8 +40,8 @@ const LOCAL_ACTIONS := ["set_rotation", "move_party", "equip", "unequip", "sell"
 	"talent_up", "talent_reset", "set_threshold", "set_cosmetic", "set_appearance"]
 ## Actions with randomness or rewards: only the authority (server or offline client) runs them.
 const AUTHORITY_ACTIONS := ["reroll", "open_box", "open_pack", "start", "collect", "stop",
-	"gather_start", "gather_claim", "gather_cancel", "craft_start", "craft_claim", "use_item",
-	"fake_purchase", "buy_cosmetic", "rush", "buy_boost", "upgrade_item", "merge_items"]
+	"gather_start", "gather_claim", "gather_cancel", "prof_choose", "craft_start", "craft_claim", "use_item",
+	"fake_purchase", "buy_cosmetic", "rush", "buy_boost", "merge_items", "merge_claim"]
 ## Server-internal actions, never accepted from a client.
 const INTERNAL_ACTIONS := ["grant_assists"]
 
@@ -58,11 +58,11 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 		"collection": {}, "inventory": [], "board": [], "hired": [], "party_order": [],
 		"rerolls_today": 0, "reroll_day": "", "free_box_day": "",
 		"expedition": null, "reports": [], "stats": {"hired_total": 0, "assist_gold_total": 0},
-		"resources": {}, "recipes_known": [], "crystals": 0, "cosmetics_owned": [], "gold_box_day": "", "gold_boxes_today": 0, "professions": _fresh_professions(), "gathering": null, "crafting": {}, "buffs": {},
+		"resources": {}, "recipes_known": [], "crystals": 0, "cosmetics_owned": [], "gold_box_day": "", "gold_boxes_today": 0, "professions": _fresh_professions(), "craft_prof": "", "gathering": null, "crafting": {}, "merging": null, "buffs": {},
 		"rng": {"seed": str(seed_value), "state": ""},
 	}
 	var r := _rng(p)
-	var sword := Loot.roll_gear(r, 1, -1.0, "weapon", "sword")
+	var sword := Loot.roll_gear(r, 1, "start", "weapon", "sword")
 	sword["name"] = "Учебный меч"
 	p["hero"]["equipped"]["weapon"] = sword
 	for sid in Db.STARTER_SPELLS:
@@ -77,6 +77,7 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 static func migrate(p: Dictionary, now: float) -> void:
 	var old_combat := int(p.get("v",0)) < 9
 	_drop_extra_heroes(p)
+	var old_items := int(p.get("v", 0)) < 10
 	# v6: priority rotation; the old default order would never use strike and kick
 	if int(p.get("v", 0)) < 6 and p.has("hero") and p["hero"].get("rotation", []) == ["fireball", "strike", "kick"]:
 		p["hero"]["rotation"] = ["kick", "fireball", "strike"]
@@ -98,6 +99,8 @@ static func migrate(p: Dictionary, now: float) -> void:
 	_migrate_spells(p)
 	if int(p.get("v", 0)) < 9:
 		_migrate_combat(p)
+	if old_items:
+		_migrate_quality(p)
 	var hero: Dictionary = p["hero"]
 	hero["appearance"] = CharacterAppearance.normalize(hero.get("appearance"))
 	hero["level"] = int(hero["level"])
@@ -138,7 +141,7 @@ static func migrate(p: Dictionary, now: float) -> void:
 			else:
 				Roster.ensure_visuals(m)
 		var started: float = float(p.get("time", now))
-		p["expedition"] = _make_expedition(int(ex["level"]), str(ex["mode"]), party, int(ex["seed"]), bool(ex["first"]), started)
+		p["expedition"] = _make_expedition(p, int(ex["level"]), str(ex["mode"]), party, int(ex["seed"]), bool(ex["first"]), started)
 	elif ex != null and typeof(ex) == TYPE_DICTIONARY:
 		_fix_expedition(ex)
 	if old_combat and p.get("expedition") != null and p["expedition"].has("tl") and not p["expedition"]["tl"].has("combat_version"):
@@ -149,7 +152,7 @@ static func migrate(p: Dictionary, now: float) -> void:
 		if settled.get("ok",false):
 			p["reports"].append(settled["report"])
 		if previous["mode"] == "farm":
-			p["expedition"] = _make_expedition(int(previous["level"]),"farm",party_snapshots(p),int(previous["seed"]),false,now)
+			p["expedition"] = _make_expedition(p,int(previous["level"]),"farm",party_snapshots(p),int(previous["seed"]),false,now)
 		_save_rng(p,random)
 	p.erase("time")
 	p.erase("v")
@@ -187,6 +190,19 @@ static func _migrate_spells(p: Dictionary) -> void:
 		for l in range(1, best):
 			spare -= fuse_cost(l)
 		col[sid] = {"lvl": best, "copies": max(0, spare)}
+
+## v10: quality is the six-step Classic ladder. Old legendaries have no unique effect, so they become epic.
+static func _migrate_quality(p: Dictionary) -> void:
+	var lists: Array = [p.get("inventory", []), p["hero"]["equipped"].values()]
+	for m in p["board"] + p["hired"]:
+		lists.append(m.get("gear", {}).values())
+	var ex = p.get("expedition")
+	if typeof(ex) == TYPE_DICTIONARY and ex.has("tl"):
+		lists.append(ex["tl"].get("items", []))
+	for list in lists:
+		for it in list:
+			if it != null:
+				it["rarity"] = [2, 3, 4, 4][clampi(int(it["rarity"]), 0, 3)]
 
 ## v8: several heroes were tried (v7) and removed. Keep the account's first hero
 ## (with his professions, gathering and crafting), drop the others, refund the slots.
@@ -233,6 +249,9 @@ static func _migrate_professions(p: Dictionary) -> void:
 			p["professions"][id] = {"level": 1, "xp": 0}
 		p["professions"][id]["level"] = int(p["professions"][id]["level"])
 		p["professions"][id]["xp"] = int(p["professions"][id]["xp"])
+	p["craft_prof"] = str(p.get("craft_prof", ""))
+	if not p.has("merging"):
+		p["merging"] = null
 	if not p.has("gathering"):
 		p["gathering"] = null
 	if p["gathering"] != null:
@@ -241,6 +260,8 @@ static func _migrate_professions(p: Dictionary) -> void:
 		p["crafting"] = {}
 	if typeof(p.get("buffs")) != TYPE_DICTIONARY:
 		p["buffs"] = {}
+	for eff in ["dmg_mult", "heal_mult"]:   # v10: one potion slot instead of one per effect
+		p["buffs"].erase(eff)
 	if p["buffs"].has("gather_yield"):
 		p["buffs"]["gather_yield"]["charges"] = int(p["buffs"]["gather_yield"]["charges"])
 
@@ -422,8 +443,8 @@ static func apply(p: Dictionary, action: String, args: Dictionary, now: float, c
 		"buy_cosmetic": res = _buy_cosmetic(p, str(args.get("id", "")))
 		"rush": res = _rush(p, str(args.get("what", "")), str(args.get("prof", "")), now)
 		"buy_boost": res = _buy_boost(p, now)
-		"upgrade_item": res = _upgrade_item(p, str(args.get("id", "")), str(args.get("pay", "gold")))
-		"merge_items": res = _merge_items(p, r, int(args.get("rarity", -1)))
+		"merge_items": res = _merge_start(p, int(args.get("rarity", -1)), now)
+		"merge_claim": res = _merge_claim(p, r, now)
 		"set_name": res = _set_name(p, str(args.get("name", "")))
 		"reroll": res = _reroll(p, r, now, ctx)
 		"open_box": res = _open_box(p, r, str(args.get("use", "")), now)
@@ -435,6 +456,7 @@ static func apply(p: Dictionary, action: String, args: Dictionary, now: float, c
 		"gather_start": res = _gather_start(p, str(args.get("prof", "")), str(args.get("loc", "")), int(args.get("sec", 0)), now)
 		"gather_claim": res = _gather_claim(p, r, now)
 		"gather_cancel": res = _gather_cancel(p)
+		"prof_choose": res = _prof_choose(p, str(args.get("prof", "")))
 		"craft_start": res = _craft_start(p, str(args.get("recipe", "")), now)
 		"craft_claim": res = _craft_claim(p, r, str(args.get("prof", "")), now)
 		"use_item": res = _use_item(p, str(args.get("res", "")), now)
@@ -498,6 +520,8 @@ static func _equip(p: Dictionary, id: String, to: String = "") -> Dictionary:
 				if not Loot.fits_offhand(it):
 					return _err("not an offhand item")
 				slot = "offhand"
+			elif slot == "accessory" and to in ["accessory1", "accessory2"]:
+				slot = to
 			p["inventory"].erase(it)
 			p["inventory"].append_array(place_item(p["hero"]["equipped"], it, slot))
 			return _ok()
@@ -506,6 +530,8 @@ static func _equip(p: Dictionary, id: String, to: String = "") -> Dictionary:
 ## Puts `it` into `slot` of an equipment dict; returns the items that come off.
 ## Also used by the UI to preview a change.
 static func place_item(eq: Dictionary, it: Dictionary, slot: String) -> Array:
+	if slot == "accessory":
+		slot = Loot.wear_slot(eq, it)
 	var removed := []
 	if eq.get(slot) != null:
 		removed.append(eq[slot])
@@ -658,7 +684,7 @@ static func _set_appearance(p: Dictionary, args: Dictionary) -> Dictionary:
 
 ## Finish the current gathering ("gather") or a profession's craft ("craft") now.
 static func _rush(p: Dictionary, what: String, prof: String, now: float) -> Dictionary:
-	var job = p.get("gathering") if what == "gather" else p["crafting"].get(prof)
+	var job = p["merging"] if what == "merge" else (p.get("gathering") if what == "gather" else p["crafting"].get(prof))
 	if job == null:
 		return _err("nothing to rush")
 	var left: float = float(job["ends_at"]) - now
@@ -679,39 +705,11 @@ static func _buy_boost(p: Dictionary, now: float) -> Dictionary:
 		p["buffs"]["farm_x2"] = {"from": now, "until": now + Shop.BOOST_SECONDS, "value": Shop.BOOST_MULT}
 	return _ok()
 
-## Raises an item (bag or worn) to the hero's level. pay: "gold" (gold + ore) or "crystals".
-static func _upgrade_item(p: Dictionary, id: String, pay: String) -> Dictionary:
-	var it = null
-	for x in p["inventory"]:
-		if x["id"] == id:
-			it = x
-	for slot in p["hero"]["equipped"]:
-		var e = p["hero"]["equipped"][slot]
-		if e != null and e["id"] == id:
-			it = e
-	if it == null:
-		return _err("no such item")
-	var to: int = int(p["hero"]["level"])
-	var cost := Shop.upgrade_cost(it, to)
-	if cost.is_empty():
-		return _err("already at hero level")
-	if pay == "crystals":
-		if not _spend_crystals(p, int(cost["crystals"])):
-			return _err("not enough crystals")
-	else:
-		if int(p["gold"]) < int(cost["gold"]):
-			return _err("not enough gold")
-		if res_count(p, cost["ore"]) < int(cost["ore_n"]):
-			return _err("missing " + str(cost["ore"]))
-		p["gold"] -= int(cost["gold"])
-		_add_res(p, cost["ore"], -int(cost["ore_n"]))
-	Loot.rescale(it, to)
-	return _ok({"ilvl": to})
-
-## Item merge: MERGE_COUNT bag items of one rarity -> one random item of the next
+## Item merge, one at a time: MERGE_COUNT bag items of one rarity -> one random item of the next
 ## rarity at the highest item level of the three. The weakest ones are used.
 const MERGE_COUNT := 3
-const MERGE_GOLD := [60, 200, 600]
+const MERGE_GOLD := [20, 60, 400, 2000]   # poor, common, uncommon, rare; legendaries cannot be merged
+const MERGE_TIME := [600, 3600, 14400, 43200]   # seconds
 
 static func merge_candidates(p: Dictionary, rarity: int) -> Array:
 	var list := []
@@ -721,9 +719,12 @@ static func merge_candidates(p: Dictionary, rarity: int) -> Array:
 	list.sort_custom(func(a, b): return Loot.item_score(a) < Loot.item_score(b))
 	return list.slice(0, MERGE_COUNT) if list.size() >= MERGE_COUNT else []
 
-static func _merge_items(p: Dictionary, r: RandomNumberGenerator, rarity: int) -> Dictionary:
-	if rarity < 0 or rarity > 2:
+## Merge is a job with a timer: the items and gold go at the start, the result comes at the end.
+static func _merge_start(p: Dictionary, rarity: int, now: float) -> Dictionary:
+	if rarity < 0 or rarity >= MERGE_GOLD.size():
 		return _err("bad rarity")
+	if p["merging"] != null:
+		return _err("already merging")
 	var used := merge_candidates(p, rarity)
 	if used.is_empty():
 		return _err("not enough items")
@@ -734,8 +735,18 @@ static func _merge_items(p: Dictionary, r: RandomNumberGenerator, rarity: int) -
 	for it in used:
 		ilvl = max(ilvl, int(it["ilvl"]))
 		p["inventory"].erase(it)
-	var out := Loot.roll_gear(r, ilvl, 0.0, "", "", [], rarity + 1)
+	p["merging"] = {"rarity": rarity + 1, "ilvl": ilvl, "started_at": now, "ends_at": now + float(MERGE_TIME[rarity])}
+	return _ok({"ends_at": p["merging"]["ends_at"]})
+
+static func _merge_claim(p: Dictionary, r: RandomNumberGenerator, now: float) -> Dictionary:
+	var job = p["merging"]
+	if job == null:
+		return _err("nothing to claim")
+	if now < float(job["ends_at"]):
+		return _err("not finished")
+	var out := Loot.roll_gear(r, int(job["ilvl"]), "drop", "", "", Items.role_of(Loot.weapon_types(p["hero"]["equipped"])), int(job["rarity"]))
 	p["inventory"].append(out)
+	p["merging"] = null
 	return _ok({"item": out})
 
 static func _talent_reset(p: Dictionary) -> Dictionary:
@@ -880,20 +891,31 @@ static func _start(p: Dictionary, r: RandomNumberGenerator, level: int, mode: St
 	if p.get("expedition") != null:
 		prev = _collect(p, r, now, ctx, true)
 	var party := party_snapshots(p).duplicate(true)
-	var buffs := active_buffs(p, now)
-	for m in party:
-		for eff in ["dmg_mult", "heal_mult"]:
-			if buffs.has(eff):
-				m["stats"][eff] = float(buffs[eff]["value"])
-	p["expedition"] = _make_expedition(level, mode, party, r.randi(), level > int(p["closed_level"]), now)
+	var potion = active_buffs(p, now).get("potion")
+	if potion != null:
+		_apply_potion(p, party, Prof.CONSUMABLES[potion["res"]])
+	p["expedition"] = _make_expedition(p, level, mode, party, r.randi(), level > int(p["closed_level"]), now)
 	var out := _ok({"expedition": p["expedition"]["id"]})
 	if not prev.is_empty():
 		out["previous"] = prev.get("report", {})
 		out["assists"] = prev.get("assists", [])
 	return out
 
-static func _make_expedition(level: int, mode: String, party: Array, seed_value: int, first: bool, now: float) -> Dictionary:
-	var tl := Expedition.build_timeline(level, mode, party, seed_value, first)
+static func _apply_potion(p: Dictionary, party: Array, c: Dictionary) -> void:
+	for m in party:
+		match c["effect"]:
+			"dmg_mult", "heal_mult":
+				m["stats"][c["effect"]] = float(c["value"])
+			"hp_mult":
+				m["stats"]["hp"] = float(m["stats"]["hp"]) * float(c["value"])
+			"hero_stat":
+				if m.get("is_hero", false):
+					m["stats"] = Roster.hero_stats(p["hero"], c)
+
+static func _make_expedition(p: Dictionary, level: int, mode: String, party: Array, seed_value: int, first: bool, now: float) -> Dictionary:
+	var role := Items.role_of(Loot.weapon_types(p["hero"]["equipped"]))
+	var tl := Expedition.build_timeline(level, mode, party, seed_value, first, Prof.drop_recipes(p["craft_prof"]), role)
+	tl["role"] = role
 	tl["combat_version"] = 9
 	return {"id": "%d_%d" % [seed_value, int(now)], "level": level, "mode": mode, "seed": seed_value, "first": first,
 		"party": party, "started_at": now, "tl": tl, "collected": Expedition.zero_point()}
@@ -1040,6 +1062,8 @@ static func can_craft(p: Dictionary, recipe_id: String) -> Dictionary:
 	if not Prof.RECIPES.has(recipe_id):
 		return {"ok": false, "error": "no such recipe"}
 	var r: Dictionary = Prof.RECIPES[recipe_id]
+	if r["prof"] != p["craft_prof"]:
+		return {"ok": false, "error": "not your craft"}
 	if r.get("drop_only", false) and not recipe_id in p.get("recipes_known", []):
 		return {"ok": false, "error": "recipe not learned"}
 	if prof_level(p, r["prof"]) < int(r["req"]):
@@ -1107,6 +1131,21 @@ static func _gather_cancel(p: Dictionary) -> Dictionary:
 	p["gathering"] = null
 	return _ok()
 
+## One crafting profession per hero. Levels of the others stay, so changing back keeps them.
+static func _prof_choose(p: Dictionary, prof: String) -> Dictionary:
+	if not prof in Prof.CRAFTING:
+		return _err("not a crafting profession")
+	if prof == p["craft_prof"]:
+		return _err("already chosen")
+	if p["craft_prof"] != "":
+		if not p["crafting"].is_empty():
+			return _err("already crafting")
+		if int(p["gold"]) < Prof.CRAFT_CHANGE_GOLD:
+			return _err("not enough gold")
+		p["gold"] -= Prof.CRAFT_CHANGE_GOLD
+	p["craft_prof"] = prof
+	return _ok()
+
 static func _craft_start(p: Dictionary, recipe_id: String, now: float) -> Dictionary:
 	var chk := can_craft(p, recipe_id)
 	if not chk["ok"]:
@@ -1115,7 +1154,7 @@ static func _craft_start(p: Dictionary, recipe_id: String, now: float) -> Dictio
 	p["gold"] -= int(r["gold"])
 	for res in r["ingredients"]:
 		_add_res(p, res, -int(r["ingredients"][res]))
-	p["crafting"][r["prof"]] = {"recipe": recipe_id, "started_at": now, "ends_at": now + float(r["time"])}
+	p["crafting"][r["prof"]] = {"recipe": recipe_id, "ilvl": int(p["hero"]["level"]), "started_at": now, "ends_at": now + float(r["time"])}
 	return _ok({"ends_at": now + float(r["time"])})
 
 static func _craft_claim(p: Dictionary, rng: RandomNumberGenerator, prof: String, now: float) -> Dictionary:
@@ -1127,7 +1166,7 @@ static func _craft_claim(p: Dictionary, rng: RandomNumberGenerator, prof: String
 	var r: Dictionary = Prof.RECIPES[c["recipe"]]
 	var rep := {"type": "craft", "prof": prof, "recipe": c["recipe"], "items": [], "res": {}}
 	if r.has("item"):
-		var it := Prof.make_item(c["recipe"], "c%08x%08x" % [rng.randi(), rng.randi()])
+		var it := Prof.make_item(c["recipe"], "c%08x%08x" % [rng.randi(), rng.randi()], int(c.get("ilvl", p["hero"]["level"])), rng)
 		p["inventory"].append(it)
 		rep["items"].append(it)
 	for res in r.get("output", {}):
@@ -1146,7 +1185,7 @@ static func _use_item(p: Dictionary, res: String, now: float) -> Dictionary:
 	var c: Dictionary = Prof.CONSUMABLES[res]
 	_add_res(p, res, -1)
 	if c.has("duration"):
-		p["buffs"][c["effect"]] = {"value": float(c["value"]), "until": now + float(c["duration"]), "res": res}
+		p["buffs"]["potion"] = {"value": float(c["value"]), "until": now + float(c["duration"]), "res": res}
 	else:
 		var b: Dictionary = p["buffs"].get(c["effect"], {"value": float(c["value"]), "charges": 0, "res": res})
 		b["charges"] = int(b.get("charges", 0)) + int(c.get("charges", 1))

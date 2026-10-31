@@ -34,6 +34,7 @@ var crit: float
 var dmg_mult := 1.0      # potion buffs (Prof.CONSUMABLES)
 var regen := 0.0         # share of max hp restored per second (enemy modifier)
 var heal_mult := 1.0
+var gear_fx := {}        # summed effects of worn gear (Items.EFFECTS)
 
 var spells: Array = []   # [{id, lvl}] in rotation order
 var rot_index := 0
@@ -113,6 +114,10 @@ func _init(p_uid: int, p_side: int, p_slot: int, snap: Dictionary) -> void:
 		shield = float(st["start_shield"])
 		shield_time = 9999.0
 	heal_mult = st.get("heal_mult", 1.0)
+	gear_fx = Items.combine(snap.get("effects", []))
+	if gear_fx.has("start_shield"):
+		shield = max_hp * float(gear_fx["start_shield"])
+		shield_time = 9999.0
 	spells = snap.get("spells", []).duplicate(true)
 
 func alive() -> bool:

@@ -77,12 +77,17 @@ def test_push_farm_and_assists(client):
     # push level 1
     base = 86400 * 6
     set_clock(client, base)
-    st = act(client, hh, "start", level=1, mode="push")
-    assert st["ok"], st
-    t_end = st["profile"]["expedition"]["tl"]["t_end"]
-    set_clock(client, base + t_end + 1)
-    me = client.get("/v1/me", headers=hh).json()
-    assert any(r["type"] == "push_end" for r in me["reports"]), me["reports"]
+    for attempt in range(5):  # a random party can lose level 1 now and then
+        set_clock(client, base)
+        st = act(client, hh, "start", level=1, mode="push")
+        assert st["ok"], st
+        t_end = st["profile"]["expedition"]["tl"]["t_end"]
+        set_clock(client, base + t_end + 1)
+        me = client.get("/v1/me", headers=hh).json()
+        assert any(r["type"] == "push_end" for r in me["reports"]), me["reports"]
+        if me["profile"]["closed_level"] == 1:
+            break
+        base += int(t_end) + 2
     assert me["profile"]["closed_level"] == 1
     # farm and collect -> owner earns 5% (if the owner is still hired after the board refresh)
     assert act(client, hh, "start", level=1, mode="farm")["ok"]
@@ -148,6 +153,8 @@ def test_professions_are_server_timed(client):
     assert again["profile"]["resources"] == res, "a double claim must not pay twice"
     # crafting runs next to gathering and the AFK farm
     assert act(client, h, "gather_start", prof="mining", loc="abandoned_quarry", sec=900)["ok"]
+    assert act(client, h, "craft_start", recipe="minor_strength_potion")["error"] == "not your craft"
+    assert act(client, h, "prof_choose", prof="alchemy")["ok"]
     c = act(client, h, "craft_start", recipe="minor_strength_potion")
     assert c["ok"], c
     p = c["profile"]

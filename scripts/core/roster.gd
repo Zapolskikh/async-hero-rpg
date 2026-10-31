@@ -18,7 +18,9 @@ static func apply_gear(base: Dictionary, gear: Dictionary) -> Dictionary:
 	return st
 
 ## Paper doll: tint of an item layer by rarity (layers are drawn in greys).
-const LOOK_TINTS := ["#8f96a3", "#5b9be8", "#b06ef0", "#f0aa40"]
+## Slots whose art CharacterRig draws on the body.
+const GEAR_LAYERS := ["head", "armor", "hands", "legs", "feet", "weapon", "offhand"]
+const LOOK_TINTS := ["#8f96a3", "#c9cdd4", "#5fc46a", "#5b9be8", "#b06ef0", "#f0aa40"]
 
 ## Layers drawn over doll_body for this gear, back to front: [[layer, tint or ""], ...].
 static func look(gear: Dictionary) -> Array:
@@ -31,11 +33,15 @@ static func look(gear: Dictionary) -> Array:
 	for slot in ["legs", "feet", "armor", "trinket", "head", "hands"]:
 		var it = gear.get(slot)
 		if it != null:
-			out.append([slot, LOOK_TINTS[clamp(int(it["rarity"]), 0, 3)]])
+			out.append([slot, LOOK_TINTS[clamp(int(it["rarity"]), 0, 5)]])
 	if main != null and main.has("wtype"):
 		out.append(["w_" + str(main["wtype"]), ""])
 	if off != null and off.get("wtype", "") == "shield":
-		out.append(["shield", LOOK_TINTS[clamp(int(off["rarity"]), 0, 3)]])
+		out.append(["shield", LOOK_TINTS[clamp(int(off["rarity"]), 0, 5)]])
+	for slot in GEAR_LAYERS:
+		var it = gear.get(slot)
+		if it != null and it.has("look"):
+			out.append(["gear:" + slot, it["look"]])
 	return out
 
 ## Worn cosmetics as colours for the views: {"glow": "#hex", "aura": "#hex"}.
@@ -45,17 +51,6 @@ static func cosmetic_colors(cos: Dictionary) -> Dictionary:
 		if Shop.COSMETICS.has(cos[slot]):
 			out[slot] = Shop.COSMETICS[cos[slot]]["color"]
 	return out
-
-## Stats a mercenary template wants on its gear, from its role.
-static func gear_pref(t: Dictionary) -> Array:
-	var st: Dictionary = t.get("stat", {})
-	if float(st.get("armor", 1.0)) > 1.5:
-		return ["hp", "armor", "str"]
-	if float(st.get("power", 1.0)) > 1.05:
-		return ["power", "haste", "crit", "hp"]
-	if float(st.get("agi", 1.0)) > 1.05:
-		return ["agi", "crit", "haste", "hp"]
-	return ["str", "crit", "haste", "hp", "armor"]
 
 static func empty_gear() -> Dictionary:
 	var g := {}
@@ -74,11 +69,14 @@ static func combat_stats(base: Dictionary, gear: Dictionary) -> Dictionary:
 	st.merge(Loot.attack_of(st, gear), true)
 	return st
 
-static func hero_stats(hero: Dictionary) -> Dictionary:
+static func hero_stats(hero: Dictionary, potion: Dictionary = {}) -> Dictionary:
 	var gear: Dictionary = hero["equipped"]
 	var talents: Dictionary = hero.get("talents", {})
 	var weapons := Loot.weapon_types(gear)
 	var st := apply_gear(Db.hero_base_stats(hero["level"]), gear)
+	if potion.has("stat"):
+		var stat: String = potion["stat"]
+		st[stat] = float(st.get(stat, 0.0)) + float(potion["value"]) if Loot.FLAT_STATS.has(stat) else float(st[stat]) * (1.0 + float(potion["value"]))
 	Talents.apply_stats(st, talents, weapons)
 	st.merge(Loot.attack_of(st, gear), true)
 	st["atk"] = round(st["atk"] * Talents.attack_mult(talents, weapons))
@@ -98,6 +96,7 @@ static func hero_snapshot(hero: Dictionary, collection: Dictionary) -> Dictionar
 		"stats": hero_stats(hero), "spells": spells, "target": "front",
 		"weapons": Loot.weapon_types(hero["equipped"]),
 		"talents": hero.get("talents", {}).duplicate(),
+		"effects": Items.effects_of(hero["equipped"]),
 		"look": look(hero["equipped"]),
 		"cosmetics": cosmetic_colors(hero.get("cosmetics", {})),
 		"appearance": CharacterAppearance.normalize(hero.get("appearance")),

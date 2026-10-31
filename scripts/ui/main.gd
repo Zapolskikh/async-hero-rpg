@@ -28,6 +28,7 @@ var exp_status: Label
 var watch_layer: Control
 var watch_label: Label
 var battle_view: Control
+const METER_HEIGHT := 165.0  # space the battle meters take at the bottom of the watch screen
 var meter_rows: Array = []   # [{root, bar, name, value}] damage meter in the watch screen
 var heal_rows: Array = []    # same for the healing meter
 var popup_layer: Control
@@ -211,7 +212,7 @@ func _nav_badges() -> Dictionary:
 		"hero": Game.hero["rotation"].size() < 3 or Talents.points_free(Game.hero) > 0,
 		"mercs": not Game.party_ready(),
 		"spells": Game.free_box_available() or Game.boxes > 0 or fusable,
-		"bag": bag_upgrade,
+		"bag": bag_upgrade or (Game.profile["merging"] != null and Game.now() >= float(Game.profile["merging"]["ends_at"])),
 		"crafts": CraftsScreen.has_ready(),
 	}
 
@@ -524,6 +525,7 @@ func _build_watch_layer() -> void:
 	watch_layer.visible = false
 	add_child(watch_layer)
 	battle_view = BattleView.new()
+	battle_view.show_last = true
 	battle_view.set_anchors_preset(Control.PRESET_FULL_RECT)
 	watch_layer.add_child(battle_view)
 	var bar := PanelContainer.new()
@@ -560,7 +562,7 @@ func _build_meter_panel(title: String, hint: String, x: float) -> Array:
 	panel.anchor_bottom = 1.0
 	panel.offset_left = x
 	panel.offset_right = x + 440
-	panel.offset_bottom = -12
+	panel.offset_bottom = -4
 	panel.grow_vertical = Control.GROW_DIRECTION_BEGIN
 	panel.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	watch_layer.add_child(panel)
@@ -610,7 +612,7 @@ func _update_meter(ex: Expedition) -> void:
 
 ## Breakdown by spell for one meter row (Recount-style detail).
 func _meter_details(rows: Array, i: int, field: String, title: String) -> void:
-	var ex: Expedition = Game.expedition
+	var ex: Expedition = Game.shown_battle()
 	if ex == null or ex.sim == null or not rows[i].has("uid"):
 		return
 	var u = ex.sim.unit_by_uid(int(rows[i]["uid"]))
@@ -676,8 +678,8 @@ func _close_watch() -> void:
 
 func _process(_delta: float) -> void:
 	if watch_layer.visible:
-		var ex: Expedition = Game.expedition
-		if ex == null:
+		var ex: Expedition = Game.shown_battle()
+		if Game.expedition == null:
 			watch_label.text = "Поход завершён"
 		else:
 			var mode := "Штурм" if ex.mode == "push" else "Фарм"
@@ -734,6 +736,9 @@ func _screen_hero() -> Control:
 	var doll := UI.hbox(20)
 	doll.alignment = BoxContainer.ALIGNMENT_CENTER
 	doll.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	var left_extra := UI.vbox(2)
+	left_extra.add_child(_gear_slot("accessory1"))
+	doll.add_child(left_extra)
 	var left_col := UI.vbox(2)
 	left_col.alignment = BoxContainer.ALIGNMENT_CENTER
 	for slot in ["weapon", "offhand", "hands", "trinket"]:
@@ -755,6 +760,9 @@ func _screen_hero() -> Control:
 	for slot in ["head", "armor", "legs", "feet"]:
 		right_col.add_child(_gear_slot(slot))
 	doll.add_child(right_col)
+	var right_extra := UI.vbox(2)
+	right_extra.add_child(_gear_slot("accessory2"))
+	doll.add_child(right_extra)
 	mv.add_child(doll)
 
 	var rot_head := UI.hbox(8)
@@ -794,9 +802,9 @@ func _gear_slot(slot: String) -> Control:
 		t = UI.tile(UI.item_icon(main_w), Style.CARD_3, 50, true)
 		label = "Двуручное"
 	elif it == null:
-		t = UI.tile("item_" + slot, Style.CARD_3, 50, true)
+		t = UI.tile("item_accessory" if slot.begins_with("accessory") else "item_" + slot, Style.CARD_3, 50, true)
 	else:
-		t = UI.tile(UI.item_icon(it), Style.RARITY[it["rarity"]], 50)
+		t = UI.tile(UI.item_icon(it), Style.QUALITY[it["rarity"]], 50)
 	t.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
 	UI.tap_overlay(t, _gear_popup.bind(slot))
 	v.add_child(t)
@@ -1067,14 +1075,14 @@ func _gear_popup(slot: String) -> void:
 	var it = Game.hero["equipped"].get(slot)
 	var body := UI.vbox(10)
 	if it == null:
-		var where := "Предметы падают за первое прохождение уровня и иногда на фарме." if slot in Loot.SLOTS else "Такие вещи делают кузнецы и портные во вкладке «Ремёсла»; изредка падают в бою."
+		var where := "Предметы падают за первое прохождение уровня и на фарме, часть вещей делают кузнецы и портные."
 		body.add_child(UI.wrap("Слот «%s» пуст. %s" % [Loot.SLOT_NAMES[slot], where], Style.FONT_SMALL, Style.MUTED))
 	else:
 		body.add_child(_item_details(it, false))
 	# what from the bag fits this slot
 	var fits := []
 	for x in Game.inventory:
-		if x["slot"] == slot or (slot == "offhand" and Loot.fits_offhand(x)):
+		if x["slot"] == slot or (slot == "offhand" and Loot.fits_offhand(x)) or (x["slot"] == "accessory" and slot.begins_with("accessory")):
 			fits.append(x)
 	fits.sort_custom(func(a, b): return Game.power_with(a, slot) > Game.power_with(b, slot))
 	if not fits.is_empty():
@@ -1082,9 +1090,9 @@ func _gear_popup(slot: String) -> void:
 		var list := UI.vbox(6)
 		for x in fits:
 			var row := UI.hbox(8)
-			row.add_child(UI.tile(UI.item_icon(x), Style.RARITY[x["rarity"]], 48))
+			row.add_child(UI.tile(UI.item_icon(x), Style.QUALITY[x["rarity"]], 48))
 			var tv := UI.vbox(0)
-			tv.add_child(UI.label("%s · ур. %d" % [UI.item_title(x), x["ilvl"]], Style.FONT_SMALL, Style.RARITY[x["rarity"]], true))
+			tv.add_child(UI.label("%s · ур. %d" % [UI.item_title(x), x["ilvl"]], Style.FONT_SMALL, Style.QUALITY[x["rarity"]], true))
 			tv.add_child(UI.label(UI.item_line(x), Style.FONT_TINY, Style.MUTED))
 			row.add_child(UI.expand(tv))
 			var d := Game.power_with(x, slot) - Game.power_now()
@@ -1102,7 +1110,7 @@ func _gear_popup(slot: String) -> void:
 	_modal(UI.item_title(it) if it != null else Loot.SLOT_NAMES[slot], body, buttons)
 
 func _equip_from_slot(id: String, slot: String) -> void:
-	Game.equip(id, "offhand" if slot == "offhand" else "")
+	Game.equip(id, slot if slot == "offhand" or slot.begins_with("accessory") else "")
 	_gear_popup(slot)
 
 func _spell_popup(sid: String, caster: Dictionary = {}) -> void:
@@ -1337,7 +1345,7 @@ func _merc_card(m: Dictionary) -> Control:
 func _small_gear_tile(it, slot: String, size_px: float) -> Control:
 	if it == null:
 		return UI.tile("item_" + slot, Style.CARD_3, size_px, true)
-	var t := UI.tile(UI.item_icon(it), Style.RARITY[it["rarity"]], size_px)
+	var t := UI.tile(UI.item_icon(it), Style.QUALITY[it["rarity"]], size_px)
 	UI.tap_overlay(t, _item_popup.bind(it))
 	return t
 
@@ -1394,7 +1402,7 @@ func _merc_popup(m: Dictionary) -> void:
 		var gl := UI.vbox(0)
 		gl.add_child(UI.label(Loot.SLOT_NAMES[slot], Style.FONT_TINY, Style.MUTED))
 		gl.add_child(UI.label(UI.item_title(it) if it != null else "пусто", Style.FONT_TINY,
-			Style.RARITY[it["rarity"]] if it != null else Style.MUTED, true))
+			Style.QUALITY[it["rarity"]] if it != null else Style.MUTED, true))
 		gv.add_child(gl)
 		gear.add_child(UI.expand(gv))
 	body.add_child(gear)
@@ -1627,7 +1635,7 @@ func _screen_bag() -> Control:
 	var head := UI.hbox(8)
 	head.add_child(UI.expand(UI.title("Сумка", 22)))
 	head.add_child(UI.label("%d предм." % Game.inventory.size(), Style.FONT_SMALL, Style.MUTED))
-	head.add_child(UI.btn("Объединить", _merge_popup, "secondary", Style.FONT_TINY, "", 0, 36))
+	head.add_child(UI.btn("Переплавка", _merge_popup, "secondary", Style.FONT_TINY, "", 0, 36))
 	lv.add_child(head)
 	var potions := _potions_row()
 	if potions != null:
@@ -1722,9 +1730,8 @@ func _potions_row() -> Control:
 		if eff == "gather_yield":
 			parts.append("тоник: +%d%% к следующему сбору" % roundi((float(b["value"]) - 1.0) * 100))
 		else:
-			parts.append("%s +%d%% ещё %s" % ["урон" if eff == "dmg_mult" else "лечение", roundi((float(b["value"]) - 1.0) * 100),
-				UI.format_time(float(b["until"]) - Game.now())])
-	var note := "Зелья урона и лечения действуют с запуска следующего похода."
+			parts.append("%s ещё %s" % [Prof.RESOURCES[b["res"]]["name"], UI.format_time(float(b["until"]) - Game.now())])
+	var note := "Зелье действует с запуска следующего похода. Активно только одно: новое заменяет прежнее."
 	if not parts.is_empty():
 		note = "Активно: " + ", ".join(parts) + ". " + note
 	v.add_child(UI.wrap(note, Style.FONT_TINY, Style.WARNING))
@@ -1738,42 +1745,60 @@ func _drink(res: String) -> void:
 func _merge_popup() -> void:
 	UI.clear(popup_layer)
 	var v := UI.vbox(10)
-	v.add_child(UI.wrap("3 вещи одной редкости → 1 случайная вещь следующей редкости, уровня самой высокой из трёх. Берутся самые слабые вещи из сумки (надетые не трогаются).", Style.FONT_SMALL, Style.MUTED))
-	for r in 3:
+	v.add_child(UI.wrap("3 вещи одной редкости → 1 случайная вещь следующей редкости, уровня самой высокой из трёх. Берутся самые слабые вещи из сумки, надетые не трогаются. Переплавка идёт одна за раз и занимает время.", Style.FONT_SMALL, Style.MUTED))
+	var job = Game.profile["merging"]
+	if job != null:
+		var done: bool = Game.now() >= float(job["ends_at"])
+		var c := UI.card(Style.BG_DEEP, 8)
+		var h := UI.hbox(8)
+		c.add_child(h)
+		var text := "Готово: %s вещь" % Items.QUALITY_NAMES[int(job["rarity"])] if done else "Идёт переплавка: %s вещь, осталось %s" % [Items.QUALITY_NAMES[int(job["rarity"])], UI.format_time(float(job["ends_at"]) - Game.now())]
+		h.add_child(UI.expand(UI.wrap(text, Style.FONT_SMALL, Style.QUALITY[int(job["rarity"])], true)))
+		if done:
+			h.add_child(UI.btn("Забрать", _merge_take, "primary", Style.FONT_SMALL, "", 0, 44))
+		else:
+			var cost := Shop.rush_cost(float(job["ends_at"]) - Game.now())
+			var rush := UI.btn("Сейчас  %d" % cost, _merge_rush, "secondary", Style.FONT_TINY, "crystal", 0, 44)
+			rush.disabled = Game.crystals < cost
+			h.add_child(rush)
+		v.add_child(c)
+	for r in Rules.MERGE_GOLD.size():
 		var used := Rules.merge_candidates(Game.profile, r)
 		var c := UI.card(Style.BG_DEEP, 8)
 		var h := UI.hbox(8)
 		c.add_child(h)
 		var tv := UI.vbox(2)
-		tv.add_child(UI.label("%s ×3 → %s" % [Db.RARITY_NAMES[r], Db.RARITY_NAMES[r + 1]], Style.FONT_SMALL, Style.RARITY[r + 1], true))
+		tv.add_child(UI.label("%s ×3 → %s · %s" % [Items.QUALITY_NAMES[r], Items.QUALITY_NAMES[r + 1], UI.format_time(float(Rules.MERGE_TIME[r]))], Style.FONT_SMALL, Style.QUALITY[r + 1], true))
 		var names := []
 		for it in used:
 			names.append("%s ур.%d" % [UI.item_title(it), it["ilvl"]])
 		tv.add_child(UI.wrap(", ".join(names) if not names.is_empty() else "нужно 3 вещи этой редкости в сумке", Style.FONT_TINY, Style.MUTED))
 		h.add_child(UI.expand(tv))
 		var b := UI.btn("%d" % Rules.MERGE_GOLD[r], _merge.bind(r), "primary", Style.FONT_SMALL, "gold", 0, 44)
-		b.disabled = used.is_empty() or Game.gold < Rules.MERGE_GOLD[r]
+		b.disabled = used.is_empty() or Game.gold < Rules.MERGE_GOLD[r] or job != null
 		h.add_child(b)
 		v.add_child(c)
-	_modal("Объединение вещей", v)
+	_modal("Переплавка вещей", v)
 
 func _merge(rarity: int) -> void:
 	var r: Dictionary = await Game.merge_items(rarity)
+	_toast("Переплавка началась" if r.get("ok", false) else "Не хватает вещей или золота")
+	_merge_popup()
+
+func _merge_take() -> void:
+	var r: Dictionary = await Game.merge_claim()
 	if r.get("ok", false):
 		selected_item = r["item"]["id"]
-		_toast("Получено: %s (%s)" % [UI.item_title(r["item"]), Db.RARITY_NAMES[int(r["item"]["rarity"])]])
-	else:
-		_toast("Не хватает вещей или золота")
+		_toast("Получено: %s (%s)" % [UI.item_title(r["item"]), Items.QUALITY_NAMES[int(r["item"]["rarity"])]])
+	_merge_popup()
+
+func _merge_rush() -> void:
+	var r: Dictionary = await Game.rush("merge", "")
+	_toast("Готово — можно забирать" if r.get("ok", false) else "Не хватает кристаллов")
 	_merge_popup()
 
 func _set_bag_sort(s: String) -> void:
 	bag_sort = s
-	_refresh()
-
-func _upgrade(id: String, pay: String) -> void:
-	var r: Dictionary = await Game.upgrade_item(id, pay)
-	_toast(("Вещь теперь %d уровня" % int(r["ilvl"])) if r.get("ok", false) else "Не хватает ресурсов")
-	UI.clear(popup_layer)
 	_refresh()
 
 func _equip(id: String, to: String) -> void:
@@ -1789,7 +1814,7 @@ func _select_item(id: String) -> void:
 	_refresh()
 
 func _item_tile(it: Dictionary) -> Control:
-	var t := UI.tile(UI.item_icon(it), Style.RARITY[it["rarity"]], 84, false, it["id"] == selected_item)
+	var t := UI.tile(UI.item_icon(it), Style.QUALITY[it["rarity"]], 84, false, it["id"] == selected_item)
 	if Game.power_with(it) > Game.power_now():
 		var up := UI.chip("▲", Style.SUCCESS, 12, Color("#062b16"))
 		up.position = Vector2(-6, -6)
@@ -1803,12 +1828,16 @@ func _item_tile(it: Dictionary) -> Control:
 func _item_details(it: Dictionary, compare: bool) -> Control:
 	var v := UI.vbox(10)
 	var top := UI.hbox(12)
-	top.add_child(UI.tile(UI.item_icon(it), Style.RARITY[it["rarity"]], 80))
+	top.add_child(UI.tile(UI.item_icon(it), Style.QUALITY[it["rarity"]], 80))
 	var tv := UI.vbox(4)
-	tv.add_child(UI.label(UI.item_title(it), Style.FONT_BODY, Style.RARITY[it["rarity"]], true))
+	tv.add_child(UI.label(UI.item_title(it), Style.FONT_BODY, Style.QUALITY[it["rarity"]], true))
 	var chips := UI.hbox(6)
-	chips.add_child(UI.chip(Db.RARITY_NAMES[it["rarity"]], Style.RARITY[it["rarity"]]))
+	chips.add_child(UI.chip(Items.QUALITY_NAMES[it["rarity"]], Style.QUALITY[it["rarity"]]))
 	chips.add_child(UI.chip(Loot.SLOT_NAMES[it["slot"]], Style.CARD_3))
+	if it.has("atype"):
+		chips.add_child(UI.chip(Items.ARMOR_NAMES[it["atype"]], Style.CARD_3))
+	if it.has("roll"):
+		chips.add_child(UI.chip("Ковка %d%%" % roundi(float(it["roll"]) * 100), Style.CARD_3))
 	chips.add_child(UI.chip("ур. %d" % it["ilvl"], Style.CARD_3))
 	tv.add_child(chips)
 	top.add_child(UI.expand(tv))
@@ -1824,27 +1853,11 @@ func _item_details(it: Dictionary, compare: bool) -> Control:
 		var row := UI.hbox(8)
 		row.add_child(UI.icon(UI.stat_icon(a["stat"]), 24))
 		row.add_child(UI.expand(UI.label(Loot.affix_text(a), Style.FONT_BODY, Style.TEXT, true)))
-		row.add_child(UI.label("ролл %d%%" % roundi(float(a["q"]) * 100), Style.FONT_TINY, Style.MUTED))
 		v.add_child(row)
-	var up := Shop.upgrade_cost(it, int(Game.hero["level"]))
-	if not up.is_empty():
-		var ub := UI.flat(Style.BG_DEEP, 10)
-		var uv := UI.vbox(6)
-		ub.add_child(uv)
-		uv.add_child(UI.label("Подтянуть до уровня героя: %d → %d" % [it["ilvl"], Game.hero["level"]], Style.FONT_SMALL, Style.TEXT, true))
-		var uh := UI.hbox(8)
-		var have_ore := Rules.res_count(Game.profile, up["ore"])
-		var gb := UI.btn("%d  +  %s %d/%d" % [up["gold"], Prof.RESOURCES[up["ore"]]["name"], have_ore, up["ore_n"]],
-			_upgrade.bind(it["id"], "gold"), "primary", Style.FONT_TINY, "gold", 0, 40)
-		gb.disabled = Game.gold < int(up["gold"]) or have_ore < int(up["ore_n"])
-		uh.add_child(gb)
-		var cb := UI.btn("%d" % up["crystals"], _upgrade.bind(it["id"], "crystals"), "secondary", Style.FONT_TINY, "crystal", 0, 40)
-		cb.disabled = Game.crystals < int(up["crystals"])
-		uh.add_child(cb)
-		uv.add_child(uh)
-		v.add_child(ub)
+	if it.has("effect"):
+		v.add_child(UI.wrap("Эффект: " + Items.effect_text(it["effect"]), Style.FONT_SMALL, Style.QUALITY[it["rarity"]]))
 	if compare:
-		var eq = Game.hero["equipped"][it["slot"]]
+		var eq = Game.hero["equipped"][Loot.wear_slot(Game.hero["equipped"], it)]
 		var diff := Game.power_with(it) - Game.power_now()
 		var box := UI.flat(Style.BG_DEEP, 10)
 		var bv := UI.vbox(4)
@@ -2024,9 +2037,15 @@ func _on_expedition_finished(r: Dictionary) -> void:
 	if r.get("closed", false):
 		selected_level = min(Game.closed_level + 1, Db.level_count())
 		_refresh()
-	_show_rewards(r, "Уровень пройден!" if r["won"] > 0 else "Уровень не пройден")
+	var buttons := []
+	if r["won"] > 0:
+		var ready := Game.party_ready()
+		if int(r["level"]) < Db.level_count():
+			buttons.append(["Следующий уровень", _start.bind(int(r["level"]) + 1, "push"), "primary", ready])
+		buttons.append(["Фармить этот уровень", _start.bind(int(r["level"]), "farm"), "secondary", ready])
+	_show_rewards(r, "Уровень пройден!" if r["won"] > 0 else "Уровень не пройден", buttons)
 
-func _show_rewards(r: Dictionary, title_text: String) -> void:
+func _show_rewards(r: Dictionary, title_text: String, buttons: Array = []) -> void:
 	if r.is_empty():
 		return
 	var v := UI.vbox(12)
@@ -2062,7 +2081,7 @@ func _show_rewards(r: Dictionary, title_text: String) -> void:
 		ih.add_theme_constant_override("h_separation", 8)
 		ih.add_theme_constant_override("v_separation", 8)
 		for i in min(items.size(), 12):
-			var t := UI.tile(UI.item_icon(items[i]), Style.RARITY[items[i]["rarity"]], 64)
+			var t := UI.tile(UI.item_icon(items[i]), Style.QUALITY[items[i]["rarity"]], 64)
 			t.modulate.a = 0.0
 			ih.add_child(t)
 			var tw := create_tween()
@@ -2073,11 +2092,19 @@ func _show_rewards(r: Dictionary, title_text: String) -> void:
 			v.add_child(UI.label("и ещё %d" % (items.size() - 12), Style.FONT_SMALL, Style.MUTED))
 	if r.get("won", 0) == 0 and r.has("reason"):
 		v.add_child(UI.wrap("Совет: проверьте состав (лекарь, щиты, interrupt) и порядок способностей.", Style.FONT_SMALL))
-	_modal(title_text, v, [], "Отлично")
+	var window := _modal(title_text, v, buttons, "Закрыть" if not buttons.is_empty() else "Отлично")
+	if watch_layer.visible:
+		_keep_meters_visible(window)
 	var lbl: Label = gold_pill.get_child(0).get_child(1)
 	var tw2 := lbl.create_tween()  # bound to the label: stops if the window is closed early
 	tw2.tween_interval(0.15)
 	tw2.tween_method(_set_gold_text.bind(lbl), 0.0, float(r["gold"]), 0.6)
+
+## The result window sits above the meters and hardly dims the battle behind it.
+func _keep_meters_visible(window: Control) -> void:
+	if window is ColorRect:
+		window.color.a = 0.2
+		window.get_child(0).offset_bottom = -METER_HEIGHT
 
 ## Row of resource pills: icon + "+N" (materials from combat, gathering, crafting).
 func mats_row(mats: Dictionary) -> Control:

@@ -1,19 +1,19 @@
 class_name Loot
 extends RefCounted
-## Gear generation: slot, rarity, random affixes with quality rolls (concept 6).
-## Weapons also have a type (sword, greatsword, shield, staff, bow) with base
+## Gear generation: quality and slot of a drop (Items builds the item itself).
+## Weapons have a type (sword, greatsword, shield, staff, bow) with base
 ## damage, attack speed and the stat the basic attack scales from.
 
-## Slots combat loot drops into. Head, hands, legs and feet are crafted.
+## Slots of mercenary gear.
 const SLOTS := ["weapon", "offhand", "armor", "trinket"]
 const SLOT_NAMES := {"weapon": "Оружие", "offhand": "Левая рука", "armor": "Тело", "trinket": "Амулет",
-	"head": "Голова", "hands": "Руки", "legs": "Ноги", "feet": "Ступни"}
-## All equipment slots of a character.
-const ALL_SLOTS := ["weapon", "offhand", "head", "armor", "hands", "legs", "feet", "trinket"]
+	"head": "Голова", "hands": "Руки", "legs": "Ноги", "feet": "Ступни",
+	"accessory": "Аксессуар", "accessory1": "Аксессуар", "accessory2": "Аксессуар"}
+## All equipment slots of a character. An item of slot "accessory" fits both accessory slots.
+const ALL_SLOTS := ["weapon", "offhand", "head", "armor", "hands", "legs", "feet", "trinket", "accessory1", "accessory2"]
 ## Drop weights per slot (offhand = shields only; swords for the left hand drop as weapons).
-## Head, hands, legs and feet are mostly crafted, but drop now and then too.
-const SLOT_WEIGHTS := {"weapon": 3.0, "offhand": 1.0, "armor": 2.0, "trinket": 2.0,
-	"head": 0.12, "hands": 0.12, "legs": 0.12, "feet": 0.12}
+const SLOT_WEIGHTS := {"weapon": 2.5, "offhand": 0.7, "armor": 1.5, "trinket": 1.0, "accessory": 1.0,
+	"head": 1.5, "hands": 1.5, "legs": 1.5, "feet": 1.5}
 
 ## Weapon types.
 ##   hands: 1 = one-handed (a sword also fits the left hand), 2 = takes both hands
@@ -23,50 +23,52 @@ const SLOT_WEIGHTS := {"weapon": 3.0, "offhand": 1.0, "armor": 2.0, "trinket": 2
 ##   implicit: [stat, value per item level] every item of this type has
 const WEAPON_TYPES := {
 	"sword":      {"name": "Меч", "hands": 1, "stat": "str", "coef": 0.81, "dmg": 1.63, "speed": 1.3,
-		"implicit": ["str", 1.2], "names": ["Меч", "Клинок", "Палаш", "Сабля"],
-		"affixes": ["str", "crit", "haste", "hp"]},
+		"implicit": ["str", 1.2], },
 	"greatsword": {"name": "Двуручный меч", "hands": 2, "stat": "str", "coef": 1.73, "dmg": 4.15, "speed": 3.0,
-		"implicit": ["str", 2.4], "names": ["Двуручник", "Цвайхандер", "Секира", "Молот"],
-		"affixes": ["str", "crit", "hp", "armor"]},
+		"implicit": ["str", 2.4], },
 	"shield":     {"name": "Щит", "hands": 1, "offhand": true, "stat": "", "coef": 0.0, "dmg": 0.0, "speed": 0.0,
-		"implicit": ["armor", 3.0], "names": ["Щит", "Баклер", "Павеза", "Эгида"],
-		"affixes": ["hp", "armor", "str", "power"]},
+		"implicit": ["armor", 3.0], },
 	"staff":      {"name": "Посох", "hands": 2, "no_attack": true, "stat": "power", "coef": 0.0, "dmg": 0.0, "speed": 0.0,
-		"implicit": ["power", 3.8], "names": ["Посох", "Жезл", "Скипетр", "Шест"],
-		"affixes": ["power", "haste", "crit", "hp"]},
+		"implicit": ["power", 3.8], },
 	"bow":        {"name": "Лук", "hands": 2, "stat": "agi", "coef": 1.61, "dmg": 3.36, "speed": 2.8,
-		"implicit": ["agi", 2.4], "names": ["Лук", "Длинный лук", "Самострел", "Рекурсив"],
-		"affixes": ["agi", "crit", "haste", "hp"]},
+		"implicit": ["agi", 2.4], },
 }
-const WEAPON_WEIGHTS := {"sword": 3.0, "greatsword": 2.0, "staff": 2.0, "bow": 2.0}
 ## A sword in the left hand adds this share of its own damage to every basic attack.
 const OFFHAND_SWORD_SHARE := 0.4
 ## Basic attack without a weapon: strength x coef, every BattleUnit.ATTACK_INTERVAL.
 const UNARMED := {"stat": "str", "coef": 1.0, "speed": 1.6}
 
-const BASE_NAMES := {
-	"armor": ["Кираса", "Мантия", "Кольчуга", "Доспех", "Куртка"],
-	"trinket": ["Амулет", "Кольцо", "Талисман", "Оберег", "Печать"],
-	"head": ["Шлем", "Капюшон", "Венец"],
-	"hands": ["Перчатки", "Наручи", "Рукавицы"],
-	"legs": ["Поножи", "Штаны", "Набедренник"],
-	"feet": ["Сапоги", "Ботинки", "Туфли"],
-}
-const AFFIXES := {
-	"armor": ["hp", "armor", "power", "crit"],
-	"trinket": ["haste", "crit", "power", "hp", "str", "agi"],
-	"head": ["hp", "armor", "power", "crit"],
-	"hands": ["str", "agi", "armor", "crit"],
-	"legs": ["hp", "armor", "str", "agi"],
-	"feet": ["haste", "armor", "hp", "agi"],
-}
 const STAT_NAMES := {"hp": "Здоровье", "str": "Сила", "agi": "Ловкость", "power": "Сила заклинаний",
 	"armor": "Броня", "haste": "Скорость", "crit": "Крит", "atk": "Атака"}
 # value of a perfect roll per item level
 const STAT_PER_ILVL := {"hp": 28.0, "str": 2.6, "agi": 2.6, "atk": 2.6, "power": 2.6, "armor": 3.0}
 const FLAT_STATS := {"haste": 0.05, "crit": 0.04}  # do not scale with ilvl
 
-static func _pick_weighted(rng: RandomNumberGenerator, weights: Dictionary) -> String:
+## Rolls a drop. `table` is a quality table of Items, `role` limits the stats to one role.
+static func roll_gear(rng: RandomNumberGenerator, ilvl: int, table: String = "drop", force_slot: String = "", force_type: String = "", role: String = "", force_rarity: int = -1) -> Dictionary:
+	var quality := force_rarity if force_rarity >= 0 else _roll_quality(rng, table)
+	var slot := force_slot
+	if slot == "" and force_type == "":
+		slot = _pick_slot(rng, quality)
+	return Items.roll(rng, ilvl, quality, slot, force_type, role)
+
+static func _roll_quality(rng: RandomNumberGenerator, table: String) -> int:
+	var weights: Array = Items.TABLES[table]
+	var total := 0.0
+	for w in weights:
+		total += float(w)
+	var x := rng.randf() * total
+	for q in weights.size():
+		x -= float(weights[q])
+		if x <= 0.0:
+			return q
+	return 0
+
+## Accessories are rare or better, as trinkets are in Classic.
+static func _pick_slot(rng: RandomNumberGenerator, quality: int) -> String:
+	var weights := SLOT_WEIGHTS.duplicate()
+	if quality < Items.RARE:
+		weights.erase("accessory")
 	var total := 0.0
 	for k in weights:
 		total += float(weights[k])
@@ -77,71 +79,11 @@ static func _pick_weighted(rng: RandomNumberGenerator, weights: Dictionary) -> S
 			return k
 	return weights.keys()[0]
 
-static func _roll_affix(rng: RandomNumberGenerator, stat: String, ilvl: int, rarity: int) -> Dictionary:
-	var q := rng.randf_range(0.85, 1.0) if rarity == 3 else rng.randf_range(0.6, 1.0)
-	var mult := 1.25 if rarity == 3 else 1.0
-	var value: float
-	if FLAT_STATS.has(stat):
-		value = snappedf(FLAT_STATS[stat] * q * mult, 0.001)
-	else:
-		value = round(STAT_PER_ILVL[stat] * ilvl * q * mult)
-	return {"stat": stat, "value": value, "q": snappedf(q, 0.01)}
-
-## rarity_bonus shifts the roll towards better rarities (bosses, first clears).
-## force_slot picks the slot; force_type picks the weapon type ("" = random).
-## `prefer`: stats to pick affixes from first (mercenaries get gear that fits their role).
-static func roll_gear(rng: RandomNumberGenerator, ilvl: int, rarity_bonus: float = 0.0, force_slot: String = "", force_type: String = "", prefer: Array = [], force_rarity: int = -1) -> Dictionary:
-	var r := rng.randf() + rarity_bonus
-	var rarity := 0
-	if r > 0.985:
-		rarity = 3
-	elif r > 0.88:
-		rarity = 2
-	elif r > 0.6:
-		rarity = 1
-	if force_rarity >= 0:
-		rarity = force_rarity
-	var slot: String = force_slot if force_slot != "" else _pick_weighted(rng, SLOT_WEIGHTS)
-	if force_type != "":
-		slot = "weapon"  # the weapon branch below sets the real slot from the type
-	var n_affixes: int = [1, 2, 3, 3][rarity]
-	var item := {
-		"id": "i%08x%08x" % [rng.randi(), rng.randi()],  # deterministic: same seed -> same item
-		"slot": slot, "rarity": rarity, "ilvl": ilvl, "affixes": [],
-	}
-	var pool: Array
-	if slot == "weapon" or slot == "offhand":
-		var wtype: String = force_type
-		if wtype == "":
-			wtype = "shield" if slot == "offhand" else _pick_weighted(rng, WEAPON_WEIGHTS)
-		var wt: Dictionary = WEAPON_TYPES[wtype]
-		item["slot"] = "offhand" if wt.get("offhand", false) else "weapon"
-		item["wtype"] = wtype
-		var names: Array = wt["names"]
-		item["name"] = names[rng.randi_range(0, names.size() - 1)]
-		if wt["dmg"] > 0.0:
-			var q := rng.randf_range(0.8, 1.0) * (1.15 if rarity == 3 else 1.0) * (1.0 + 0.04 * rarity)
-			item["dmg"] = round(wt["dmg"] * (ilvl + 1) * q)
-		# implicit stat of the type (does not count towards the affix number)
-		var imp := _roll_affix(rng, wt["implicit"][0], ilvl, rarity)
-		imp["value"] = round(imp["value"] / STAT_PER_ILVL[imp["stat"]] * wt["implicit"][1])
-		imp["imp"] = true
-		item["affixes"].append(imp)
-		pool = (wt["affixes"] as Array).duplicate()
-	else:
-		var names: Array = BASE_NAMES[slot]
-		item["name"] = names[rng.randi_range(0, names.size() - 1)]
-		pool = (AFFIXES[slot] as Array).duplicate()
-	for i in n_affixes:
-		if pool.is_empty():
-			break
-		var choice: Array = pool.filter(func(x): return x in prefer)
-		if choice.is_empty():
-			choice = pool
-		var stat: String = choice[rng.randi_range(0, choice.size() - 1)]
-		pool.erase(stat)
-		item["affixes"].append(_roll_affix(rng, stat, ilvl, rarity))
-	return item
+## Slot of a worn set this item goes to: a free accessory slot comes first.
+static func wear_slot(gear: Dictionary, it: Dictionary) -> String:
+	if it["slot"] != "accessory":
+		return it["slot"]
+	return "accessory2" if gear.get("accessory1") != null and gear.get("accessory2") == null else "accessory1"
 
 static func is_two_handed(item) -> bool:
 	return item != null and item.has("wtype") and int(WEAPON_TYPES[item["wtype"]]["hands"]) == 2
@@ -190,16 +132,6 @@ static func weapon_text(item: Dictionary) -> String:
 		parts.append("растёт от %s" % {"str": "силы", "agi": "ловкости", "power": "силы заклинаний"}[wt["stat"]])
 	return " · ".join(parts)
 
-## Raises (or lowers) an item to another item level: stats and weapon damage scale, rolls stay.
-static func rescale(it: Dictionary, new_ilvl: int) -> void:
-	var old: int = max(1, int(it["ilvl"]))
-	for a in it["affixes"]:
-		if not FLAT_STATS.has(a["stat"]):
-			a["value"] = round(float(a["value"]) * new_ilvl / old)
-	if it.has("dmg"):
-		it["dmg"] = round(float(it["dmg"]) * (new_ilvl + 1) / (old + 1))
-	it["ilvl"] = new_ilvl
-
 static func affix_text(a: Dictionary) -> String:
 	var stat: String = a["stat"]
 	if FLAT_STATS.has(stat):
@@ -207,7 +139,7 @@ static func affix_text(a: Dictionary) -> String:
 	return "+%d %s" % [int(a["value"]), STAT_NAMES[stat]]
 
 static func item_score(item: Dictionary) -> float:
-	var s := float(item.get("dmg", 0.0)) * 1.5
+	var s := float(item.get("dmg", 0.0)) * 1.5 + (40.0 if item.has("effect") else 0.0)
 	for a in item["affixes"]:
 		var stat: String = a["stat"]
 		if FLAT_STATS.has(stat):
@@ -219,7 +151,7 @@ static func item_score(item: Dictionary) -> float:
 	return s
 
 static func sell_price(item: Dictionary) -> int:
-	return max(1, int((5 + item["ilvl"] * 3) * [1, 3, 8, 25][item["rarity"]] * Db.GOLD_MULT))
+	return max(1, int((5 + item["ilvl"] * 3) * [1, 2, 3, 8, 25, 80][item["rarity"]] * Db.GOLD_MULT))
 
 ## Brings an item saved by an older version up to date (v5: weapon types, str instead of atk).
 static func upgrade_item(it: Dictionary) -> void:

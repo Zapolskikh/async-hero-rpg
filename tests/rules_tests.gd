@@ -30,6 +30,7 @@ func _init() -> void:
 	test_real_players_and_assists()
 	test_gathering()
 	test_crafting_and_concurrency()
+	test_items()
 	test_consumables()
 	test_combat_materials()
 	test_v2_migration()
@@ -90,7 +91,7 @@ func test_push_finish() -> void:
 	check(not Rules.apply(p, "start", {"level": 1, "mode": "push"}, T0 + t_end + 1.0)["ok"] or not won, "cannot push an already cleared level")
 
 func _weapon(rng: RandomNumberGenerator, wtype: String) -> Dictionary:
-	return Loot.roll_gear(rng, 10, 0.0, "", wtype)
+	return Loot.roll_gear(rng, 10, "drop", "", wtype)
 
 func test_weapons() -> void:
 	print("weapons")
@@ -199,8 +200,11 @@ func test_feedback_fixes() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4
 	for i in 3:
-		q["inventory"].append(Loot.roll_gear(rng, 4 + i, 0.0, "", "", [], 0))
+		q["inventory"].append(Loot.roll_gear(rng, 4 + i, "drop", "", "", "", 0))
 	var r := Rules.apply(q, "merge_items", {"rarity": 0}, T0)
+	check(r["ok"] and q["inventory"].is_empty(), "merge takes the items at once")
+	check(Rules.apply(q, "merge_claim", {}, T0 + 10.0)["error"] == "not finished", "merge takes time")
+	check(Rules.apply(q, "merge_claim", {}, T0 + float(Rules.MERGE_TIME[0]))["ok"], "merge finishes on time")
 	check(r["ok"] and q["inventory"].size() == 1 and int(q["inventory"][0]["rarity"]) == 1 and int(q["inventory"][0]["ilvl"]) == 6, "3 common -> 1 rare at the highest level")
 	check(not Rules.apply(q, "merge_items", {"rarity": 1}, T0)["ok"], "merge needs 3 items")
 	# level toughness is evened out
@@ -256,30 +260,87 @@ func test_crystals() -> void:
 	var ra: Dictionary = Rules.apply(a, "collect", {}, T0 + 3600.0)["report"]
 	check(rq["gold"] == ra["gold"] * 2 or absi(rq["gold"] - ra["gold"] * 2) <= 1, "boost doubles farm gold (%d vs %d)" % [rq["gold"], ra["gold"]])
 	check(rq["items"].size() == ra["items"].size(), "boost does not add items")
-	# item upgrade
-	var it := Loot.roll_gear(RandomNumberGenerator.new(), 3, 0.9, "", "sword")
-	var u := fresh(63)
-	u["hero"]["level"] = 13
-	u["inventory"].append(it)
-	var str0: float = it["affixes"][0]["value"]
-	var dmg0: float = it["dmg"]
-	check(not Rules.apply(u, "upgrade_item", {"id": it["id"], "pay": "gold"}, T0)["ok"], "gold path needs gold and ore")
-	u["gold"] = 100000
-	Rules._add_res(u, Shop.upgrade_cost(it, 13)["ore"], 50)
-	check(Rules.apply(u, "upgrade_item", {"id": it["id"], "pay": "gold"}, T0)["ok"] and it["ilvl"] == 13, "item raised to hero level")
-	check(it["affixes"][0]["value"] > str0 * 3.5 and it["dmg"] > dmg0 * 3.0, "stats and damage scale with the level")
-	check(not Rules.apply(u, "upgrade_item", {"id": it["id"], "pay": "crystals"}, T0)["ok"], "nothing to do at hero level")
+func test_items() -> void:
+	print("item catalogue")
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 12
+	var counts := [0, 0, 0, 0, 0, 0]
+	for i in 4000:
+		counts[int(Loot.roll_gear(rng, 12, "first")["rarity"])] += 1
+	check(counts[0] == 0 and counts[1] + counts[2] > 3700 and counts[3] < 200 and counts[4] < 40 and counts[5] < 5, "first clears: common and uncommon, the rest is rare (%s)" % str(counts))
+	var by_role := {"melee": ["str"], "tank": ["str"], "ranged": ["agi"], "caster": ["power"], "healer": ["power"]}
+	var clean := true
+	for i in 3000:
+		var role: String = Items.ROLES[i % 5]
+		var it := Loot.roll_gear(rng, 1 + i % 30, "drop", "", "", role)
+		if int(it["rarity"]) == Items.LEGENDARY or it["role"] != role:
+			continue
+		for a in it["affixes"]:
+			if a["stat"] in ["str", "agi", "power"] and not a["stat"] in by_role[role] and not a.get("imp", false):
+				clean = false
+	check(clean, "an item only has the main stat of its role")
+	var keys := 0
+	var legendary := 0
+	for key in ItemCatalog.NAMED:
+		var spec: Dictionary = ItemCatalog.NAMED[key]
+		keys += 1
+		var it := Items.make(key, 20, "t")
+		check(it["slot"] == "accessory" or it["slot"] in Loot.ALL_SLOTS, "%s has a real slot" % key)
+		if spec.has("effect"):
+			check(Items.EFFECTS.has(spec["effect"]), "%s has a known effect" % key)
+		if int(spec["q"]) == Items.LEGENDARY:
+			legendary += 1
+			check(spec.has("effect"), "%s is legendary through its effect" % key)
+	check(keys >= 1000 and legendary >= 30, "big collection (%d items, %d legendary)" % [keys, legendary])
+	for id in Items.EFFECTS:
+		for p in Items.EFFECTS[id]["fx"].get("procs", []):
+			check(Db.SPELLS.has(p["sid"]), "%s procs a real spell" % id)
+		for k in Items.EFFECTS[id]["fx"]:
+			if k.begins_with("spell:"):
+				check(Db.SPELLS.has(k.substr(6)), "%s boosts a real spell" % id)
+	var hero := fresh(70)
+	var a1 := Items.make("melee_t2_0_accessory", 12, "a1")
+	var a2 := Items.make("melee_t2_1_accessory", 12, "a2")
+	hero["inventory"].append_array([a1, a2])
+	check(Rules.apply(hero, "equip", {"id": "a1"}, T0)["ok"] and Rules.apply(hero, "equip", {"id": "a2"}, T0)["ok"], "accessories go on")
+	check(hero["hero"]["equipped"]["accessory1"]["id"] == "a1" and hero["hero"]["equipped"]["accessory2"]["id"] == "a2", "two accessory slots")
+	check(Rules.hero_snapshot(hero)["effects"].size() == 2, "worn effects reach the battle")
+	var twin := BattleUnit.new(0, 0, 0, {"stats": {"hp": 10.0, "atk": 1.0, "power": 1.0}, "effects": ["twin_wind", "double_5"]})
+	check(is_equal_approx(twin.gear_fx["double_attack"], 0.35), "effects add up")
+	check(is_equal_approx(Items.damage_bonus({"spell:fireball": 0.35, "magic_bonus": 0.05}, "fireball", "damage", false, "magic", false, 1.0), 0.4), "spell bonus applies")
+	var helm := Items.make("tank_t2_0_plate_head", 12, "h1")
+	check(["gear:head", "plate_head_t3"] in Roster.look({"head": helm}), "worn art reaches the look layers")
+	check(not GearArt.find("plate_head_t3", "female").is_empty() and not GearArt.find("sword_t3", "male").is_empty(), "drawn gear is found for each body")
+	check(GearArt.find("plate_head_t6_epic", "male").is_empty(), "gear not drawn yet falls back to the body")
+	var old := fresh(71)
+	old["inventory"] = [{"id": "o1", "slot": "armor", "name": "Кираса", "rarity": 3, "ilvl": 5, "affixes": []}]
+	old["v"] = 9
+	Rules.migrate(old, T0)
+	check(int(old["inventory"][0]["rarity"]) == Items.EPIC, "old legendaries become epic: they have no unique effect")
 
 func test_rare_loot_and_mods() -> void:
 	print("rare loot, weapon recipes, enemy modifiers")
-	var sw := Prof.make_item("iron_sword", "x")
+	var sw := Prof.make_item("iron_sword", "x", 10)
 	check(sw["slot"] == "weapon" and sw["wtype"] == "sword" and sw["dmg"] > 0 and sw["affixes"][0].get("imp", false), "crafted sword is a real sword")
-	check(Prof.make_item("iron_shield", "y")["slot"] == "offhand", "crafted shield goes to the left hand")
+	check(Prof.make_item("iron_shield", "y", 10)["slot"] == "offhand", "crafted shield goes to the left hand")
+	var crafts := {}
+	var craft_rng := RandomNumberGenerator.new()
+	for i in 40:
+		var made := Prof.make_item("iron_chestguard", "z", 25, craft_rng)
+		check(int(made["ilvl"]) == 25, "crafted gear takes the given level")
+		crafts[str(made["affixes"])] = true
+	check(crafts.size() > 30, "crafted stats are random")
+	for rid in Prof.RECIPES:
+		var spec: Dictionary = Prof.RECIPES[rid]
+		if spec.has("item"):
+			var q_item := int(spec["item"]["rarity"])
+			check(int(spec["req"]) >= [0, 0, 1, 5, 8][q_item] and int(spec["time"]) >= [0, 0, 60, 7200, 28800][q_item], "%s is as hard as its quality" % rid)
 	var p := fresh(51)
 	p["gold"] = 5000
 	p["professions"]["blacksmithing"]["level"] = 10
+	p["craft_prof"] = "blacksmithing"
 	for r in ["silver_ore", "mithril_fragment", "boss_core"]:
-		Rules._add_res(p, r, 20)
+		Rules._add_res(p, r, 100)
 	check(Rules.can_craft(p, "core_blade")["error"] == "recipe not learned", "drop-only recipe needs to be learned")
 	Rules._add_res(p, "rcp_core_blade", 1)
 	check(Rules.can_craft(p, "core_blade")["ok"] and not p["resources"].has("rcp_core_blade"), "recipe drop teaches it, not stored as a resource")
@@ -473,32 +534,51 @@ func give(p: Dictionary, res: Dictionary) -> void:
 func test_crafting_and_concurrency() -> void:
 	print("crafting and concurrency")
 	var p := fresh(37)
+	give(p, {"iron_ore": 10, "raw_leather": 2})
+	check(Rules.can_craft(p, "simple_iron_helmet")["error"] == "not your craft", "no crafting before a profession is chosen")
+	check(not Rules.apply(p, "prof_choose", {"prof": "mining"}, T0)["ok"], "gathering is not a crafting choice")
+	check(Rules.apply(p, "prof_choose", {"prof": "blacksmithing"}, T0)["ok"], "first choice is free")
+	p["resources"].clear()
 	check(not Rules.apply(p, "craft_start", {"recipe": "simple_iron_helmet"}, T0)["ok"], "craft without materials rejected")
 	give(p, {"iron_ore": 10, "raw_leather": 2})
 	var gold0: int = p["gold"]
 	check(Rules.apply(p, "craft_start", {"recipe": "simple_iron_helmet"}, T0)["ok"], "helmet craft started")
 	check(Rules.res_count(p, "iron_ore") == 0 and p["gold"] == gold0 - 60, "materials and gold taken at start")
-	check(not Rules.apply(p, "craft_start", {"recipe": "simple_iron_helmet"}, T0)["ok"], "one craft per profession")
+	check(not Rules.apply(p, "craft_start", {"recipe": "simple_iron_helmet"}, T0)["ok"], "one craft at a time")
 	give(p, {"rough_cloth": 10, "greenleaf": 4, "bitterroot": 2})
-	p["gold"] = 1000
-	check(Rules.apply(p, "craft_start", {"recipe": "rough_cloth_hood"}, T0)["ok"]
-		and Rules.apply(p, "craft_start", {"recipe": "minor_strength_potion"}, T0)["ok"], "three professions craft at the same time")
+	p["gold"] = Prof.CRAFT_CHANGE_GOLD
+	check(Rules.can_craft(p, "rough_cloth_hood")["error"] == "not your craft", "other crafting professions stay closed")
+	check(Rules.apply(p, "prof_choose", {"prof": "tailoring"}, T0)["error"] == "already crafting", "cannot change a craft mid-job")
 	check(Rules.apply(p, "gather_start", {"prof": "herbalism", "loc": "green_meadow", "sec": 900}, T0)["ok"], "gathering runs alongside crafting")
 	p["closed_level"] = 1
 	check(Rules.apply(p, "start", {"level": 1, "mode": "farm"}, T0)["ok"], "combat farm runs alongside both")
 	check(not Rules.apply(p, "craft_claim", {"prof": "blacksmithing"}, T0 + 299.0)["ok"], "craft cannot finish early")
 	var r := Rules.apply(p, "craft_claim", {"prof": "blacksmithing"}, T0 + 300.0)
 	var it: Dictionary = r["report"]["items"][0] if r["ok"] else {}
-	check(it.get("slot", "") == "head" and it.get("crafted", false) and it["affixes"].size() == 2, "helmet in the bag: %s" % str(it.get("name", "")))
+	check(it.get("slot", "") == "head" and it.get("crafted", false) and int(it.get("ilvl", 0)) == 1, "helmet in the bag: %s" % str(it.get("name", "")))
 	check(not Rules.apply(p, "craft_claim", {"prof": "blacksmithing"}, T0 + 400.0)["ok"], "craft claimed only once")
 	check(int(p["professions"]["blacksmithing"]["xp"]) == int(Prof.RECIPES["simple_iron_helmet"]["xp"]), "blacksmithing XP awarded")
+	check(Rules.apply(p, "prof_choose", {"prof": "alchemy"}, T0)["ok"] and int(p["gold"]) == 0, "changing the craft costs gold")
+	check(Rules.apply(p, "prof_choose", {"prof": "tailoring"}, T0)["error"] == "not enough gold", "no second change without gold")
+	check(int(p["professions"]["blacksmithing"]["xp"]) > 0, "levels of the old craft are kept")
+	p["gold"] = 1000
+	check(Rules.apply(p, "craft_start", {"recipe": "minor_strength_potion"}, T0)["ok"], "the new craft works")
 	var pr := Rules.apply(p, "craft_claim", {"prof": "alchemy"}, T0 + 180.0)
 	check(pr["ok"] and Rules.res_count(p, "minor_strength_potion") == 2, "potions crafted (2)")
 	check(Rules.apply(p, "equip", {"id": it["id"]}, T0)["ok"] and p["hero"]["equipped"]["head"] != null, "crafted helmet equipped in the new head slot")
 	var stats: Dictionary = Rules.hero_snapshot(p)["stats"]
 	check(stats["armor"] > Db.hero_base_stats(1)["armor"], "helmet adds armor")
+	p["craft_prof"] = "blacksmithing"
 	var boss := Rules.can_craft(p, "boss_forged_chestguard")
 	check(not boss["ok"], "rare recipe locked behind level and boss core")
+	check(Prof.drop_recipes("blacksmithing").all(func(id): return Prof.RECIPES[id]["prof"] == "blacksmithing"), "a hero finds only recipes of his craft")
+	check(Prof.drop_recipes("alchemy").size() > 0 and Prof.drop_recipes("tailoring").size() > 0, "every craft has rare recipes")
+	for id in Prof.RECIPES:
+		for res in Prof.RECIPES[id]["ingredients"]:
+			check(Prof.RESOURCES.has(res), "%s uses a known resource" % id)
+		for res in Prof.RECIPES[id].get("output", {}):
+			check(Prof.CONSUMABLES.has(res), "%s makes a consumable" % id)
+	check(FileAccess.file_exists("res://assets/icons/res_titan_flask.png"), "new potions have icons")
 
 func test_consumables() -> void:
 	print("consumables")
@@ -511,6 +591,17 @@ func test_consumables() -> void:
 	Rules.apply(p, "stop", {}, T0 + 61.0)
 	Rules.apply(p, "start", {"level": 1, "mode": "push"}, T0 + 7300.0)
 	check(not p["expedition"]["party"][0]["stats"].has("dmg_mult"), "buff expires after 2 h")
+	var one := fresh(44)
+	one["resources"] = {"minor_strength_potion": 1, "elixir_bull": 1}
+	var str0: float = Rules.hero_snapshot(one)["stats"]["str"]
+	Rules.apply(one, "use_item", {"res": "minor_strength_potion"}, T0)
+	Rules.apply(one, "use_item", {"res": "elixir_bull"}, T0)
+	check(Rules.active_buffs(one, T0).size() == 1 and one["buffs"]["potion"]["res"] == "elixir_bull", "only one potion works: the new one replaces it")
+	one["closed_level"] = 1
+	Rules.apply(one, "start", {"level": 1, "mode": "farm"}, T0)
+	var ids: Array = one["party_order"]
+	var hero_stats: Dictionary = one["expedition"]["party"][ids.find("hero")]["stats"]
+	check(is_equal_approx(float(hero_stats["str"]), str0 * 1.1) and not hero_stats.has("dmg_mult"), "a personal potion raises the stat of the hero only")
 	Rules.apply(p, "use_item", {"res": "gatherers_tonic"}, T0)
 	Rules.apply(p, "gather_start", {"prof": "mining", "loc": "abandoned_quarry", "sec": 900}, T0)
 	check(p["gathering"]["tonic"] and not Rules.active_buffs(p, T0).has("gather_yield"), "tonic applies to the next gathering and is used up")
@@ -547,4 +638,5 @@ func test_v2_migration() -> void:
 	var q = JSON.parse_string(JSON.stringify(p))
 	Rules.migrate(q, T0)
 	check(q["v"] == Rules.VERSION and q["professions"].size() == 6 and q["hero"]["equipped"].has("feet"), "old profile gets professions and new slots")
+	check(q["craft_prof"] == "", "old profile chooses its craft freely")
 	check(Rules.apply(q, "gather_start", {"prof": "herbalism", "loc": "green_meadow", "sec": 900}, T0)["ok"], "migrated profile can gather")

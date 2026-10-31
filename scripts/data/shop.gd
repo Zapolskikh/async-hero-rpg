@@ -40,22 +40,5 @@ const BOOST_MULT := 2.0
 const BOX_CRYSTALS := 20
 const BOX_PACK_CRYSTALS := 180
 
-## Item upgrade to the hero's level. Main path: gold + ore; crystals instead.
-const UPGRADE_RARITY_MULT := [1, 2, 4, 8]
-const UPGRADE_ORE := ["copper_ore", "iron_ore", "silver_ore", "mithril_fragment"]
-
 static func rush_cost(seconds_left: float) -> int:
 	return max(1, int(ceil(seconds_left / RUSH_SECONDS_PER_CRYSTAL)))
-
-## {gold, ore, ore_n, crystals} to raise an item from its level to `to_level` (empty if nothing to do).
-static func upgrade_cost(item: Dictionary, to_level: int) -> Dictionary:
-	var diff := to_level - int(item["ilvl"])
-	if diff <= 0:
-		return {}
-	var r: int = clamp(int(item["rarity"]), 0, 3)
-	var m: int = UPGRADE_RARITY_MULT[r]
-	return {
-		"gold": int(diff * (8 + to_level) * m * 0.5),
-		"ore": UPGRADE_ORE[r], "ore_n": max(1, int(ceil(diff / 2.0))),
-		"crystals": max(5, diff * m),
-	}

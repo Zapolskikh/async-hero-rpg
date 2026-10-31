@@ -7,6 +7,7 @@ static var view := "gather"            # gather / craft / mats
 static var gather_prof := "mining"
 static var craft_prof := "blacksmithing"
 static var duration := 3600
+static var changing := false           # picking another crafting profession
 
 var main: Node                         # main.gd, for _modal / _toast / mats_row
 var timers: Array = []                 # [label, bar, start, end, done_text, was_done]
@@ -69,8 +70,7 @@ func _header() -> Control:
 
 func _buff_name(eff: String, b: Dictionary) -> String:
 	match eff:
-		"dmg_mult": return "Урон +%d%%" % roundi((float(b["value"]) - 1.0) * 100)
-		"heal_mult": return "Лечение +%d%%" % roundi((float(b["value"]) - 1.0) * 100)
+		"potion": return str(Prof.RESOURCES[b["res"]]["name"])
 		"gather_yield": return "Сбор +%d%%" % roundi((float(b["value"]) - 1.0) * 100)
 	return eff
 
@@ -251,12 +251,20 @@ func _do_cancel() -> void:
 # =====================================================================
 
 func _craft_view() -> Control:
+	var chosen: String = Game.profile["craft_prof"]
+	if chosen == "" or changing:
+		return _craft_choice()
+	if craft_prof != chosen and not Game.profile["crafting"].has(craft_prof):
+		craft_prof = chosen
 	var h := UI.hbox(12)
 	h.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	var left := UI.vbox(10)
 	left.custom_minimum_size.x = 270
-	for prof in Prof.CRAFTING:
-		left.add_child(_prof_card(prof, prof == craft_prof, _pick_craft.bind(prof)))
+	left.add_child(_prof_card(chosen, chosen == craft_prof, _pick_craft.bind(chosen)))
+	for prof in Game.profile["crafting"]:   # a craft started before the choice can still be claimed
+		if prof != chosen:
+			left.add_child(_prof_card(prof, prof == craft_prof, _pick_craft.bind(prof)))
+	left.add_child(UI.btn("Сменить ремесло", _set_change.bind(true), "ghost", Style.FONT_SMALL, "", 0, 44))
 	h.add_child(left)
 	var right := UI.vbox(10)
 	right.size_flags_horizontal = Control.SIZE_EXPAND_FILL
@@ -272,6 +280,56 @@ func _craft_view() -> Control:
 
 func _pick_craft(prof: String) -> void:
 	craft_prof = prof
+	_rebuild()
+
+## All crafts side by side: the first choice, and the paid change later.
+func _craft_choice() -> Control:
+	var current: String = Game.profile["craft_prof"]
+	var v := UI.vbox(12)
+	var note := "Герой осваивает одно ремесло. Первый выбор бесплатный, смена стоит %d золота." % Prof.CRAFT_CHANGE_GOLD
+	if current != "":
+		note = "Смена ремесла стоит %d золота. Уровни профессий сохраняются." % Prof.CRAFT_CHANGE_GOLD
+	v.add_child(UI.wrap(note, Style.FONT_BODY, Style.TEXT))
+	for prof in Prof.CRAFTING:
+		if prof != current:
+			v.add_child(_choice_card(prof))
+	if current != "":
+		v.add_child(UI.btn("Назад", _set_change.bind(false), "ghost", Style.FONT_SMALL, "", 140, 44))
+	return UI.scroll(v)
+
+func _choice_card(prof: String) -> Control:
+	var d: Dictionary = Prof.PROFESSIONS[prof]
+	var c := UI.card(Style.CARD, 12)
+	var h := UI.hbox(12)
+	c.add_child(h)
+	h.add_child(UI.tile(d["icon"], Style.CARD_3, 72))
+	var v := UI.vbox(4)
+	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	v.add_child(UI.label(d["name"], Style.FONT_BODY, Style.TEXT, true))
+	v.add_child(UI.wrap(d["desc"], Style.FONT_SMALL, Style.TEXT))
+	v.add_child(UI.label("Рецептов: %d  ·  ур. %d" % [Prof.recipes_of(prof).size(), Rules.prof_level(Game.profile, prof)], Style.FONT_TINY, Style.MUTED))
+	h.add_child(v)
+	h.add_child(UI.btn("Выбрать", _confirm_choice.bind(prof), "success", Style.FONT_BODY, "", 140, 52))
+	return c
+
+func _confirm_choice(prof: String) -> void:
+	var text := "Рецепты других ремёсел станут недоступны."
+	if Game.profile["craft_prof"] != "":
+		text = "Смена стоит %d золота. Рецепты прежнего ремесла станут недоступны." % Prof.CRAFT_CHANGE_GOLD
+	main._modal(Prof.PROFESSIONS[prof]["name"], UI.wrap(text, Style.FONT_BODY, Style.TEXT),
+		[["Выбрать", _do_choice.bind(prof), "success", true]], "Назад")
+
+func _do_choice(prof: String) -> void:
+	var r: Dictionary = await Game.prof_choose(prof)
+	if r.get("ok", false):
+		craft_prof = prof
+		changing = false
+	else:
+		main._toast(_err_text(r))
+	_rebuild()
+
+func _set_change(on: bool) -> void:
+	changing = on
 	_rebuild()
 
 func _active_craft(prof: String, c: Dictionary) -> Control:
@@ -304,7 +362,7 @@ func _active_craft(prof: String, c: Dictionary) -> Control:
 func _output_tile(rid: String, size_px: float) -> Control:
 	var r: Dictionary = Prof.RECIPES[rid]
 	if r.has("item"):
-		return UI.tile(UI.item_icon(Prof.make_item(rid, "preview")), Style.RARITY[int(r["item"]["rarity"])], size_px)
+		return UI.tile(UI.item_icon(Prof.make_item(rid, "preview", int(Game.hero["level"]))), Style.QUALITY[int(r["item"]["rarity"])], size_px)
 	var res: String = r["output"].keys()[0]
 	return UI.tile("res_" + res, Style.RARITY[int(Prof.RESOURCES[res]["tier"])], size_px)
 
@@ -321,10 +379,11 @@ func _recipe_card(rid: String) -> Control:
 	v.size_flags_horizontal = Control.SIZE_EXPAND_FILL
 	var head := UI.hbox(8)
 	var rarity := int(r["item"]["rarity"]) if r.has("item") else int(Prof.RESOURCES[r["output"].keys()[0]]["tier"])
-	head.add_child(UI.label(r["name"], Style.FONT_BODY, Style.RARITY[rarity] if not locked else Style.MUTED, true))
+	var colors: Array = Style.QUALITY if r.has("item") else Style.RARITY
+	head.add_child(UI.label(r["name"], Style.FONT_BODY, colors[rarity] if not locked else Style.MUTED, true))
 	head.add_child(UI.chip("ур. %d" % r["req"], Style.DANGER if locked else Style.CARD_3, 13))
 	if r.has("item"):
-		var pv := Prof.make_item(rid, "preview")
+		var pv := Prof.make_item(rid, "preview", int(Game.hero["level"]))
 		var kind: String = Loot.WEAPON_TYPES[pv["wtype"]]["name"] if pv.has("wtype") else Loot.SLOT_NAMES[pv["slot"]]
 		head.add_child(UI.chip(kind, Style.CARD_3, 13))
 	if r.get("drop_only", false):
@@ -361,13 +420,14 @@ func _recipe_card(rid: String) -> Control:
 func _output_text(rid: String) -> String:
 	var r: Dictionary = Prof.RECIPES[rid]
 	if r.has("item"):
-		var it := Prof.make_item(rid, "preview")
+		var it := Prof.make_item(rid, "preview", int(Game.hero["level"]))
 		var parts := []
 		if it.has("wtype"):
 			parts.append(Loot.weapon_text(it))
 		for a in it["affixes"]:
 			parts.append(Loot.affix_text(a))
-		return ", ".join(parts)
+		return "%s, уровень героя. В среднем: %s. Итог случайный: от %d%% до %d%%, возможна доп. характеристика" % [Items.QUALITY_NAMES[int(r["item"]["rarity"])],
+			", ".join(parts), roundi(Prof.CRAFT_ROLL[0] * 100), roundi(Prof.CRAFT_ROLL[1] * 100)]
 	var parts := []
 	for res in r["output"]:
 		var line := "%s ×%d" % [Prof.RESOURCES[res]["name"], r["output"][res]]
@@ -389,9 +449,9 @@ func _craft_claim(prof: String) -> void:
 		var v := UI.vbox(10)
 		for it in rep["items"]:
 			var row := UI.hbox(10)
-			row.add_child(UI.tile(UI.item_icon(it), Style.RARITY[it["rarity"]], 64))
+			row.add_child(UI.tile(UI.item_icon(it), Style.QUALITY[it["rarity"]], 64))
 			var iv := UI.vbox(2)
-			iv.add_child(UI.label(it["name"], Style.FONT_BODY, Style.RARITY[it["rarity"]], true))
+			iv.add_child(UI.label(it["name"], Style.FONT_BODY, Style.QUALITY[it["rarity"]], true))
 			iv.add_child(UI.label(UI.item_line(it), Style.FONT_SMALL, Style.TEXT))
 			iv.add_child(UI.label("В сумке — надеть можно на вкладке «Сумка»", Style.FONT_TINY, Style.MUTED))
 			row.add_child(iv)
@@ -493,8 +553,9 @@ func _err_text(r: Dictionary) -> String:
 	var e := str(r.get("error", ""))
 	match e:
 		"profession level too low": return "Нужен выше уровень профессии"
-		"recipe not learned": return "Рецепт не изучен — изредка выпадает в бою, чаще с боссов"
+		"recipe not learned": return "Рецепт не изучен — даётся за прохождение уровня, изредка падает с боссов"
 		"already crafting": return "Уже идёт создание"
+		"not your craft": return "Это рецепт другого ремесла"
 		"already gathering": return "Уже идёт сбор"
 		"not enough gold": return "Не хватает золота"
 		"not finished": return "Ещё не готово"

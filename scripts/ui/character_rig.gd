@@ -20,6 +20,9 @@ const SHIELD_OFFSET := Vector2(6.,0.)
 const SHIELD_FACE := 36.
 const ANGLES := ["ha","ca","na","rua","rfa","rha","lua","lfa","lha","rta","rca","rba","lta","lca","lba","w1a","w2a"]
 const STEPPED := ["nock","ro","lo","wz","lz"]
+const GEAR_SLOTS := {"head":"head","chest":"armor","hem":"armor","upper_r":"armor","upper_l":"armor",
+	"fore_r":"hands","fore_l":"hands","fist_r":"hands","fist_l":"hands","palm_r":"hands","palm_l":"hands",
+	"thigh_r":"legs","thigh_l":"legs","shin_r":"legs","shin_l":"legs","boot_r":"feet","boot_l":"feet"}
 
 static var _profile_cache: Dictionary = {}
 var sex: String = "male"
@@ -48,6 +51,7 @@ var _blend_duration: float = .10
 var _done: bool = false
 var _fired_events := {}
 var _bones := {}
+var worn := {}          # slot -> GearArt.find result
 var _weapons: Array = []
 var _rects := {}
 var _field := {}
@@ -285,6 +289,22 @@ func _solve() -> void:
 	var palm := _ray(grip_r,_v("rha"),PALM_REACH if _v("ro") > .5 else 8.)
 	sockets["cast_right"] = [palm.x,palm.y,_v("rha")]
 
+## Gear from Roster.look layers. Drawn gear replaces the body part under it.
+func set_gear(layers: Array) -> void:
+	worn.clear()
+	for layer in layers:
+		if str(layer[0]).begins_with("gear:"):
+			var art := GearArt.find(str(layer[1]),sex)
+			if not art.is_empty(): worn[str(layer[0]).substr(5)] = art
+	queue_redraw()
+
+func _art(part: String, slot: String = "") -> Dictionary:
+	var art: Dictionary = worn.get(slot if slot != "" else str(GEAR_SLOTS.get(part,"")),{})
+	return art if art.get("parts",{}).has(part) else {}
+
+func _wear(art: Dictionary, part: String, target: Rect2) -> void:
+	draw_texture_rect_region(art["texture"],target,art["parts"][part])
+
 func _blit(part: String, layer: String, bone: Array) -> void:
 	draw_set_transform(bone[0],deg_to_rad(bone[1]),Vector2(bone[2],1.))
 	var rects: Array = _rects[part+":"+layer]
@@ -292,11 +312,27 @@ func _blit(part: String, layer: String, bone: Array) -> void:
 
 ## Outlines first, fills second: neighbouring segments of a limb share one silhouette.
 func _group(items: Array) -> void:
+	var bare: Array = items.filter(func(item): return _art(item[0]).is_empty())
 	for layer in ["ink","fill"]:
-		for item in items: _blit(item[0],layer,_bones[item[1]])
+		for item in bare: _blit(item[0],layer,_bones[item[1]])
+	for item in items:
+		var art := _art(item[0])
+		if art.is_empty(): continue
+		var bone: Array = _bones[item[1]]
+		draw_set_transform(bone[0],deg_to_rad(bone[1]),Vector2(bone[2],1.))
+		_wear(art,item[0],_rects[item[0]+":ink"][0])
 
 func _single(part: String, at: Vector2, angle: float) -> void:
 	_group_at(part,[at,angle,1.])
+
+## A held weapon or shield; its art comes from the slot it is worn in.
+func _held(weapon: Array) -> void:
+	var art: Dictionary = worn.get("offhand" if weapon[3] == "off" else "weapon",{})
+	if art.get("parts",{}).has("weapon"):
+		draw_set_transform(weapon[1],deg_to_rad(weapon[2]))
+		draw_texture_rect_region(art["texture"],_rects[weapon[0]+":ink"][0],art["parts"]["weapon"])
+	else:
+		_single(weapon[0],weapon[1],weapon[2])
 
 func _group_at(part: String, bone: Array) -> void:
 	_blit(part,"ink",bone)
@@ -314,10 +350,14 @@ func _draw_bow(at: Vector2, angle: float) -> void:
 	var nock: Vector2 = grip_r if _v("nock") > .5 else rest
 	draw_set_transform(Vector2.ZERO)
 	draw_polyline(PackedVector2Array([top,nock,bottom]),STRING_COLOR,1.8,true)
-	for layer in ["ink","fill"]:
-		draw_set_transform(at,turn,shape)
-		var rects: Array = _rects["bow:"+layer]
-		draw_texture_rect_region(atlas,rects[0],rects[1])
+	var art: Dictionary = worn.get("weapon",{})
+	draw_set_transform(at,turn,shape)
+	if art.get("parts",{}).has("weapon"):
+		draw_texture_rect_region(art["texture"],_rects["bow:ink"][0],art["parts"]["weapon"])
+	else:
+		for layer in ["ink","fill"]:
+			var rects: Array = _rects["bow:"+layer]
+			draw_texture_rect_region(atlas,rects[0],rects[1])
 	if nocked: _single("arrow",nock,rad_to_deg((at-nock).angle()))
 
 func _draw() -> void:
@@ -329,7 +369,7 @@ func _draw() -> void:
 	if not hand_on_top: far_arm.append(hand_l)
 	_group(far_arm)
 	for weapon in _weapons:
-		if weapon[3] == "off" and weapon[0] == "sword": _single(weapon[0],weapon[1],weapon[2])
+		if weapon[3] == "off" and weapon[0] == "sword": _held(weapon)
 	_group([["thigh_l","thigh_l"],["shin_l","shin_l"]])
 	_group([["boot_l","boot_l"]])
 	_group([["thigh_r","thigh_r"],["shin_r","shin_r"]])
@@ -337,7 +377,7 @@ func _draw() -> void:
 	_group([["hem","hem"],["chest","chest"]])
 	for weapon in _weapons:
 		if weapon[3] == "off":
-			if weapon[0] == "shield": _single(weapon[0],weapon[1],weapon[2])
+			if weapon[0] == "shield": _held(weapon)
 			elif weapon[0] == "bow": _draw_bow(weapon[1],weapon[2])
 	if hand_on_top: _group([hand_l])
 	var behind := _v("wz") < .5
@@ -346,7 +386,10 @@ func _draw() -> void:
 	draw_set_transform(head[0],deg_to_rad(head[1]))
 	var res := float(skeleton.res)
 	var neck := Vector2(skeleton.neck_rest[0],skeleton.neck_rest[1])
-	draw_texture_rect(head_texture,Rect2(Vector2(skeleton.head_box[0],skeleton.head_box[1])-neck,head_texture.get_size()/res),false)
+	var head_rect := Rect2(Vector2(skeleton.head_box[0],skeleton.head_box[1])-neck,head_texture.get_size()/res)
+	draw_texture_rect(head_texture,head_rect,false)
+	var helm := _art("head")
+	if not helm.is_empty(): _wear(helm,"head",head_rect)
 	_group([["upper_r","upper_r"],["fore_r","fore_r"]])
 	if not behind: _draw_main()
 	_group([hand_r])
@@ -361,4 +404,4 @@ func _draw() -> void:
 
 func _draw_main() -> void:
 	for weapon in _weapons:
-		if weapon[3] == "main": _single(weapon[0],weapon[1],weapon[2])
+		if weapon[3] == "main": _held(weapon)

@@ -65,7 +65,11 @@ func _init() -> void:
 func configure(value: Dictionary, layers: Array = [], weapons: Array = []) -> void:
 	var next := CharacterAppearance.normalize(value)
 	var next_preset := preset_for(layers,weapons)
-	if _configured and next == appearance and next_preset == preset: return
+	if _configured and next == appearance and next_preset == preset:
+		if layers != look:
+			look = layers.duplicate(true)
+			rig.set_gear(look)
+		return
 	if _configured: action_cancelled.emit(action_serial)
 	appearance = next
 	preset = next_preset
@@ -75,6 +79,7 @@ func configure(value: Dictionary, layers: Array = [], weapons: Array = []) -> vo
 	_auto_bow = false
 	_dead = false
 	if not _configured or rig.sex != appearance["sex"]: rig.set_profile(appearance["sex"])
+	rig.set_gear(look)
 	action_serial += 1
 	rig.play_clip("idle_"+loadout,"",0.)
 	rig.glow_visible = false

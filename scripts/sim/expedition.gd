@@ -7,7 +7,6 @@ extends RefCounted
 
 const WAVE_PAUSE := 1.5
 const BETWEEN_WAVE_HEAL := 0.25
-const FIRST_CLEAR_RARITY_BONUS := 0.25
 const FARM_DROP_CHANCE := 0.15  # per farm run won; first clears always drop
 
 var level := 1
@@ -35,6 +34,8 @@ var runs_lost := 0
 var best_wave := 0
 var level_closed_now := false  # set when a push clears the level for the first time
 var mats := {}                 # crafting materials (cloth, boss materials) earned so far
+var recipe_pool: Array = Prof.drop_recipes()  # drop-only recipes this hero can find
+var loot_role := ""            # role of the hero: most drops fit it
 var last_reason := ""
 
 var rng := RandomNumberGenerator.new()
@@ -178,10 +179,13 @@ func _on_run_end(cleared: bool, reason: String) -> void:
 		if first_clear_pending:
 			first_clear_pending = false
 			level_closed_now = true
-			items.append(Loot.roll_gear(rng, level, FIRST_CLEAR_RARITY_BONUS))
+			items.append(drop_item(rng, level, "first", loot_role))
+			for rid in recipe_pool:
+				if int(Prof.RECIPES[rid].get("clear", 0)) == level:
+					_add_mat("rcp_" + rid, 1)
 			boxes += 1
 		elif rng.randf() < FARM_DROP_CHANCE:
-			items.append(Loot.roll_gear(rng, level, 0.0))
+			items.append(drop_item(rng, level, "drop", loot_role))
 	else:
 		runs_lost += 1
 	if mode == "push":
@@ -200,8 +204,7 @@ func _drop_mats(u: BattleUnit) -> void:
 		var pool := Prof.drop_resources(level)
 		_add_mat(pool[mat_rng.randi_range(0, pool.size() - 1)], mat_rng.randi_range(Prof.RES_DROP_AMOUNT[0], Prof.RES_DROP_AMOUNT[1]))
 	if mat_rng.randf() < (Prof.RECIPE_DROP_CHANCE_BOSS if u.is_boss else Prof.RECIPE_DROP_CHANCE):
-		var rcps := Prof.drop_recipes()
-		_add_mat("rcp_" + rcps[mat_rng.randi_range(0, rcps.size() - 1)], 1)
+		_add_mat("rcp_" + recipe_pool[mat_rng.randi_range(0, recipe_pool.size() - 1)], 1)
 	if u.is_boss and Prof.BOSS_DROPS.has(u.sprite):
 		var drops: Dictionary = Prof.BOSS_DROPS[u.sprite]
 		var first := true
@@ -236,7 +239,7 @@ func fast_forward(seconds: float, sim_budget: float = 1200.0) -> Dictionary:
 		kills += int((kills - start["kills"]) * k)
 		var new_items := int(round((items.size() - start["items"]) * k))
 		for i in min(new_items, 30):
-			items.append(Loot.roll_gear(rng, level, 0.0))
+			items.append(drop_item(rng, level, "drop", loot_role))
 		runs_won += int((runs_won - start["won"]) * k)
 		runs_lost += int((runs_lost - start["lost"]) * k)
 	record_events = true
@@ -289,9 +292,12 @@ const P_MATS := 9   # Dictionary resource -> cumulative count
 func _point() -> Array:
 	return [snappedf(elapsed, 0.01), gold, xp, kills, items.size(), boxes, runs_won, runs_lost, best_wave, mats.duplicate()]
 
-static func build_timeline(p_level: int, p_mode: String, p_party: Array, p_seed: int, p_first: bool) -> Dictionary:
+static func build_timeline(p_level: int, p_mode: String, p_party: Array, p_seed: int, p_first: bool, p_recipes: Array = [], p_role: String = "") -> Dictionary:
 	var ex := Expedition.new()
 	ex.record_events = false
+	ex.loot_role = p_role
+	if not p_recipes.is_empty():
+		ex.recipe_pool = p_recipes
 	ex.start(p_level, p_mode, p_party, p_seed, p_first)
 	var pts := []
 	if p_mode == "push":
@@ -367,7 +373,10 @@ static func item_at(tl: Dictionary, i: int) -> Dictionary:
 		return stored[i]
 	var r := RandomNumberGenerator.new()
 	r.seed = hash([int(tl["seed"]), i])
-	return Loot.roll_gear(r, int(tl["level"]), 0.0)
+	return drop_item(r, int(tl["level"]), "drop", str(tl.get("role", "")))
+
+static func drop_item(r: RandomNumberGenerator, lvl: int, table: String, role: String) -> Dictionary:
+	return Loot.roll_gear(r, lvl, table, "", "", role if r.randf() < Items.OWN_ROLE_CHANCE else "")
 
 ## Seconds of the expedition after which waves up to index k are done (for the live view).
 static func waves_done_at(tl: Dictionary, t: float) -> int:

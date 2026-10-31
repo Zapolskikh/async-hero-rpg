@@ -21,8 +21,8 @@ from .worker import WorkerPool
 LOCAL_ACTIONS = {"set_rotation", "move_party", "equip", "unequip", "sell", "hire", "fire", "replace", "fuse", "set_name",
                  "talent_up", "talent_reset", "set_threshold", "set_cosmetic", "set_appearance"}
 AUTHORITY_ACTIONS = {"reroll", "open_box", "open_pack", "start", "collect", "stop",
-                     "gather_start", "gather_claim", "gather_cancel", "craft_start", "craft_claim", "use_item",
-                     "fake_purchase", "buy_cosmetic", "rush", "buy_boost", "upgrade_item", "merge_items"}
+                     "gather_start", "gather_claim", "gather_cancel", "prof_choose", "craft_start", "craft_claim", "use_item",
+                     "fake_purchase", "buy_cosmetic", "rush", "buy_boost", "merge_items", "merge_claim"}
 CLIENT_ACTIONS = LOCAL_ACTIONS | AUTHORITY_ACTIONS
 
 

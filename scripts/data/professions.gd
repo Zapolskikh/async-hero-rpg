@@ -5,10 +5,15 @@ extends RefCounted
 ## no numbers live in the logic.
 ##
 ## Gathering (AFK, solo): mining, herbalism, skinning.
-## Crafting: blacksmithing, tailoring, alchemy.
+## Crafting: blacksmithing, tailoring, alchemy. A hero practises one of them (craft_prof in the profile).
 ## Cloth and special materials do NOT come from gathering: they drop in combat.
 
 const MAX_LEVEL := 10
+## Crafted stats: the whole item is multiplied by a roll in this range.
+const CRAFT_ROLL := [0.8, 1.3]
+const CRAFT_EXTRA_STATS := ["crit", "haste", "hp"]
+## The first choice of a crafting profession is free, changing it costs this much gold.
+const CRAFT_CHANGE_GOLD := 3000
 ## XP needed to go from level i+1 to i+2 (index 0 = level 1 -> 2).
 const XP_TO_NEXT := [100, 160, 240, 340, 460, 600, 760, 940, 1140]
 
@@ -16,9 +21,12 @@ const PROFESSIONS := {
 	"mining":        {"name": "Горное дело",   "type": "gathering", "icon": "prof_mining"},
 	"herbalism":     {"name": "Травничество",  "type": "gathering", "icon": "prof_herbalism"},
 	"skinning":      {"name": "Свежевание",    "type": "gathering", "icon": "prof_skinning"},
-	"blacksmithing": {"name": "Кузнечное дело", "type": "crafting", "icon": "prof_blacksmithing"},
-	"tailoring":     {"name": "Портняжное дело", "type": "crafting", "icon": "prof_tailoring"},
-	"alchemy":       {"name": "Алхимия",        "type": "crafting", "icon": "prof_alchemy"},
+	"blacksmithing": {"name": "Кузнечное дело", "type": "crafting", "icon": "prof_blacksmithing",
+		"desc": "Латы и оружие на силу: мечи, двуручники, щиты. Для бойцов ближнего боя."},
+	"tailoring":     {"name": "Портняжное дело", "type": "crafting", "icon": "prof_tailoring",
+		"desc": "Ткань на силу заклинаний и кожа на ловкость: посохи и луки. Для магов, лекарей и стрелков."},
+	"alchemy":       {"name": "Алхимия",        "type": "crafting", "icon": "prof_alchemy",
+		"desc": "Зелья на всю группу: урон, лечение, здоровье. Подходит любому герою."},
 }
 const GATHERING := ["mining", "herbalism", "skinning"]
 const CRAFTING := ["blacksmithing", "tailoring", "alchemy"]
@@ -56,6 +64,25 @@ const RESOURCES := {
 	"minor_recovery_potion":   {"name": "Малое зелье восстановления", "cat": "alchemy", "tier": 0},
 	"gatherers_tonic":         {"name": "Тоник собирателя",          "cat": "alchemy", "tier": 1},
 	"greater_strength_potion": {"name": "Большое зелье силы",        "cat": "alchemy", "tier": 2},
+	"strength_potion":         {"name": "Зелье силы",                "cat": "alchemy", "tier": 1},
+	"recovery_potion":         {"name": "Зелье восстановления",      "cat": "alchemy", "tier": 1},
+	"minor_fortitude_potion":  {"name": "Малое зелье стойкости",     "cat": "alchemy", "tier": 0},
+	"fortitude_potion":        {"name": "Зелье стойкости",           "cat": "alchemy", "tier": 2},
+	"titan_flask":             {"name": "Настой титанов",            "cat": "alchemy", "tier": 2},
+	"elixir_bull": {"name": "Эликсир быка", "cat": "alchemy", "tier": 0},
+	"greater_elixir_bull": {"name": "Большой эликсир быка", "cat": "alchemy", "tier": 1},
+	"elixir_cat": {"name": "Эликсир кошки", "cat": "alchemy", "tier": 0},
+	"greater_elixir_cat": {"name": "Большой эликсир кошки", "cat": "alchemy", "tier": 1},
+	"elixir_mind": {"name": "Эликсир разума", "cat": "alchemy", "tier": 0},
+	"greater_elixir_mind": {"name": "Большой эликсир разума", "cat": "alchemy", "tier": 1},
+	"elixir_stone": {"name": "Эликсир камня", "cat": "alchemy", "tier": 0},
+	"greater_elixir_stone": {"name": "Большой эликсир камня", "cat": "alchemy", "tier": 1},
+	"elixir_life": {"name": "Эликсир жизни", "cat": "alchemy", "tier": 0},
+	"greater_elixir_life": {"name": "Большой эликсир жизни", "cat": "alchemy", "tier": 1},
+	"elixir_eagle": {"name": "Эликсир орла", "cat": "alchemy", "tier": 0},
+	"greater_elixir_eagle": {"name": "Большой эликсир орла", "cat": "alchemy", "tier": 1},
+	"elixir_wind": {"name": "Эликсир ветра", "cat": "alchemy", "tier": 0},
+	"greater_elixir_wind": {"name": "Большой эликсир ветра", "cat": "alchemy", "tier": 1},
 }
 
 # ---------------------------------------------------------------- gathering
@@ -95,77 +122,122 @@ const LOCATIONS := {
 
 # ---------------------------------------------------------------- crafting
 
-## Equipment slots: combat loot covers weapon/armor/trinket, crafting covers the rest.
-## Crafted gear has fixed stats (no quality RNG): value = Loot.STAT_PER_ILVL * ilvl * q.
+## "rarity" is the quality of the result: uncommon recipes are cheap, rare and epic ones take a
+## high profession level, many materials, gold and hours. "ilvl" and the shares of "affixes"
+## are not final: see make_item.
+## drop_only recipes come from clears: "clear" is the level whose first clear teaches the
+## recipe, the rest of the time they are a rare boss drop.
 const RECIPES := {
 	# --- Blacksmithing
 	"simple_iron_helmet": {"name": "Простой железный шлем", "prof": "blacksmithing", "req": 1, "gold": 60, "time": 300, "xp": 80,
 		"ingredients": {"iron_ore": 10, "raw_leather": 2},
-		"item": {"slot": "head", "rarity": 0, "ilvl": 6, "affixes": [["armor", 1.0], ["hp", 0.7]]}},
+		"item": {"slot": "head", "rarity": 2, "ilvl": 6, "affixes": [["armor", 1.0], ["hp", 0.7]]}},
 	"iron_gauntlets": {"name": "Железные рукавицы", "prof": "blacksmithing", "req": 2, "gold": 80, "time": 420, "xp": 100,
 		"ingredients": {"copper_ore": 12, "iron_ore": 4, "light_hide": 3},
-		"item": {"slot": "hands", "rarity": 0, "ilvl": 10, "affixes": [["armor", 0.8], ["str", 0.8]]}},
-	"iron_chestguard": {"name": "Железный нагрудник", "prof": "blacksmithing", "req": 3, "gold": 150, "time": 900, "xp": 160,
-		"ingredients": {"iron_ore": 20, "raw_leather": 4},
-		"item": {"slot": "armor", "rarity": 1, "ilvl": 16, "affixes": [["armor", 1.0], ["hp", 1.0]]}},
-	"reinforced_greaves": {"name": "Укреплённые поножи", "prof": "blacksmithing", "req": 3, "gold": 120, "time": 600, "xp": 140,
-		"ingredients": {"iron_ore": 14, "coal": 3},
-		"item": {"slot": "legs", "rarity": 1, "ilvl": 16, "affixes": [["armor", 1.0], ["hp", 0.8]]}},
-	"copper_boots": {"name": "Медные сапоги", "prof": "blacksmithing", "req": 4, "gold": 140, "time": 600, "xp": 160,
-		"ingredients": {"copper_ore": 16, "thick_hide": 3},
-		"item": {"slot": "feet", "rarity": 1, "ilvl": 20, "affixes": [["armor", 0.9], ["haste", 0.8]]}},
-	"boss_forged_chestguard": {"name": "Нагрудник, кованный в ядре", "prof": "blacksmithing", "req": 6, "gold": 600, "time": 3600, "xp": 440,
-		"ingredients": {"iron_ore": 30, "silver_ore": 5, "boss_core": 1},
-		"item": {"slot": "armor", "rarity": 2, "ilvl": 38, "affixes": [["armor", 1.0], ["hp", 1.0], ["str", 0.8]]}},
+		"item": {"slot": "hands", "rarity": 2, "ilvl": 10, "affixes": [["armor", 0.8], ["str", 0.8]]}},
+	"iron_chestguard": {"name": "Железный нагрудник", "prof": "blacksmithing", "req": 5, "gold": 600, "time": 7200, "xp": 320,
+		"ingredients": {"iron_ore": 40, "raw_leather": 8},
+		"item": {"slot": "armor", "rarity": 3, "ilvl": 16, "affixes": [["armor", 1.0], ["hp", 1.0]]}},
+	"reinforced_greaves": {"name": "Укреплённые поножи", "prof": "blacksmithing", "req": 5, "gold": 600, "time": 7200, "xp": 280,
+		"ingredients": {"iron_ore": 28, "coal": 6},
+		"item": {"slot": "legs", "rarity": 3, "ilvl": 16, "affixes": [["armor", 1.0], ["hp", 0.8]]}},
+	"copper_boots": {"name": "Медные сапоги", "prof": "blacksmithing", "req": 5, "gold": 600, "time": 7200, "xp": 320,
+		"ingredients": {"copper_ore": 32, "thick_hide": 6},
+		"item": {"slot": "feet", "rarity": 3, "ilvl": 20, "affixes": [["armor", 0.9], ["haste", 0.8]]}},
+	"boss_forged_chestguard": {"name": "Нагрудник, кованный в ядре", "prof": "blacksmithing", "req": 8, "gold": 3000, "time": 28800, "xp": 880, "drop_only": true, "clear": 15,
+		"ingredients": {"iron_ore": 90, "silver_ore": 15, "boss_core": 1},
+		"item": {"slot": "armor", "rarity": 4, "ilvl": 38, "affixes": [["armor", 1.0], ["hp", 1.0], ["str", 0.8]]}},
 	"iron_sword": {"name": "Железный меч", "prof": "blacksmithing", "req": 2, "gold": 90, "time": 480, "xp": 110,
 		"ingredients": {"iron_ore": 12, "raw_leather": 2},
-		"item": {"wtype": "sword", "rarity": 0, "ilvl": 12, "affixes": [["str", 0.8]]}},
-	"iron_shield": {"name": "Железный щит", "prof": "blacksmithing", "req": 3, "gold": 130, "time": 600, "xp": 140,
-		"ingredients": {"iron_ore": 16, "light_hide": 4},
-		"item": {"wtype": "shield", "rarity": 1, "ilvl": 18, "affixes": [["hp", 0.8]]}},
-	"steel_greatsword": {"name": "Стальной двуручник", "prof": "blacksmithing", "req": 5, "gold": 260, "time": 1200, "xp": 240,
-		"ingredients": {"iron_ore": 24, "coal": 6, "tough_leather": 2},
-		"item": {"wtype": "greatsword", "rarity": 1, "ilvl": 26, "affixes": [["crit", 0.7]]}},
-	"core_blade": {"name": "Клинок из ядра", "prof": "blacksmithing", "req": 7, "gold": 900, "time": 3600, "xp": 520, "drop_only": true,
-		"ingredients": {"silver_ore": 10, "mithril_fragment": 3, "boss_core": 1},
-		"item": {"wtype": "sword", "rarity": 2, "ilvl": 44, "affixes": [["str", 1.0], ["crit", 0.8]]}},
-	"mithril_helm": {"name": "Мифриловый шлем", "prof": "blacksmithing", "req": 8, "gold": 900, "time": 3600, "xp": 520, "drop_only": true,
-		"ingredients": {"mithril_fragment": 6, "silver_ore": 4, "tough_leather": 3, "boss_core": 1},
-		"item": {"slot": "head", "rarity": 2, "ilvl": 48, "affixes": [["armor", 1.0], ["hp", 1.0], ["crit", 0.8]]}},
+		"item": {"wtype": "sword", "rarity": 2, "ilvl": 12, "affixes": [["str", 0.8]]}},
+	"iron_shield": {"name": "Железный щит", "prof": "blacksmithing", "req": 5, "gold": 600, "time": 7200, "xp": 280,
+		"ingredients": {"iron_ore": 32, "light_hide": 8},
+		"item": {"wtype": "shield", "rarity": 3, "ilvl": 18, "affixes": [["hp", 0.8]]}},
+	"steel_greatsword": {"name": "Стальной двуручник", "prof": "blacksmithing", "req": 5, "gold": 780, "time": 7200, "xp": 480,
+		"ingredients": {"iron_ore": 48, "coal": 12, "tough_leather": 4},
+		"item": {"wtype": "greatsword", "rarity": 3, "ilvl": 26, "affixes": [["crit", 0.7]]}},
+	"core_blade": {"name": "Клинок из ядра", "prof": "blacksmithing", "req": 8, "gold": 4500, "time": 28800, "xp": 1040, "drop_only": true, "clear": 20,
+		"ingredients": {"silver_ore": 30, "mithril_fragment": 9, "boss_core": 1},
+		"item": {"wtype": "sword", "rarity": 4, "ilvl": 44, "affixes": [["str", 1.0], ["crit", 0.8]]}},
+	"mithril_helm": {"name": "Мифриловый шлем", "prof": "blacksmithing", "req": 8, "gold": 4500, "time": 28800, "xp": 1040, "drop_only": true, "clear": 25,
+		"ingredients": {"mithril_fragment": 18, "silver_ore": 12, "tough_leather": 9, "boss_core": 1},
+		"item": {"slot": "head", "rarity": 4, "ilvl": 48, "affixes": [["armor", 1.0], ["hp", 1.0], ["crit", 0.8]]}},
+	"steel_helm": {"name": "Стальной шлем", "prof": "blacksmithing", "req": 5, "gold": 720, "time": 7200, "xp": 440,
+		"ingredients": {"iron_ore": 40, "coal": 10, "tough_leather": 2},
+		"item": {"slot": "head", "rarity": 3, "ilvl": 28, "affixes": [["armor", 1.0], ["str", 0.8]]}},
+	"steel_gauntlets": {"name": "Стальные перчатки", "prof": "blacksmithing", "req": 8, "gold": 2500, "time": 28800, "xp": 600,
+		"ingredients": {"iron_ore": 66, "silver_ore": 12, "tough_leather": 6},
+		"item": {"slot": "hands", "rarity": 4, "ilvl": 34, "affixes": [["armor", 1.0], ["str", 1.0], ["crit", 0.7]]}},
+	"tower_shield": {"name": "Башенный щит", "prof": "blacksmithing", "req": 8, "gold": 2500, "time": 28800, "xp": 640,
+		"ingredients": {"iron_ore": 78, "silver_ore": 15, "thick_hide": 12},
+		"item": {"wtype": "shield", "rarity": 4, "ilvl": 36, "affixes": [["hp", 1.0], ["str", 0.8]]}},
+	"runed_sabatons": {"name": "Рунные сапоги", "prof": "blacksmithing", "req": 8, "gold": 2600, "time": 28800, "xp": 800,
+		"ingredients": {"silver_ore": 30, "coal": 24, "tough_leather": 9},
+		"item": {"slot": "feet", "rarity": 4, "ilvl": 38, "affixes": [["armor", 1.0], ["haste", 1.0], ["str", 0.8]]}},
+	"mithril_greaves": {"name": "Мифриловые поножи", "prof": "blacksmithing", "req": 8, "gold": 3800, "time": 28800, "xp": 960,
+		"ingredients": {"mithril_fragment": 12, "silver_ore": 24, "tough_leather": 9},
+		"item": {"slot": "legs", "rarity": 4, "ilvl": 44, "affixes": [["armor", 1.0], ["hp", 1.0], ["str", 0.8]]}},
+	"mithril_greatsword": {"name": "Мифриловый двуручник", "prof": "blacksmithing", "req": 9, "gold": 5000, "time": 28800, "xp": 1120, "drop_only": true, "clear": 28,
+		"ingredients": {"mithril_fragment": 24, "silver_ore": 30, "boss_core": 1},
+		"item": {"wtype": "greatsword", "rarity": 4, "ilvl": 50, "affixes": [["str", 1.0], ["crit", 0.9]]}},
 	# --- Tailoring (cloth comes from combat)
 	"rough_cloth_hood": {"name": "Капюшон из грубой ткани", "prof": "tailoring", "req": 1, "gold": 50, "time": 300, "xp": 80,
 		"ingredients": {"rough_cloth": 10},
-		"item": {"slot": "head", "rarity": 0, "ilvl": 6, "affixes": [["power", 1.0], ["hp", 0.5]]}},
+		"item": {"slot": "head", "rarity": 2, "ilvl": 6, "affixes": [["power", 1.0], ["hp", 0.5]]}},
 	"rough_cloth_shoes": {"name": "Тканые башмаки", "prof": "tailoring", "req": 2, "gold": 70, "time": 420, "xp": 100,
 		"ingredients": {"rough_cloth": 12, "light_hide": 2},
-		"item": {"slot": "feet", "rarity": 0, "ilvl": 10, "affixes": [["power", 0.8], ["haste", 0.6]]}},
-	"linen_tunic": {"name": "Льняная туника", "prof": "tailoring", "req": 3, "gold": 140, "time": 900, "xp": 160,
-		"ingredients": {"linen_cloth": 16, "raw_leather": 2},
-		"item": {"slot": "armor", "rarity": 1, "ilvl": 18, "affixes": [["power", 1.0], ["hp", 0.8]]}},
-	"linen_trousers": {"name": "Льняные штаны", "prof": "tailoring", "req": 4, "gold": 150, "time": 900, "xp": 170,
-		"ingredients": {"linen_cloth": 14, "greenleaf": 4},
-		"item": {"slot": "legs", "rarity": 1, "ilvl": 20, "affixes": [["power", 1.0], ["crit", 0.6]]}},
-	"fine_bracers": {"name": "Тонкие наручи", "prof": "tailoring", "req": 5, "gold": 220, "time": 1200, "xp": 220,
-		"ingredients": {"fine_cloth": 8, "moonflower": 2},
-		"item": {"slot": "hands", "rarity": 1, "ilvl": 28, "affixes": [["power", 1.0], ["haste", 0.8]]}},
-	"pristine_slippers": {"name": "Туфли из безупречной кожи", "prof": "tailoring", "req": 6, "gold": 400, "time": 1800, "xp": 320,
-		"ingredients": {"fine_cloth": 6, "pristine_hide": 2, "thick_hide": 4},
-		"item": {"slot": "feet", "rarity": 2, "ilvl": 34, "affixes": [["power", 1.0], ["haste", 1.0], ["hp", 0.6]]}},
+		"item": {"slot": "feet", "rarity": 2, "ilvl": 10, "affixes": [["power", 0.8], ["haste", 0.6]]}},
+	"linen_tunic": {"name": "Льняная туника", "prof": "tailoring", "req": 5, "gold": 600, "time": 7200, "xp": 320,
+		"ingredients": {"linen_cloth": 32, "raw_leather": 4},
+		"item": {"slot": "armor", "rarity": 3, "ilvl": 18, "affixes": [["power", 1.0], ["hp", 0.8]]}},
+	"linen_trousers": {"name": "Льняные штаны", "prof": "tailoring", "req": 5, "gold": 600, "time": 7200, "xp": 340,
+		"ingredients": {"linen_cloth": 28, "greenleaf": 8},
+		"item": {"slot": "legs", "rarity": 3, "ilvl": 20, "affixes": [["power", 1.0], ["crit", 0.6]]}},
+	"fine_bracers": {"name": "Тонкие наручи", "prof": "tailoring", "req": 5, "gold": 660, "time": 7200, "xp": 440,
+		"ingredients": {"fine_cloth": 16, "moonflower": 4},
+		"item": {"slot": "hands", "rarity": 3, "ilvl": 28, "affixes": [["power", 1.0], ["haste", 0.8]]}},
+	"pristine_slippers": {"name": "Туфли из безупречной кожи", "prof": "tailoring", "req": 8, "gold": 2500, "time": 28800, "xp": 640,
+		"ingredients": {"fine_cloth": 18, "pristine_hide": 6, "thick_hide": 12},
+		"item": {"slot": "feet", "rarity": 4, "ilvl": 34, "affixes": [["power", 1.0], ["haste", 1.0], ["hp", 0.6]]}},
 	"hunting_bow": {"name": "Охотничий лук", "prof": "tailoring", "req": 2, "gold": 90, "time": 480, "xp": 110,
 		"ingredients": {"raw_leather": 6, "rough_cloth": 6},
-		"item": {"wtype": "bow", "rarity": 0, "ilvl": 12, "affixes": [["agi", 0.8]]}},
-	"apprentice_staff": {"name": "Посох ученика", "prof": "tailoring", "req": 3, "gold": 130, "time": 600, "xp": 140,
-		"ingredients": {"linen_cloth": 8, "greenleaf": 6},
-		"item": {"wtype": "staff", "rarity": 1, "ilvl": 18, "affixes": [["haste", 0.6]]}},
-	"pristine_longbow": {"name": "Безупречный длинный лук", "prof": "tailoring", "req": 6, "gold": 700, "time": 3000, "xp": 440, "drop_only": true,
-		"ingredients": {"pristine_hide": 6, "fine_cloth": 4},
-		"item": {"wtype": "bow", "rarity": 2, "ilvl": 38, "affixes": [["agi", 1.0], ["crit", 0.8]]}},
-	"moonweave_staff": {"name": "Посох лунного плетения", "prof": "tailoring", "req": 7, "gold": 900, "time": 3600, "xp": 520, "drop_only": true,
-		"ingredients": {"fine_cloth": 10, "moonflower": 6, "enchanted_thread": 1},
-		"item": {"wtype": "staff", "rarity": 2, "ilvl": 44, "affixes": [["power", 1.0], ["haste", 0.8]]}},
-	"enchanted_robe": {"name": "Зачарованная мантия", "prof": "tailoring", "req": 7, "gold": 700, "time": 3600, "xp": 480, "drop_only": true,
-		"ingredients": {"fine_cloth": 24, "enchanted_thread": 1},
-		"item": {"slot": "armor", "rarity": 2, "ilvl": 42, "affixes": [["power", 1.0], ["hp", 1.0], ["crit", 0.8]]}},
+		"item": {"wtype": "bow", "rarity": 2, "ilvl": 12, "affixes": [["agi", 0.8]]}},
+	"apprentice_staff": {"name": "Посох ученика", "prof": "tailoring", "req": 5, "gold": 600, "time": 7200, "xp": 280,
+		"ingredients": {"linen_cloth": 16, "greenleaf": 12},
+		"item": {"wtype": "staff", "rarity": 3, "ilvl": 18, "affixes": [["haste", 0.6]]}},
+	"pristine_longbow": {"name": "Безупречный длинный лук", "prof": "tailoring", "req": 8, "gold": 3500, "time": 28800, "xp": 880, "drop_only": true, "clear": 15,
+		"ingredients": {"pristine_hide": 18, "fine_cloth": 12},
+		"item": {"wtype": "bow", "rarity": 4, "ilvl": 38, "affixes": [["agi", 1.0], ["crit", 0.8]]}},
+	"moonweave_staff": {"name": "Посох лунного плетения", "prof": "tailoring", "req": 8, "gold": 4500, "time": 28800, "xp": 1040, "drop_only": true, "clear": 20,
+		"ingredients": {"fine_cloth": 30, "moonflower": 18, "enchanted_thread": 1},
+		"item": {"wtype": "staff", "rarity": 4, "ilvl": 44, "affixes": [["power", 1.0], ["haste", 0.8]]}},
+	"enchanted_robe": {"name": "Зачарованная мантия", "prof": "tailoring", "req": 8, "gold": 3500, "time": 28800, "xp": 960, "drop_only": true, "clear": 25,
+		"ingredients": {"fine_cloth": 72, "enchanted_thread": 1},
+		"item": {"slot": "armor", "rarity": 4, "ilvl": 42, "affixes": [["power", 1.0], ["hp", 1.0], ["crit", 0.8]]}},
+	"mooncloth_hood": {"name": "Капюшон лунной ткани", "prof": "tailoring", "req": 5, "gold": 720, "time": 7200, "xp": 440,
+		"ingredients": {"linen_cloth": 28, "fine_cloth": 8, "moonflower": 6},
+		"item": {"slot": "head", "rarity": 3, "ilvl": 28, "affixes": [["power", 1.0], ["hp", 0.8]]}},
+	"ranger_cowl": {"name": "Капюшон следопыта", "prof": "tailoring", "req": 5, "gold": 720, "time": 7200, "xp": 440,
+		"ingredients": {"tough_leather": 10, "thick_hide": 12, "linen_cloth": 8},
+		"item": {"slot": "head", "rarity": 3, "ilvl": 28, "affixes": [["agi", 1.0], ["crit", 0.8]]}},
+	"ranger_gloves": {"name": "Перчатки следопыта", "prof": "tailoring", "req": 5, "gold": 660, "time": 7200, "xp": 440,
+		"ingredients": {"tough_leather": 8, "thick_hide": 10},
+		"item": {"slot": "hands", "rarity": 3, "ilvl": 28, "affixes": [["agi", 1.0], ["haste", 0.8]]}},
+	"ranger_boots": {"name": "Сапоги следопыта", "prof": "tailoring", "req": 8, "gold": 2500, "time": 28800, "xp": 640,
+		"ingredients": {"tough_leather": 21, "pristine_hide": 3, "thick_hide": 18},
+		"item": {"slot": "feet", "rarity": 4, "ilvl": 34, "affixes": [["agi", 1.0], ["haste", 1.0], ["hp", 0.6]]}},
+	"ranger_leggings": {"name": "Поножи следопыта", "prof": "tailoring", "req": 8, "gold": 2800, "time": 28800, "xp": 800,
+		"ingredients": {"tough_leather": 27, "pristine_hide": 6, "fine_cloth": 18},
+		"item": {"slot": "legs", "rarity": 4, "ilvl": 40, "affixes": [["agi", 1.0], ["hp", 1.0], ["crit", 0.7]]}},
+	"mooncloth_leggings": {"name": "Штаны лунной ткани", "prof": "tailoring", "req": 8, "gold": 2800, "time": 28800, "xp": 800,
+		"ingredients": {"fine_cloth": 48, "moonflower": 18, "spirit_bloom": 3},
+		"item": {"slot": "legs", "rarity": 4, "ilvl": 40, "affixes": [["power", 1.0], ["hp", 1.0], ["crit", 0.7]]}},
+	"starweave_cowl": {"name": "Звёздный капюшон", "prof": "tailoring", "req": 8, "gold": 3800, "time": 28800, "xp": 960, "drop_only": true, "clear": 28,
+		"ingredients": {"fine_cloth": 60, "enchanted_thread": 1},
+		"item": {"slot": "head", "rarity": 4, "ilvl": 46, "affixes": [["power", 1.0], ["crit", 0.9], ["hp", 0.8]]}},
+	"shadowhide_hood": {"name": "Капюшон из тени", "prof": "tailoring", "req": 8, "gold": 3800, "time": 28800, "xp": 960, "drop_only": true, "clear": 28,
+		"ingredients": {"pristine_hide": 15, "tough_leather": 24, "enchanted_thread": 1},
+		"item": {"slot": "head", "rarity": 4, "ilvl": 46, "affixes": [["agi", 1.0], ["crit", 0.9], ["hp", 0.8]]}},
 	# --- Alchemy (consumables)
 	"minor_strength_potion": {"name": "Малое зелье силы", "prof": "alchemy", "req": 1, "gold": 30, "time": 180, "xp": 60,
 		"ingredients": {"greenleaf": 4, "bitterroot": 2}, "output": {"minor_strength_potion": 2}},
@@ -173,18 +245,78 @@ const RECIPES := {
 		"ingredients": {"greenleaf": 2, "bitterroot": 4}, "output": {"minor_recovery_potion": 2}},
 	"gatherers_tonic": {"name": "Тоник собирателя", "prof": "alchemy", "req": 3, "gold": 60, "time": 300, "xp": 100,
 		"ingredients": {"moonflower": 2, "greenleaf": 3}, "output": {"gatherers_tonic": 1}},
+	"elixir_bull": {"name": "Эликсир быка", "prof": "alchemy", "req": 2, "gold": 40, "time": 180, "xp": 80,
+		"ingredients": {"bitterroot": 4, "greenleaf": 2}, "output": {"elixir_bull": 3}},
+	"greater_elixir_bull": {"name": "Большой эликсир быка", "prof": "alchemy", "req": 6, "gold": 120, "time": 360, "xp": 170,
+		"ingredients": {"redthorn": 4, "bitterroot": 3}, "output": {"greater_elixir_bull": 3}},
+	"elixir_cat": {"name": "Эликсир кошки", "prof": "alchemy", "req": 2, "gold": 40, "time": 180, "xp": 80,
+		"ingredients": {"greenleaf": 4, "bitterroot": 2}, "output": {"elixir_cat": 3}},
+	"greater_elixir_cat": {"name": "Большой эликсир кошки", "prof": "alchemy", "req": 6, "gold": 120, "time": 360, "xp": 170,
+		"ingredients": {"redthorn": 3, "moonflower": 2}, "output": {"greater_elixir_cat": 3}},
+	"elixir_mind": {"name": "Эликсир разума", "prof": "alchemy", "req": 2, "gold": 40, "time": 180, "xp": 80,
+		"ingredients": {"greenleaf": 5, "bitterroot": 1}, "output": {"elixir_mind": 3}},
+	"greater_elixir_mind": {"name": "Большой эликсир разума", "prof": "alchemy", "req": 6, "gold": 120, "time": 360, "xp": 170,
+		"ingredients": {"moonflower": 4, "greenleaf": 3}, "output": {"greater_elixir_mind": 3}},
+	"elixir_stone": {"name": "Эликсир камня", "prof": "alchemy", "req": 3, "gold": 40, "time": 180, "xp": 80,
+		"ingredients": {"bitterroot": 5, "greenleaf": 1}, "output": {"elixir_stone": 3}},
+	"greater_elixir_stone": {"name": "Большой эликсир камня", "prof": "alchemy", "req": 7, "gold": 120, "time": 360, "xp": 170,
+		"ingredients": {"bitterroot": 6, "moonflower": 3}, "output": {"greater_elixir_stone": 3}},
+	"elixir_life": {"name": "Эликсир жизни", "prof": "alchemy", "req": 3, "gold": 40, "time": 180, "xp": 80,
+		"ingredients": {"greenleaf": 3, "bitterroot": 3}, "output": {"elixir_life": 3}},
+	"greater_elixir_life": {"name": "Большой эликсир жизни", "prof": "alchemy", "req": 7, "gold": 120, "time": 360, "xp": 170,
+		"ingredients": {"redthorn": 3, "greenleaf": 5}, "output": {"greater_elixir_life": 3}},
+	"elixir_eagle": {"name": "Эликсир орла", "prof": "alchemy", "req": 4, "gold": 40, "time": 180, "xp": 80,
+		"ingredients": {"moonflower": 2, "greenleaf": 3}, "output": {"elixir_eagle": 3}},
+	"greater_elixir_eagle": {"name": "Большой эликсир орла", "prof": "alchemy", "req": 8, "gold": 120, "time": 360, "xp": 170,
+		"ingredients": {"moonflower": 4, "spirit_bloom": 1}, "output": {"greater_elixir_eagle": 3}},
+	"elixir_wind": {"name": "Эликсир ветра", "prof": "alchemy", "req": 4, "gold": 40, "time": 180, "xp": 80,
+		"ingredients": {"redthorn": 2, "greenleaf": 3}, "output": {"elixir_wind": 3}},
+	"greater_elixir_wind": {"name": "Большой эликсир ветра", "prof": "alchemy", "req": 8, "gold": 120, "time": 360, "xp": 170,
+		"ingredients": {"redthorn": 4, "spirit_bloom": 1}, "output": {"greater_elixir_wind": 3}},
+	"minor_fortitude_potion": {"name": "Малое зелье стойкости", "prof": "alchemy", "req": 3, "gold": 50, "time": 240, "xp": 100,
+		"ingredients": {"bitterroot": 6, "redthorn": 1}, "output": {"minor_fortitude_potion": 2}},
+	"strength_potion": {"name": "Зелье силы", "prof": "alchemy", "req": 4, "gold": 90, "time": 300, "xp": 130,
+		"ingredients": {"redthorn": 3, "greenleaf": 4}, "output": {"strength_potion": 2}},
+	"recovery_potion": {"name": "Зелье восстановления", "prof": "alchemy", "req": 5, "gold": 110, "time": 360, "xp": 160,
+		"ingredients": {"moonflower": 3, "bitterroot": 4}, "output": {"recovery_potion": 2}},
+	"fortitude_potion": {"name": "Зелье стойкости", "prof": "alchemy", "req": 6, "gold": 150, "time": 420, "xp": 200,
+		"ingredients": {"redthorn": 3, "moonflower": 3}, "output": {"fortitude_potion": 2}},
 	"greater_strength_potion": {"name": "Большое зелье силы", "prof": "alchemy", "req": 7, "gold": 200, "time": 600, "xp": 240,
-		"ingredients": {"spirit_bloom": 1, "redthorn": 4, "boss_core": 1}, "output": {"greater_strength_potion": 2}},
+		"ingredients": {"spirit_bloom": 1, "redthorn": 4}, "output": {"greater_strength_potion": 2}},
+	"titan_flask": {"name": "Настой титанов", "prof": "alchemy", "req": 9, "gold": 400, "time": 900, "xp": 360, "drop_only": true, "clear": 25,
+		"ingredients": {"spirit_bloom": 2, "redthorn": 6, "boss_core": 1}, "output": {"titan_flask": 3}},
 }
 
-## Consumable effects. Buffs apply to expeditions started while they are active.
+## Consumable effects. Buffs apply to expeditions started while they are active. Only one
+## potion works at a time, a new one replaces it; the gathering tonic does not count.
 ##   dmg_mult  - all damage of the party
 ##   heal_mult - all healing of the party
+##   hp_mult   - maximum health of the party
+##   hero_stat - one stat of the hero: a share of it, or flat for haste and crit
 ##   gather_yield - next gathering expedition (one charge)
 const CONSUMABLES := {
 	"minor_strength_potion":   {"effect": "dmg_mult", "value": 1.10, "duration": 7200, "desc": "+10% урона группы на 2 ч"},
 	"minor_recovery_potion":   {"effect": "heal_mult", "value": 1.15, "duration": 7200, "desc": "+15% лечения группы на 2 ч"},
+	"strength_potion":         {"effect": "dmg_mult", "value": 1.15, "duration": 7200, "desc": "+15% урона группы на 2 ч"},
 	"greater_strength_potion": {"effect": "dmg_mult", "value": 1.20, "duration": 7200, "desc": "+20% урона группы на 2 ч"},
+	"titan_flask":             {"effect": "dmg_mult", "value": 1.30, "duration": 7200, "desc": "+30% урона группы на 2 ч"},
+	"recovery_potion":         {"effect": "heal_mult", "value": 1.30, "duration": 7200, "desc": "+30% лечения группы на 2 ч"},
+	"elixir_bull": {"effect": "hero_stat", "stat": "str", "value": 0.10, "duration": 7200, "desc": "+10% силы героя на 2 ч"},
+	"greater_elixir_bull": {"effect": "hero_stat", "stat": "str", "value": 0.20, "duration": 7200, "desc": "+20% силы героя на 2 ч"},
+	"elixir_cat": {"effect": "hero_stat", "stat": "agi", "value": 0.10, "duration": 7200, "desc": "+10% ловкости героя на 2 ч"},
+	"greater_elixir_cat": {"effect": "hero_stat", "stat": "agi", "value": 0.20, "duration": 7200, "desc": "+20% ловкости героя на 2 ч"},
+	"elixir_mind": {"effect": "hero_stat", "stat": "power", "value": 0.10, "duration": 7200, "desc": "+10% силы заклинаний героя на 2 ч"},
+	"greater_elixir_mind": {"effect": "hero_stat", "stat": "power", "value": 0.20, "duration": 7200, "desc": "+20% силы заклинаний героя на 2 ч"},
+	"elixir_stone": {"effect": "hero_stat", "stat": "armor", "value": 0.25, "duration": 7200, "desc": "+25% брони героя на 2 ч"},
+	"greater_elixir_stone": {"effect": "hero_stat", "stat": "armor", "value": 0.50, "duration": 7200, "desc": "+50% брони героя на 2 ч"},
+	"elixir_life": {"effect": "hero_stat", "stat": "hp", "value": 0.10, "duration": 7200, "desc": "+10% здоровья героя на 2 ч"},
+	"greater_elixir_life": {"effect": "hero_stat", "stat": "hp", "value": 0.20, "duration": 7200, "desc": "+20% здоровья героя на 2 ч"},
+	"elixir_eagle": {"effect": "hero_stat", "stat": "crit", "value": 0.05, "duration": 7200, "desc": "+5% крита героя на 2 ч"},
+	"greater_elixir_eagle": {"effect": "hero_stat", "stat": "crit", "value": 0.10, "duration": 7200, "desc": "+10% крита героя на 2 ч"},
+	"elixir_wind": {"effect": "hero_stat", "stat": "haste", "value": 0.05, "duration": 7200, "desc": "+5% скорости героя на 2 ч"},
+	"greater_elixir_wind": {"effect": "hero_stat", "stat": "haste", "value": 0.10, "duration": 7200, "desc": "+10% скорости героя на 2 ч"},
+	"minor_fortitude_potion":  {"effect": "hp_mult", "value": 1.10, "duration": 7200, "desc": "+10% здоровья группы на 2 ч"},
+	"fortitude_potion":        {"effect": "hp_mult", "value": 1.20, "duration": 7200, "desc": "+20% здоровья группы на 2 ч"},
 	"gatherers_tonic":         {"effect": "gather_yield", "value": 1.30, "charges": 1, "desc": "+30% ресурсов в следующем сборе"},
 }
 
@@ -272,32 +404,39 @@ static func gather_xp(loc_id: String, sec: int) -> int:
 	var d := duration(sec)
 	return max(5, int(round(float(LOCATIONS[loc_id]["xp_per_hour"]) * sec / 3600.0 * float(d.get("eff", 1.0)))))
 
-## Crafted equipment item (deterministic stats, only the id is random).
-static func make_item(recipe_id: String, item_id: String) -> Dictionary:
+## Crafted gear is made at the crafter's level. Its stats are rolled from the recipe's pool
+## and one extra secondary stat, so every craft is a gamble. Without rng: the average result.
+static func make_item(recipe_id: String, item_id: String, ilvl: int, rng: RandomNumberGenerator = null) -> Dictionary:
 	var r: Dictionary = RECIPES[recipe_id]
 	var spec: Dictionary = r["item"]
-	var affixes := []
-	var extra := {}
-	var slot: String = spec.get("slot", "")
-	if spec.has("wtype"):
-		var wt: Dictionary = Loot.WEAPON_TYPES[spec["wtype"]]
-		slot = "offhand" if wt.get("offhand", false) else "weapon"
-		extra["wtype"] = spec["wtype"]
-		if float(wt["dmg"]) > 0.0:
-			extra["dmg"] = round(float(wt["dmg"]) * (int(spec["ilvl"]) + 1) * 0.95 * (1.0 + 0.04 * int(spec["rarity"])))
-		affixes.append({"stat": wt["implicit"][0], "value": round(float(wt["implicit"][1]) * int(spec["ilvl"]) * 0.95), "q": 0.95, "imp": true})
+	var weights := {}
 	for a in spec["affixes"]:
-		var stat: String = a[0]
-		var q: float = a[1]
-		var value: float
-		if Loot.FLAT_STATS.has(stat):
-			value = snappedf(Loot.FLAT_STATS[stat] * q, 0.001)
-		else:
-			value = round(Loot.STAT_PER_ILVL[stat] * int(spec["ilvl"]) * q)
-		affixes.append({"stat": stat, "value": value, "q": q})
-	var it := {"id": item_id, "slot": slot, "name": r["name"], "rarity": int(spec["rarity"]),
-		"ilvl": int(spec["ilvl"]), "affixes": affixes, "crafted": true}
-	it.merge(extra)
+		weights[a[0]] = rng.randf_range(0.3, 1.0) if rng != null else 1.0
+	if rng != null:
+		var extra: String = CRAFT_EXTRA_STATS[rng.randi_range(0, CRAFT_EXTRA_STATS.size() - 1)]
+		weights[extra] = float(weights.get(extra, 0.0)) + rng.randf_range(0.0, 0.5)
+	var total := 0.0
+	for stat in weights:
+		total += float(weights[stat])
+	var shares := {}
+	for stat in weights:
+		shares[stat] = float(weights[stat]) / total
+	var wtype: String = spec.get("wtype", "")
+	var slot: String = spec.get("slot", "")
+	if wtype != "":
+		slot = "offhand" if Loot.WEAPON_TYPES[wtype].get("offhand", false) else "weapon"
+	var agile := weights.has("agi")
+	var role := ("ranged" if agile else "caster") if r["prof"] == "tailoring" else ("melee" if weights.has("str") else "tank")
+	var atype := "" if wtype != "" else (("leather" if agile else "cloth") if r["prof"] == "tailoring" else "plate")
+	var it := Items.assemble(item_id, r["name"], slot, wtype, atype, role, int(spec["rarity"]), ilvl, shares, "crafted_" + recipe_id)
+	var roll := rng.randf_range(CRAFT_ROLL[0], CRAFT_ROLL[1]) if rng != null else 1.0
+	for a in it["affixes"]:
+		if not a.get("imp", false):
+			a["value"] = snappedf(a["value"] * roll, 0.001) if Loot.FLAT_STATS.has(a["stat"]) else round(a["value"] * roll)
+	if it.has("dmg"):
+		it["dmg"] = round(it["dmg"] * roll)
+	it["crafted"] = true
+	it["roll"] = snappedf(roll, 0.01)
 	return it
 
 # ---------------------------------------------------------------- rare drops
@@ -310,10 +449,11 @@ const RES_DROP_AMOUNT := [1, 3]
 const RECIPE_DROP_CHANCE := 0.0015
 const RECIPE_DROP_CHANCE_BOSS := 0.04
 
-static func drop_recipes() -> Array:
+## Recipes a hero of this crafting profession can find ("" = not chosen yet: all of them).
+static func drop_recipes(prof: String = "") -> Array:
 	var out := []
 	for id in RECIPES:
-		if RECIPES[id].get("drop_only", false):
+		if RECIPES[id].get("drop_only", false) and (prof == "" or RECIPES[id]["prof"] == prof):
 			out.append(id)
 	return out
 
