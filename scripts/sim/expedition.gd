@@ -6,7 +6,6 @@ extends RefCounted
 ## HP carries over between waves, so sustain matters over a whole level.
 
 const WAVE_PAUSE := 1.5
-const BETWEEN_WAVE_HEAL := 0.25
 const FARM_DROP_CHANCE := 0.15  # per farm run won; first clears always drop
 
 var level := 1
@@ -156,7 +155,6 @@ func _on_wave_end() -> void:
 			return
 		for a in allies:
 			if a.alive():
-				a.hp = min(a.max_hp, a.hp + a.max_hp * BETWEEN_WAVE_HEAL)
 				a.dots.clear()
 				a.hots = a.hots.filter(func(h): return h["id"] == "respite")
 				a.stun = 0.0

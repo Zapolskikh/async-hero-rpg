@@ -65,11 +65,13 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 	var sword := Loot.roll_gear(r, 1, "start", "weapon", "sword")
 	sword["name"] = "Учебный меч"
 	p["hero"]["equipped"]["weapon"] = sword
+	for wtype in ["staff", "greatsword", "shield", "sword", "bow"]:
+		p["inventory"].append(Loot.roll_gear(r, 1, "start", "", wtype))
 	for sid in Db.STARTER_SPELLS:
 		p["collection"][sid] = {"lvl": 1, "copies": 0}
 	p["board"] = Roster.roll_board(r, 1)
-	_auto_party(p)
-	p["board"] = Roster.roll_board(r, 1)
+	p["hired"] = Roster.starter_party(r)
+	p["party_order"] = [p["hired"][0]["id"], "hero", p["hired"][1]["id"], p["hired"][2]["id"]]
 	_save_rng(p, r)
 	return p
 

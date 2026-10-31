@@ -194,6 +194,17 @@ static func roll_board(rng: RandomNumberGenerator, hero_level: int) -> Array:
 		board.append(m)
 	return board
 
+static func starter_party(rng: RandomNumberGenerator) -> Array:
+	var party := []
+	var names := {}
+	for s in MercGenerator.STARTERS:
+		var m := MercGenerator.make(rng, 1, s["weapons"], s["talents"], s["spells"])
+		while names.has(m["name"]):
+			m["name"] = Db.MERC_NAMES[rng.randi_range(0, Db.MERC_NAMES.size()-1)]
+		names[m["name"]] = true
+		party.append(m)
+	return party
+
 static func _merc_level(rng: RandomNumberGenerator, hero_level: int) -> int:
 	return max(1, hero_level + rng.randi_range(-1, 1))
 

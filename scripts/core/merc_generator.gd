@@ -1,7 +1,14 @@
 class_name MercGenerator
 extends RefCounted
 ## Random classless companions. No quality tiers or pre-authored role templates.
-static func make(rng: RandomNumberGenerator, level: int, forced_weapons: Array = []) -> Dictionary:
+## Tank, archer and healer: the balanced group of a new player.
+const STARTERS := [
+	{"weapons": ["sword", "shield"], "talents": "bulwark", "spells": ["shield_slam", "taunt", "strike"]},
+	{"weapons": ["bow"], "talents": "assault", "spells": ["aimed_shot", "serpent_sting", "tranq"]},
+	{"weapons": ["staff"], "talents": "life", "spells": ["heal", "renew", "barrier"]},
+]
+
+static func make(rng: RandomNumberGenerator, level: int, forced_weapons: Array = [], forced_talents: String = "", forced_spells: Array = []) -> Dictionary:
 	var choices := [["sword","shield"],["sword","sword"],["greatsword"],["staff"],["bow"]]
 	var weapons: Array = choices[rng.randi_range(0,choices.size()-1)]
 	if not forced_weapons.is_empty():
@@ -18,6 +25,8 @@ static func make(rng: RandomNumberGenerator, level: int, forced_weapons: Array =
 	var preferred: String = "arcane" if weapons.has("staff") else ("assault" if weapons.has("bow") or weapons.count("sword") == 2 else "bulwark")
 	if rng.randf() < .25:
 		preferred = "life"
+	if forced_talents != "":
+		preferred = forced_talents
 	for point in budget:
 		var pool := []
 		for id in Talents.TALENTS:
@@ -48,6 +57,8 @@ static func make(rng: RandomNumberGenerator, level: int, forced_weapons: Array =
 	if selected.has(fallback):
 		fallback = "arcane_bolt"
 	selected.append(fallback)
+	if not forced_spells.is_empty():
+		selected = forced_spells
 	var spells := []
 	for id in selected:
 		spells.append({"id":id,"lvl":maxi(1,Roster.baseline_spell_level(level)-rng.randi_range(0,1))})

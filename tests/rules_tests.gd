@@ -44,6 +44,16 @@ func test_new_profile_deterministic() -> void:
 	print("new profile")
 	var a := fresh(42)
 	var b := fresh(42)
+	var held := []
+	for m in a["hired"]:
+		held.append(m["weapons"])
+	check(held == [["sword", "shield"], ["bow"], ["staff"]], "starter group: tank, archer, healer")
+	check(a["party_order"].size() == 4 and a["party_order"][1] == "hero", "the tank stands in front of the hero")
+	check(a["hired"][2]["spells"][0]["id"] == "heal", "the starter healer heals")
+	var bag := []
+	for it in a["inventory"]:
+		bag.append(it.get("wtype", ""))
+	check(bag == ["staff", "greatsword", "shield", "sword", "bow"], "every weapon type waits in the bag")
 	check(JSON.stringify(a) == JSON.stringify(b), "same seed -> identical profile")
 	check(a["hired"].size() == 3 and a["board"].size() == 6 and Rules.party_ready(a), "starter group of 3 and a board of 6")
 
@@ -197,6 +207,7 @@ func test_feedback_fixes() -> void:
 	# merge
 	var q := fresh(92)
 	q["gold"] = 1000
+	q["inventory"].clear()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4
 	for i in 3:
@@ -618,7 +629,11 @@ func test_consumables() -> void:
 func test_combat_materials() -> void:
 	print("combat materials")
 	var p := fresh(43)
-	Rules.apply(p, "start", {"level": 1, "mode": "push"}, T0)
+	for i in 20:   # a starting party can lose level 1: find one that clears it
+		p = fresh(43 + i)
+		Rules.apply(p, "start", {"level": 1, "mode": "push"}, T0)
+		if p["expedition"]["tl"]["won"]:
+			break
 	var t_end: float = p["expedition"]["tl"]["t_end"]
 	var out := Rules.tick(p, T0 + t_end + 1.0)
 	var mats: Dictionary = out["reports"][0].get("mats", {})
