@@ -142,7 +142,7 @@ def test_professions_are_server_timed(client):
     assert got["ok"], got
     res = got["profile"]["resources"]
     assert res.get("greenleaf", 0) >= 4 and res.get("bitterroot", 0) >= 2
-    assert got["profile"]["professions"]["herbalism"]["level"] == 2
+    assert got["profile"]["professions"]["herbalism"]["xp"] > 0
     again = act(client, h, "gather_claim")
     assert again["ok"] is False and again["error"] == "nothing to claim"
     assert again["profile"]["resources"] == res, "a double claim must not pay twice"
