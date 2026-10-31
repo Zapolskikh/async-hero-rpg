@@ -72,7 +72,7 @@ def test_push_farm_and_assists(client):
     assert found, "real player appears on the board"
     board_ids = [m["id"] for m in res["profile"]["board"]]
     assert "p" + hirer["account_id"] not in board_ids, "never yourself"
-    old = res["profile"]["hired"][2]["id"]
+    old = res["profile"]["hired"][1]["id"]  # the archer: the party keeps its tank and healer
     assert act(client, hh, "replace", old=old, new=found)["ok"]
     # push level 1
     base = 86400 * 6
