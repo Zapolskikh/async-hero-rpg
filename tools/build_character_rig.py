@@ -32,14 +32,19 @@ PAL = dict(blue='#2479e4', blue_d='#1a5cc0', blue_l='#3b8bee', gold='#fbd56d', g
            guard='#8d97a8', wood='#8a5a2c', wood_d='#5f3a18', wood_l='#a97238', leather='#5f3617',
            purple='#8b45e6', purple_l='#c79bff', purple_d='#5a21a8', shaft='#b99f77', feather='#f2efe6',
            string='#d9dbe2')
+FOOT_FOLLOW = .85  # Share of a body shift the feet travel along with.
+BOOT_FOLLOW = .7  # Boot turn per degree of shin turn.
+MAX_TILT = 20.
+BODY_DROP = .45   # Share of an authored crouch that bends the knees; the legs stay readable.
+REST_SHIN = {}
 FAR_SHADE = 0.86  # The far limbs sit a little deeper in the scene.
 
 
 SEX = {
-    'male': dict(L1=35., L2=33., LT=50., LS=48., hipx=(-17., 17.), waist=(0., -27.), neck=(1., -71.), srest=((-32., -49.), (34., -49.)),
+    'male': dict(L1=35., L2=33., LT=52., LS=50., hipx=(-17., 17.), waist=(0., -27.), neck=(1., -71.), srest=((-32., -49.), (34., -49.)),
                  arm=13., thigh=19., shin=15., boot=1., chest=[(-16, -70), (-34, -65), (-46, -54), (-45, -40), (-34, -26), (-29, -2), (-29, 6), (30, 6), (31, -2), (36, -26), (46, -40), (46, -54), (36, -65), (19, -70)],
                  hem=[(-30, -33), (-35, 5), (36, 5), (31, -33)], belt=(-30.5, -9, 31.5, 3), collar=[(-10, -71), (-5, -60), (11, -60), (15, -71)], neckw=(-20, 17)),
-    'female': dict(L1=33., L2=32., LT=49., LS=47., hipx=(-14., 16.), waist=(0., -29.), neck=(1., -68.), srest=((-29., -46.), (31., -46.)),
+    'female': dict(L1=33., L2=32., LT=51., LS=49., hipx=(-14., 16.), waist=(0., -29.), neck=(1., -68.), srest=((-29., -46.), (31., -46.)),
                    arm=12., thigh=17., shin=14., boot=.94, chest=[(-15, -67), (-30, -63), (-41, -52), (-40, -39), (-27, -24), (-21, -4), (-21, 7), (22, 7), (23, -4), (30, -24), (43, -39), (42, -52), (32, -63), (17, -67)],
                    hem=[(-22, -33), (-31, 8), (32, 8), (23, -33)], belt=(-22.5, -6, 23.5, 5), collar=[(-11, -68), (-3, -57), (13, -57), (16, -68)], neckw=(-17, 15)),
 }
@@ -313,7 +318,7 @@ def head_assets(v2):
 # ---------------------------------------------------------------------------- pose authoring
 
 REST = dict(hx=0., hy=0., ha=0., ca=0., na=0., tw=0., lift=0., R=(160., 262.), L=(256., 262.), ra=0., la=0.,
-            rw=0., lw=0., fR=(176., 372., 0.), fL=(238., 372., 0.), rf=1., lf=1., rb=1., lb=1.,
+            rw=0., lw=0., fR=(176., 372.), fL=(238., 372.), rf=1., lf=1., rb=1., lb=1., drop=BODY_DROP,
             grip=1., draw=0., nock=0., ro=0., lo=0., wz=1., lz=0.)
 CHOICE = {'wz', 'lz', 'ro', 'lo', 'nock'}  # Stepped: layer/hand-shape switches never interpolate.
 
@@ -332,9 +337,9 @@ def shift(pose, dx=0., dy=0.):
 IDLE = {
     'unarmed': P(hy=2., ca=3., tw=2., R=(166., 272.), L=(264., 270.), rw=6., lw=6.),
     'sword': P(hy=3., ca=4., tw=9., R=(224., 252.), ra=-56., L=(268., 250.), lw=10.),
-    'dual': P(hy=3., ca=4., tw=6., R=(206., 262.), ra=-14., L=(280., 248.), la=-48., fL=(240., 372., 0.)),
-    'shield': P(hy=3., ca=4., tw=7., R=(190., 266.), ra=-38., L=(284., 226.), la=4., wz=1., fL=(240., 372., 0.)),
-    'greatsword': P(hy=4., ca=5., tw=10., R=(240., 240.), ra=-54., fR=(170., 372., 0.), fL=(242., 372., 0.), lz=1.),
+    'dual': P(hy=3., ca=4., tw=6., R=(206., 262.), ra=-14., L=(280., 248.), la=-48., fL=(240., 372.)),
+    'shield': P(hy=3., ca=4., tw=7., R=(190., 266.), ra=-38., L=(284., 226.), la=4., wz=1., fL=(240., 372.)),
+    'greatsword': P(hy=4., ca=5., tw=10., R=(240., 240.), ra=-54., fR=(170., 372.), fL=(242., 372.), lz=1.),
     'bow': P(hy=3., ca=3., tw=2., R=(166., 270.), rw=6., L=(290., 240.), la=9., lz=1.),
     'staff': P(hy=2., ca=3., tw=12., R=(258., 232.), ra=-81., L=(252., 266.), lw=6.),
 }
@@ -353,7 +358,7 @@ def cast_back(load):
 
 
 def cast_forward(load):
-    pose = P(IDLE[load], hx=9., hy=5., ha=2., ca=11., tw=15., R=(276., 209.), ro=1., rw=-16., grip=0., fR=(176., 372., 12.))
+    pose = P(IDLE[load], hx=9., hy=5., ha=2., ca=11., tw=15., R=(276., 209.), ro=1., rw=-16., grip=0., fR=(176., 372.))
     if load in ('sword', 'dual', 'shield'):
         pose.update(R=(274., 212.), ro=0., ra=-40., rw=0.)
     if load == 'staff':
@@ -410,18 +415,18 @@ def key_poses(clip):
         hit = cast_forward(load)
         return [(0, back), (.06, P(back, hx=-8., hy=7., ca=-9.)), (.12, hit), (.2, shift(P(hit, ca=13.), 3., 0.)), (.34, P(hit, hx=3., ca=6.)), (.5, idle)]
     if kind == 'death':
-        fall_a = P(idle, hx=-8., hy=26., ha=-8., ca=16., na=16., tw=-4., R=(idle['R'][0] - 12, idle['R'][1] + 20), L=(idle['L'][0] - 30, idle['L'][1] + 22), fR=(176., 372., 0.), fL=(232., 372., 0.), wz=1.)
-        fall_b = P(fall_a, hx=-14., hy=70., ha=-12., ca=36., na=30., R=(200., 362.), L=(236., 352.), fL=(222., 372., 0.))
-        fall_c = P(fall_b, hx=-34., hy=96., ha=-84., ca=-88., na=-90., R=(146., 376.), L=(176., 330.), ra=idle['ra'] - 104., la=idle['la'] - 96., fR=(214., 372., 0.), fL=(232., 372., 0.), wz=0.)
+        fall_a = P(idle, drop=1., hx=-8., hy=26., ha=-8., ca=16., na=16., tw=-4., R=(idle['R'][0] - 12, idle['R'][1] + 20), L=(idle['L'][0] - 30, idle['L'][1] + 22), fR=(176., 372.), fL=(232., 372.), wz=1.)
+        fall_b = P(fall_a, hx=-14., hy=70., ha=-12., ca=36., na=30., R=(200., 362.), L=(236., 352.), fL=(222., 372.))
+        fall_c = P(fall_b, hx=-34., hy=96., ha=-84., ca=-88., na=-90., R=(146., 376.), L=(176., 330.), ra=idle['ra'] - 104., la=idle['la'] - 96., fR=(214., 372.), fL=(232., 372.), wz=0.)
         return [(0, idle), (.16, fall_a), (.42, fall_b), (.74, fall_c), (.88, shift(fall_c, -1., 3.)), (1.1, shift(fall_c, -2., 3.))]
     if kind == 'right_slash':
         return [(0, idle),
                 (.12, shift(P(idle, ha=-3., ca=-6., tw=-6., R=(166., 236.), ra=-118., L=(262., 238.), wz=0.), -7., 5.)),
                 (.24, shift(P(idle, ha=-4., ca=-11., tw=-13., na=4., R=(112., 190.), ra=-158., L=(284., 214.), wz=0.), -9., 3.)),
                 (.32, shift(P(idle, ca=-1., tw=-2., R=(204., 226.), ra=-104., L=(270., 232.), wz=0.), 2., 1.)),
-                (.36, shift(P(idle, ha=2., ca=11., tw=15., R=(264., 205.), ra=-24., L=(250., 254.), fR=(178., 372., 14.)), 9., 2.)),
-                (.43, shift(P(idle, ha=3., ca=16., tw=17., R=(262., 244.), ra=28., L=(236., 262.), fR=(178., 372., 20.)), 11., 7.)),
-                (.58, shift(P(idle, ha=2., ca=12., tw=12., R=(244., 264.), ra=52., L=(240., 258.), fR=(178., 372., 10.)), 7., 7.)),
+                (.36, shift(P(idle, ha=2., ca=11., tw=15., R=(264., 205.), ra=-24., L=(250., 254.), fR=(178., 372.)), 9., 2.)),
+                (.43, shift(P(idle, ha=3., ca=16., tw=17., R=(262., 244.), ra=28., L=(236., 262.), fR=(178., 372.)), 11., 7.)),
+                (.58, shift(P(idle, ha=2., ca=12., tw=12., R=(244., 264.), ra=52., L=(240., 258.), fR=(178., 372.)), 7., 7.)),
                 (.74, shift(P(idle, ca=6., tw=9., R=(222., 262.), ra=-8.), 2., 3.)),
                 (.86, idle)]
     if kind == 'left_slash':
@@ -447,22 +452,22 @@ def key_poses(clip):
                 (.78, shift(P(idle, ca=2., tw=-3., R=(176., 250.), ra=-120., L=(296., 258.), la=42., wz=0.), 4., 6.)),
                 (.92, shift(P(idle, ca=-10., tw=-5., ha=-3., R=(122., 186.), ra=-150., L=(246., 176.), la=-138., wz=0.), -9., 4.)),
                 (1.0, shift(P(idle, ca=2., tw=3., R=(214., 228.), ra=-90., L=(278., 182.), la=-82., wz=0.), 3., 2.)),
-                (1.05, shift(P(idle, ca=15., tw=9., ha=3., R=(262., 216.), ra=-12., L=(312., 224.), la=-8., fR=(178., 372., 14.)), 13., 5.)),
-                (1.14, shift(P(idle, ca=17., tw=9., R=(258., 252.), ra=34., L=(306., 258.), la=38., fR=(178., 372., 20.)), 13., 9.)),
+                (1.05, shift(P(idle, ca=15., tw=9., ha=3., R=(262., 216.), ra=-12., L=(312., 224.), la=-8., fR=(178., 372.)), 13., 5.)),
+                (1.14, shift(P(idle, ca=17., tw=9., R=(258., 252.), ra=34., L=(306., 258.), la=38., fR=(178., 372.)), 13., 9.)),
                 (1.3, shift(P(idle, ca=8., tw=7., R=(226., 260.), ra=8., L=(288., 252.), la=-22.), 4., 5.)),
                 (1.42, idle)]
     if kind == 'great_slash':
-        step = (262., 372., 0.)
+        step = (262., 372.)
         return [(0, idle),
                 (.14, shift(P(idle, ca=-3., tw=-1., R=(214., 248.), ra=-96., wz=0.), -4., 5.)),
-                (.3, shift(P(idle, ha=-4., ca=-11., tw=-12., na=5., R=(132., 214.), ra=-168., wz=0., fL=(250., 366., 4.)), -11., 2.)),
-                (.4, shift(P(idle, ha=-5., ca=-13., tw=-15., na=6., R=(120., 206.), ra=-186., wz=0., fL=(258., 362., 6.)), -12., 0.)),
-                (.435, shift(P(idle, ha=-2., ca=-7., tw=-9., na=3., R=(156., 250.), ra=-146., wz=0., fL=(260., 364., 4.)), -4., 1.)),
-                (.47, shift(P(idle, ha=0., ca=-2., tw=-2., R=(204., 230.), ra=-112., wz=0., fL=(262., 366., 2.)), 4., 2.)),
-                (.52, shift(P(idle, ha=4., ca=15., tw=15., R=(258., 224.), ra=-10., fL=step, fR=(170., 372., 18.)), 20., 10.)),
-                (.6, shift(P(idle, ha=5., ca=21., tw=17., R=(260., 262.), ra=30., fL=step, fR=(170., 372., 26.)), 24., 17.)),
-                (.78, shift(P(idle, ha=4., ca=17., tw=14., R=(246., 276.), ra=42., fL=step, fR=(170., 372., 18.)), 20., 17.)),
-                (.96, shift(P(idle, ca=9., tw=11., R=(244., 256.), ra=-20., fL=(250., 366., 2.)), 7., 7.)),
+                (.3, shift(P(idle, ha=-4., ca=-11., tw=-12., na=5., R=(132., 214.), ra=-168., wz=0., fL=(250., 366.)), -11., 2.)),
+                (.4, shift(P(idle, ha=-5., ca=-13., tw=-15., na=6., R=(120., 206.), ra=-186., wz=0., fL=(258., 362.)), -12., 0.)),
+                (.435, shift(P(idle, ha=-2., ca=-7., tw=-9., na=3., R=(156., 250.), ra=-146., wz=0., fL=(260., 364.)), -4., 1.)),
+                (.47, shift(P(idle, ha=0., ca=-2., tw=-2., R=(204., 230.), ra=-112., wz=0., fL=(262., 366.)), 4., 2.)),
+                (.52, shift(P(idle, ha=4., ca=15., tw=15., R=(258., 224.), ra=-10., fL=step, fR=(170., 372.)), 20., 10.)),
+                (.6, shift(P(idle, ha=5., ca=21., tw=17., R=(260., 262.), ra=30., fL=step, fR=(170., 372.)), 24., 17.)),
+                (.78, shift(P(idle, ha=4., ca=17., tw=14., R=(246., 276.), ra=42., fL=step, fR=(170., 372.)), 20., 17.)),
+                (.96, shift(P(idle, ca=9., tw=11., R=(244., 256.), ra=-20., fL=(250., 366.)), 7., 7.)),
                 (1.18, idle)]
     if kind in ('bow_draw', 'bow_hold', 'bow_release'):
         aim = P(idle, hx=-2., hy=5., ha=-1., ca=-3., na=2., tw=-13., L=(316., 186.), la=0., R=(196., 183.), ra=0., rf=.72, rb=-1., draw=1., nock=1., rw=-4.)
@@ -479,16 +484,16 @@ def key_poses(clip):
         return [(0, idle), (.24, P(idle, hy=4., ca=-3., R=(258., 214.), ra=-88.)), (.7, staff_up())]
     if kind == 'staff_release':
         up = staff_up()
-        hit = P(up, hx=12., hy=7., ha=2., ca=13., tw=15., R=(284., 214.), ra=-26., L=(244., 248.), fR=(178., 372., 14.))
+        hit = P(up, hx=12., hy=7., ha=2., ca=13., tw=15., R=(284., 214.), ra=-26., L=(244., 248.), fR=(178., 372.))
         return [(0, up), (.14, shift(P(up, ca=-9., ra=-98., R=(256., 202.)), -5., 1.)), (.24, hit), (.34, shift(P(hit, ra=-20.), 2., 1.)), (.5, P(hit, hx=6., ra=-50., ca=7., R=(270., 222.))), (.75, idle)]
     if kind == 'staff_thrust':
         wind = shift(P(idle, ha=-3., ca=-9., tw=-14., R=(176., 236.), ra=-8., L=(246., 256.), lw=-20.), -9., 5.)
-        jab = shift(P(idle, ha=3., ca=15., tw=18., R=(278., 222.), ra=-5., fL=(262., 372., 0.), fR=(172., 372., 18.), L=(250., 254.)), 20., 8.)
-        return [(0, idle), (.24, wind), (.36, P(wind, fL=(254., 364., 4.), R=(200., 232.))), (.44, jab), (.56, jab), (.76, shift(P(idle, ca=6., R=(262., 228.), ra=-60., fL=(250., 366., 2.)), 6., 4.)), (.98, idle)]
+        jab = shift(P(idle, ha=3., ca=15., tw=18., R=(278., 222.), ra=-5., fL=(262., 372.), fR=(172., 372.), L=(250., 254.)), 20., 8.)
+        return [(0, idle), (.24, wind), (.36, P(wind, fL=(254., 364.), R=(200., 232.))), (.44, jab), (.56, jab), (.76, shift(P(idle, ca=6., R=(262., 228.), ra=-60., fL=(250., 366.)), 6., 4.)), (.98, idle)]
     if kind == 'shield_bash':
         coil = shift(P(idle, ha=-3., ca=-8., tw=9., R=(170., 262.), ra=-20., L=(250., 222.), la=-12.), -9., 5.)
-        slam = shift(P(idle, ha=4., ca=16., tw=-12., R=(176., 256.), ra=-14., L=(330., 214.), la=8., fL=(266., 372., 0.), fR=(172., 372., 18.)), 26., 7.)
-        return [(0, idle), (.2, coil), (.3, P(coil, fL=(258., 362., 5.))), (.36, slam), (.48, slam), (.68, shift(P(idle, ca=7., L=(300., 220.), fL=(252., 366., 2.)), 8., 4.)), (.84, idle)]
+        slam = shift(P(idle, ha=4., ca=16., tw=-12., R=(176., 256.), ra=-14., L=(330., 214.), la=8., fL=(266., 372.), fR=(172., 372.)), 26., 7.)
+        return [(0, idle), (.2, coil), (.3, P(coil, fL=(258., 362.))), (.36, slam), (.48, slam), (.68, shift(P(idle, ca=7., L=(300., 220.), fL=(252., 366.)), 8., 4.)), (.84, idle)]
     return None
 
 
@@ -539,7 +544,7 @@ def pose_at(clip, t):
     u = t / clip['duration']
     wave = math.sin(u * math.tau)
     if kind == 'idle':
-        return shift(P(IDLE[load], ca=IDLE[load]['ca'] + wave * .7, na=-wave * .5), 0., .5 - math.cos(u * math.tau) * 1.2)
+        return shift(P(IDLE[load], ca=IDLE[load]['ca'] + wave * .7, na=-wave * .5), 0., .3 - math.cos(u * math.tau) * .7)
     if kind == 'cast_hold':
         base = cast_back(load)
         return shift(P(base, R=(base['R'][0] + wave * 1.6, base['R'][1] + math.cos(u * math.tau) * 1.2), ca=base['ca'] + wave * .6), 0., wave * .9)
@@ -616,11 +621,23 @@ def within(point, origin, reach):
     return point if dist <= reach else origin + offset / dist * reach
 
 
-def planted(foot):
-    """A heel lift rolls over the ball of the foot, a toe lift over the heel; nothing sinks."""
-    x, y, angle = foot
-    contact = np.array((34. if angle > 0 else -19., 25.))
-    return np.array((x, y)) + contact - rot(contact, angle)
+def planted(ground, tilt, boot):
+    """The boot rolls over its toe or heel, so a tilted foot never sinks into the ground."""
+    contact = np.array(((36. if tilt > 0 else -19.) * boot, 25.))
+    return ground + contact - rot(contact, tilt)
+
+
+def rest_shin(load, sex, index):
+    """Shin angle of the idle stance: the boot is level here and turns with the shin from it."""
+    key = load, sex, index
+    if key not in REST_SHIN:
+        s, pose = SEX[sex], IDLE[load]
+        hip = np.array(HIP) + [pose['hx'], pose['hy'] * pose['drop']]
+        joint = hip + rot((s['hipx'][index], 0.), pose['ha'])
+        foot = pose['fL' if index else 'fR']
+        knee, ankle = two_bone(joint, np.array(foot) + (pose['hx'] * FOOT_FOLLOW, 0.), s['LT'], s['LS'], -1.)
+        REST_SHIN[key] = ang(ankle - knee)
+    return REST_SHIN[key]
 
 
 FIELDS = ['hx', 'hy', 'ha', 'ca', 'na', 'rsx', 'rsy', 'rua', 'ruf', 'rfa', 'rha', 'lsx', 'lsy', 'lua', 'luf', 'lfa', 'lha',
@@ -629,7 +646,7 @@ FIELDS = ['hx', 'hy', 'ha', 'ca', 'na', 'rsx', 'rsy', 'rua', 'ruf', 'rfa', 'rha'
 
 def solve(pose, load, sex):
     s = SEX[sex]
-    hip = np.array(HIP) + [pose['hx'], pose['hy']]
+    hip = np.array(HIP) + [pose['hx'], pose['hy'] * pose['drop']]
     waist = hip + rot(s['waist'], pose['ha'])
     chest_a = pose['ca']
     (srx, sry), (slx, sly) = s['srest']
@@ -637,10 +654,11 @@ def solve(pose, load, sex):
     sl = (slx + pose['tw'] * .55, sly)
     shoulder_r, shoulder_l = waist + rot(sr, chest_a), waist + rot(sl, chest_a)
     grip = pose['grip'] if load == 'greatsword' else 1.
-    R, L = np.array(pose['R']), np.array(pose['L'])
+    lifted = (0., pose['hy'] * (pose['drop'] - 1.))  # Hands were keyed against the full crouch.
+    R, L = np.array(pose['R']) + lifted, np.array(pose['L']) + lifted
     w1a, w2a = pose['ra'], pose['la']
     if load == 'greatsword':
-        free_at = np.array(pose['R'])
+        free_at = R.copy()
         reach = s['L1'] + s['L2'] + GRIP * .6  # The bent wrist costs part of the fist length.
         for _ in range(8):  # Both hands stay on the hilt: the sword comes back into reach.
             R = within(R, shoulder_r, reach)
@@ -648,7 +666,7 @@ def solve(pose, load, sex):
             R = L + vec(w1a) * TWO_HAND_GAP
         if grip < 1.:  # The right hand leaves the hilt; the sword stays in the left hand.
             base = IDLE[load]
-            L = np.array(base['R']) - vec(base['ra']) * TWO_HAND_GAP
+            L = np.array(base['R']) + (0., base['hy'] * (base['drop'] - 1.)) - vec(base['ra']) * TWO_HAND_GAP
             w1a = base['ra']
             weapon_point = L + vec(w1a) * TWO_HAND_GAP
             R = weapon_point + (free_at - weapon_point) * (1. - grip)
@@ -659,8 +677,13 @@ def solve(pose, load, sex):
     legs = []
     for i, foot in enumerate((pose['fR'], pose['fL'])):
         joint = hip + rot((s['hipx'][i], 0.), pose['ha'])
-        knee, ankle = two_bone(joint, planted(foot), s['LT'], s['LS'], -1.)
-        legs += [ang(knee - joint), ang(ankle - knee), foot[2]]
+        rest = rest_shin(load, sex, i)
+        ground = np.array(foot) + (pose['hx'] * FOOT_FOLLOW, 0.)
+        # One pass on purpose: lifting the heel bends the knee, so iterating would feed itself.
+        knee, ankle = two_bone(joint, ground, s['LT'], s['LS'], -1.)
+        tilt = max(-MAX_TILT, min(MAX_TILT, near(ang(ankle - knee) - rest, 0.) * BOOT_FOLLOW))
+        knee, ankle = two_bone(joint, planted(ground, tilt, s['boot']), s['LT'], s['LS'], -1.)
+        legs += [ang(knee - joint), ang(ankle - knee), tilt]
     frame = dict(hx=hip[0], hy=hip[1], ha=pose['ha'], ca=chest_a, na=chest_a * .35 + pose['na'], rsx=sr[0], rsy=sr[1], rua=rua, ruf=pose['rf'],
                  rfa=rfa, rha=rha, lsx=sl[0], lsy=sl[1], lua=lua, luf=pose['lf'], lfa=lfa, lha=lha, rta=legs[0], rca=legs[1], rba=legs[2],
                  lta=legs[3], lca=legs[4], lba=legs[5], w1a=w1a, w2a=w2a, grip=grip, draw=pose['draw'], nock=pose['nock'], ro=pose['ro'],
@@ -670,7 +693,7 @@ def solve(pose, load, sex):
 
 def unwrap(frames):
     """Continuous angles keep interpolation between neighbouring samples on the short way."""
-    angular = [i for i, k in enumerate(FIELDS) if k in ('rua', 'rfa', 'rha', 'lua', 'lfa', 'lha', 'rta', 'rca', 'lta', 'lca', 'w1a', 'w2a')]
+    angular = [i for i, k in enumerate(FIELDS) if k in ('rua', 'rfa', 'rha', 'lua', 'lfa', 'lha', 'rta', 'rca', 'rba', 'lta', 'lca', 'lba', 'w1a', 'w2a')]
     for a, b in zip(frames, frames[1:]):
         for i in angular:
             b[i] = round(near(b[i], a[i]), 3)

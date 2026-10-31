@@ -2,6 +2,8 @@ extends SceneTree
 ## Anatomy and playback contract for every baked clip of both profiles.
 const EYE := {"male":Rect2(222,120,24,28),"female":Rect2(222,124,24,28)}
 const KNEE_LIMIT := 2.
+const GROUND := 397.
+const IDLE_TILT := 3.
 var failures: Array[String] = []
 var events: Array = []
 func fail_if(condition: bool, message: String) -> void:
@@ -47,6 +49,11 @@ func _test() -> void:
 					var ankle: Vector2 = actor.joints["ankle_"+side]
 					fail_if(absf(hip.distance_to(knee)-lt)>.05,"Thigh stretches: "+str(id))
 					fail_if(absf(knee.distance_to(ankle)-ls)>.05,"Shin stretches: "+str(id))
+					# The boot turns with the shin, stays level at rest and never sinks into the ground.
+					var turn := deg_to_rad(actor._v(key+"ba"))
+					if str(id).begins_with("idle_"): fail_if(absf(actor._v(key+"ba"))>IDLE_TILT,"Idle stands on tiptoe: "+str(id))
+					for corner in [Vector2(36.,25.),Vector2(-19.,25.)]:
+						fail_if((ankle+corner.rotated(turn)).y>GROUND+1.5,"Boot sinks into the ground: "+str(id))
 					var bend := wrapf(actor._v(key+"ca")-actor._v(key+"ta"),-180.,180.)
 					fail_if(bend < -KNEE_LIMIT,"Knee bends backwards: %s %s %.1f" % [id,side,bend])
 				if not death:
