@@ -24,6 +24,7 @@ var elapsed := 0.0             # sim seconds spent, including pauses
 
 # Rewards accumulated since the player last collected.
 var gold := 0
+var _gold_change := 0.0   # A kill pays less than a coin on the first levels.
 var xp := 0
 var kills := 0
 var items: Array = []
@@ -141,9 +142,9 @@ func _on_wave_end() -> void:
 		if u.side == 1 and not u.alive():
 			kills += 1
 			var mult := 8 if u.is_boss else 1
-			# rewards grow a bit faster than enemy toughness, so a harder level you can
-			# clear always pays more per hour than farming an easy one
-			gold += int(round(5.0 * pow(sc, 1.15) * mult * Db.GOLD_MULT))
+			_gold_change += Db.kill_gold(level, mode) * mult
+			gold += int(_gold_change)
+			_gold_change -= int(_gold_change)
 			xp += int(round(6.0 * Db.XP_MULT * Db.xp_level_factor(level) * pow(sc, 0.35) * mult))
 			_drop_mats(u)
 	if sim.won:
@@ -172,10 +173,9 @@ func _on_run_end(cleared: bool, reason: String) -> void:
 			var best: String = table.keys()[-1]
 			_add_mat(best, Prof.CLOTH_ON_CLEAR)
 		xp += int(round(30.0 * Db.XP_MULT * Db.xp_level_factor(level)))
-		if mode == "push":
-			gold += int(round(40 * level * Db.GOLD_MULT))
 		if first_clear_pending:
 			first_clear_pending = false
+			gold += Db.first_clear_gold(level)
 			level_closed_now = true
 			items.append(drop_item(rng, level, "first", loot_role))
 			for rid in recipe_pool:

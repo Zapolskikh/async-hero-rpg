@@ -156,9 +156,11 @@ static func baseline_spell_level(level: int) -> int:
 ## Power a typical (normal tier, no gear) mercenary of this level would have.
 static func expected_power(level: int) -> float:
 	var st := Db.hero_base_stats(level)
-	var spell_lvl := baseline_spell_level(level)
-	return st["hp"] / 8.0 + st["str"] * 2.0 + st["power"] * 2.5 + st["armor"] * 1.5 + st["crit"] * 300.0 + 30.0 * spell_lvl
+	st["atk"] = st["str"]
+	return _power_value(st, st["power"], POWER_SPELL_WEIGHT, 3 * baseline_spell_level(level), 0)
 
+const POWER_SPELL_WEIGHT := 2.5 # Doubled for a staff: it has no basic attack, all damage is spells.
+const POWER_PER_EFFECT := 0.06  # A unique effect has no stats, it is priced as a share of the total.
 const ROLE_SPRITES := {"Герой": "hero", "Танк": "tank", "Лекарь": "healer", "Пиромант": "pyromancer",
 	"Ядовик": "poisoner_ally", "Боец": "fighter", "Страж": "guard", "Паладин": "paladin", "Охотник": "hunter"}
 const RANGED_ROLES := ["Лекарь", "Пиромант", "Охотник"]
@@ -171,16 +173,35 @@ static func ensure_visuals(snap: Dictionary) -> void:
 	if not snap.has("ranged"):
 		snap["ranged"] = snap.get("role", "") in RANGED_ROLES
 
-## Single "Power" number shown in UI. Deliberately crude: the concept says
-## success depends on composition, not just Power.
+## Single "Power" number shown in UI and used to compare items. It follows combat: damage
+## comes from what this build really hits with, crit and haste multiply it, armor multiplies
+## health. Still an estimate: the concept says success depends on composition, not just Power.
 static func power_score(snap: Dictionary) -> int:
+	var weapons: Array = snap.get("weapons", [])
+	var talents: Dictionary = snap.get("talents", {})
 	var st: Dictionary = snap["stats"]
-	var spell_bonus := 0.0
+	var stat_sum := 0.0
+	var scaled := 0
+	var spell_levels := 0
 	for s in snap["spells"]:
-		spell_bonus += 10.0 * s["lvl"]
-	var atk_rate: float = float(st.get("atk", 0.0)) * 1.6 / max(0.5, float(st.get("atk_speed", 1.6)))
-	return int(st["hp"] / 8.0 + atk_rate * 2.0 + st["power"] * 2.5 + st.get("armor", 0) * 1.5
-		+ st.get("haste", 0.0) * 300.0 + st.get("crit", 0.0) * 300.0 + spell_bonus)
+		if not Db.spell_usable(s["id"], weapons, talents):
+			continue
+		spell_levels += int(s["lvl"])
+		var d: Dictionary = Db.SPELLS[s["id"]]
+		if float(d.get("mult", 0.0)) > 0.0 or d.has("tick_mult"):
+			stat_sum += Db.spell_stat_value(s["id"], st)
+			scaled += 1
+	var spell_stat: float = stat_sum / scaled if scaled > 0 else float(st["power"])
+	var weight: float = POWER_SPELL_WEIGHT * 2.0 if "staff" in weapons else (POWER_SPELL_WEIGHT if scaled > 0 else 0.0)
+	return _power_value(st, spell_stat, weight, spell_levels, snap.get("effects", []).size())
+
+## spell_stat: what the spells scale from, weight: what it is worth for this build.
+static func _power_value(st: Dictionary, spell_stat: float, weight: float, spell_levels: int, effects: int) -> int:
+	var attack: float = float(st.get("atk", 0.0)) * 1.6 / max(0.5, float(st.get("atk_speed", 1.6)))
+	var damage: float = attack * 2.0 + spell_stat * weight
+	var offense: float = damage * (1.0 + float(st.get("crit", 0.0))) * (1.0 + float(st.get("haste", 0.0)))
+	var toughness: float = float(st["hp"]) * (1.0 + float(st.get("armor", 0.0)) / 100.0) / 12.0
+	return int((offense + toughness + 10.0 * spell_levels) * (1.0 + POWER_PER_EFFECT * effects))
 
 ## Six independent random candidates near the hero level.
 static func roll_board(rng: RandomNumberGenerator, hero_level: int) -> Array:

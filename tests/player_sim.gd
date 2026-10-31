@@ -4,6 +4,7 @@ extends SceneTree
 ##   godot --headless --path . --script res://tests/player_sim.gd -- --runs=8 --target=30
 ## Each seed plays twice, with and without professions, to measure what they give.
 ## --craft=blacksmithing|tailoring|alchemy forces the craft; by default it fits the build.
+## --session=1800 --speed=8 is one sitting: no AFK, no professions, fights at x8, stuck means a short farm.
 
 const T0 := 1893456000.0     # Fixed start so daily limits behave the same in every run.
 const MAX_DAYS := 120.0
@@ -13,6 +14,7 @@ const HOUSEKEEPING := 120.   # Seconds of real play per visit to menus.
 const PUSH_OVERHEAD := 20.
 const AFK_MIN := 4.*3600.
 const AFK_MAX := 8.*3600.
+const SESSION_FARM := 180.   # Real seconds of farm in a sitting after a run of failed pushes.
 const BOX_GOLD_RESERVE := .5 # Share of gold boxes may take; the rest pays for mercs and crafts.
 const BUILDS := {
 	"melee": {"weapons":["sword","greatsword","shield"], "talents":["assault","bulwark","life","arcane"], "craft":"blacksmithing"},
@@ -28,6 +30,8 @@ var rng := RandomNumberGenerator.new()
 var blind := false
 var forced_craft := ""
 var shard_tag := ""
+var session := 0.            # Length of a sitting in real seconds, 0 is the long game with AFK.
+var speed := 1.
 
 func _init() -> void:
 	var runs := 8
@@ -43,6 +47,10 @@ func _init() -> void:
 		if arg.begins_with("--craft="):
 			forced_craft = arg.trim_prefix("--craft=")
 			shard_tag = forced_craft+"_"
+		if arg.begins_with("--speed="): speed = arg.trim_prefix("--speed=").to_float()
+		if arg.begins_with("--session="):
+			session = arg.trim_prefix("--session=").to_float()
+			shard_tag = "session_"
 	var started := Time.get_ticks_msec()
 	var results := {"with":[], "without":[]}
 	if merge > 0: # Parallel runs write one shard each: --first=N --runs=1, then --merge=<count>.
@@ -56,7 +64,7 @@ func _init() -> void:
 	var builds: Array = BUILDS.keys()
 	for i in range(first,first+runs):
 		var build: String = builds[i % builds.size()]
-		for mode in ["with","without"]:
+		for mode in ["without"] if session > 0. else ["with","without"]:
 			var result := play(4242+i*17,build,mode == "with",target)
 			results[mode].append(result)
 			print("%-7s %-7s seed %d: L%d за %.1f дн (активно %.1f ч), герой %d, профессии %s" % [mode,build,i,result["closed"],result["hours"]/24.,result["active"]/3600.,result["hero"],result["profs"]])
@@ -76,12 +84,12 @@ func play(seed_value: int, build: String, professions: bool, target: int) -> Dic
 	if professions: Rules.apply(p,"prof_choose",{"prof":forced_craft if forced_craft != "" else BUILDS[build]["craft"]},now)
 	var run := {"build":build,"milestones":{},"attempts":0,"afk_sessions":0,"active":0.,"profs":{},"crafted_worn":0,"crafted_total":0,"potions":0,"legendaries":0,"gold_on_boxes":0,"rerolls":0,"stuck_at":{},"fails":{}}
 	var farm_level := 0
-	while int(p["closed_level"]) < target and now-T0 < MAX_DAYS*86400.:
+	while int(p["closed_level"]) < target and now-T0 < MAX_DAYS*86400. and in_session(run):
 		housekeeping(p,now,build,professions,run)
 		now += HOUSEKEEPING
 		run["active"] += HOUSEKEEPING
 		var tries := 0
-		while tries < TRIES_BEFORE_AFK and int(p["closed_level"]) < target:
+		while tries < TRIES_BEFORE_AFK and int(p["closed_level"]) < target and in_session(run):
 			var level := int(p["closed_level"])+1
 			prepare_party(p,now,build,tries,run,level)
 			prepare_rotation(p,build,tries,level)
@@ -92,10 +100,10 @@ func play(seed_value: int, build: String, professions: bool, target: int) -> Dic
 				break
 			var duration: float = float(p["expedition"]["tl"]["t_end"])
 			now += duration+PUSH_OVERHEAD+1.
-			run["active"] += duration+PUSH_OVERHEAD
+			run["active"] += duration/speed+PUSH_OVERHEAD
 			run["attempts"] += 1
 			var ticked: Dictionary = Rules.tick(p,now)
-			var closed: bool = not ticked["reports"].is_empty() and ticked["reports"][0].get("closed",false)
+			var closed: bool = int(p["closed_level"]) >= level
 			if not closed and not ticked["reports"].is_empty():
 				var key := "L%d/%d" % [level,int(ticked["reports"][0].get("waves",0))]
 				run["fails"][key] = int(run["fails"].get(key,0))+1
@@ -110,7 +118,8 @@ func play(seed_value: int, build: String, professions: bool, target: int) -> Dic
 		if int(p["closed_level"]) >= target: break
 		run["stuck_at"][str(int(p["closed_level"])+1)] = int(run["stuck_at"].get(str(int(p["closed_level"])+1),0))+1
 		run["afk_sessions"] += 1
-		var afk: float = rng.randf_range(AFK_MIN,AFK_MAX)
+		var afk: float = SESSION_FARM*speed if session > 0. else rng.randf_range(AFK_MIN,AFK_MAX)
+		if session > 0.: run["active"] += SESSION_FARM
 		if professions: start_gathering(p,now,afk,build)
 		farm_level = maxi(1,mini(int(p["closed_level"]),farm_level+1 if farm_level > 0 else int(p["closed_level"])))
 		if int(p["closed_level"]) > 0:
@@ -135,6 +144,9 @@ func play(seed_value: int, build: String, professions: bool, target: int) -> Dic
 	last["legendaries"] = legendaries(p)
 	last["rerolls"] = run["rerolls"]
 	return last
+
+func in_session(run: Dictionary) -> bool:
+	return session <= 0. or run["active"] < session
 
 func snapshot(p: Dictionary, now: float, run: Dictionary) -> Dictionary:
 	var profs := {}
@@ -481,6 +493,10 @@ func median(values: Array) -> float:
 	return float(sorted[sorted.size()/2])
 
 func report(results: Dictionary, target: int) -> void:
+	if session > 0.:
+		for r in results["without"]:
+			print("%-7s уровень %d, герой %d, золото %d, попыток %d, рероллов %d, стен %s, поражения %s" % [r["build"],r["closed"],r["hero"],r["gold"],r["attempts"],r["rerolls"],r["stuck_at"],r["fails"]])
+		return
 	for mode in ["with","without"]:
 		var runs: Array = results[mode]
 		var done := runs.filter(func(r): return int(r["closed"]) >= target)

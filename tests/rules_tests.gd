@@ -32,6 +32,7 @@ func _init() -> void:
 	test_crafting_and_concurrency()
 	test_sounds()
 	test_items()
+	test_power_and_gold()
 	test_consumables()
 	test_combat_materials()
 	test_v2_migration()
@@ -338,6 +339,54 @@ func test_items() -> void:
 	old["v"] = 9
 	Rules.migrate(old, T0)
 	check(int(old["inventory"][0]["rarity"]) == Items.EPIC, "old legendaries become epic: they have no unique effect")
+
+func test_power_and_gold() -> void:
+	print("power and gold")
+	var fighter_stats := Db.hero_base_stats(20)
+	fighter_stats.merge({"atk": 300.0, "atk_speed": 1.6}, true)
+	var fighter := {"stats": fighter_stats, "spells": [{"id": "mortal_strike", "lvl": 3}], "weapons": ["sword"], "talents": {}, "effects": []}
+	var base := Roster.power_score(fighter)
+	var with_spell_power := fighter.duplicate(true)
+	with_spell_power["stats"]["power"] += 100.0
+	check(Roster.power_score(with_spell_power) == base, "spell power gives a fighter nothing")
+	var with_strength := fighter.duplicate(true)
+	with_strength["stats"]["str"] += 100.0
+	check(Roster.power_score(with_strength) > base, "strength counts through a strength spell")
+	var with_effect := fighter.duplicate(true)
+	with_effect["effects"] = ["any"]
+	check(Roster.power_score(with_effect) > base, "a unique effect adds power")
+	var with_bow_spell := fighter.duplicate(true)
+	with_bow_spell["spells"] = [{"id": "aimed_shot", "lvl": 3}]
+	check(Roster.power_score(with_bow_spell) < base, "a spell the weapon cannot cast does not count")
+	var caster_stats := Db.hero_base_stats(20)
+	caster_stats.merge({"atk": 0.0, "atk_speed": 0.0}, true)
+	var caster := {"stats": caster_stats, "spells": [{"id": "fireball", "lvl": 3}], "weapons": ["staff"], "talents": {}, "effects": []}
+	var stronger := caster.duplicate(true)
+	stronger["stats"]["power"] += 100.0
+	var sword_caster := caster.duplicate(true)
+	sword_caster["weapons"] = ["sword"]
+	sword_caster["stats"]["atk"] = 120.0
+	sword_caster["stats"]["atk_speed"] = 1.6
+	check(Roster.power_score(stronger) > Roster.power_score(caster) and Roster.power_score(stronger) > Roster.power_score(sword_caster), "a staff with no attack still rates above a weak sword")
+	var low := Db.hero_base_stats(2)
+	low.merge({"atk": 30.0, "atk_speed": 1.6}, true)
+	var low_crit := low.duplicate()
+	low_crit["crit"] += 0.1
+	var high_crit := fighter_stats.duplicate()
+	high_crit["crit"] += 0.1
+	var low_snap := {"stats": low, "spells": []}
+	check(Roster.power_score({"stats": low_crit, "spells": []}) - Roster.power_score(low_snap) < Roster.power_score({"stats": high_crit, "spells": []}) - Roster.power_score({"stats": fighter_stats, "spells": []}), "crit multiplies damage, so it is worth more on a stronger hero")
+	check(Db.kill_gold(30, "farm") == Db.kill_gold(8, "farm") and Db.kill_gold(30, "push") > Db.kill_gold(8, "push"), "farm gold stops growing, push gold does not")
+	var snap := Rules.hero_snapshot(Rules.new_profile(7, T0))
+	var ex := Expedition.new()
+	ex.start(1, "push", [snap], 5, true)
+	while not ex.finished:
+		ex.step_wave_headless()
+	var replay := Expedition.new()
+	replay.start(1, "push", [snap], 5, false)
+	while not replay.finished:
+		replay.step_wave_headless()
+	check(ex.runs_won == 0 or ex.gold == replay.gold + Db.first_clear_gold(1), "the clear bonus is paid only on the first clear")
 
 func test_sounds() -> void:
 	print("sounds")

@@ -230,7 +230,7 @@ const CHAPTERS := [
 ]
 
 ## All gold income (kills, push clears, selling items) is multiplied by this.
-const GOLD_MULT := 0.075   # gold is scarce: a player has to choose what to spend it on
+const GOLD_MULT := 0.075   # price of a sold item
 const XP_MULT := 0.85
 const LEVEL_SCALE := 1.25   # enemy stat growth per level for chapter 1 (levels 1-10)
 const SCALE_BREAK := 10     # after this level enemies follow the party's expected growth
@@ -323,6 +323,10 @@ static func chapter_of(level: int) -> Dictionary:
 			ch = c
 	return ch
 
+## Hand tuning from tests/player_sim.gd: levels differ in composition, so the same scale gives
+## walls next to free levels. This evens out the days spent per level.
+const LEVEL_PACE := {15: 1.12, 19: 1.08, 21: 1.15, 22: 1.1, 26: 1.12, 27: 0.88, 28: 0.95, 30: 0.85}
+
 ## Enemy stat multiplier. Chapter 1 grows exponentially (fast early power ramp);
 ## later the curve tracks how strong a typical party of the expected hero level
 ## is (sqrt of damage x survivability), so the time per new level stays flat
@@ -332,7 +336,7 @@ static func enemy_scale(level: int) -> float:
 		return pow(LEVEL_SCALE, level - 1)
 	var base := pow(LEVEL_SCALE, SCALE_BREAK - 1)
 	var h := HERO_AT_BREAK + HERO_PER_LEVEL * (level - SCALE_BREAK)
-	return base * party_strength(h) / party_strength(HERO_AT_BREAK) * pow(LATE_TOUGHNESS, mini(level - SCALE_BREAK, TOUGHNESS_LEVELS))
+	return base * party_strength(h) / party_strength(HERO_AT_BREAK) * pow(LATE_TOUGHNESS, mini(level - SCALE_BREAK, TOUGHNESS_LEVELS)) * float(LEVEL_PACE.get(level, 1.0))
 
 ## Rough strength of a character of hero level h: sqrt(damage x health).
 static func party_strength(h: float) -> float:
@@ -420,6 +424,16 @@ static func hero_base_stats(level: int) -> Dictionary:
 		"haste": 0.0,
 		"crit": 0.05,
 	}
+
+## Gold is scarce: it grows with the level, not with enemy strength, and comes from pushing
+## new levels, not from idle farm, so a player has to choose what to spend it on.
+const FARM_KILL_GOLD := 1.0
+
+static func kill_gold(level: int, mode: String) -> float:
+	return minf(0.5 * level, FARM_KILL_GOLD) if mode == "farm" else 0.5 * level
+
+static func first_clear_gold(level: int) -> int:
+	return 15 * level
 
 ## XP rewards grow a bit faster than linearly so late levels do not drag.
 static func xp_level_factor(level: int) -> float:
