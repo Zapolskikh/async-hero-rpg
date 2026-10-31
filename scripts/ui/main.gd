@@ -1110,6 +1110,7 @@ func _gear_popup(slot: String) -> void:
 	_modal(UI.item_title(it) if it != null else Loot.SLOT_NAMES[slot], body, buttons)
 
 func _equip_from_slot(id: String, slot: String) -> void:
+	Sfx.play("equip")
 	Game.equip(id, slot if slot == "offhand" or slot.begins_with("accessory") else "")
 	_gear_popup(slot)
 
@@ -1558,6 +1559,7 @@ func _fuse(sid: String) -> void:
 		_toast("%s теперь %s" % [Db.SPELLS[sid]["name"], UI.roman(Roster.spell_best_level(Game.collection, sid))])
 
 func _open_pack(use: String) -> void:
+	Sfx.play("box")
 	var res: Array = await Game.open_box_pack(use)
 	if res.is_empty():
 		_toast({"gold": "Не хватает золота или дневной лимит", "crystals": "Не хватает кристаллов"}.get(use, "Нечего открывать"))
@@ -1615,7 +1617,14 @@ func _pack_popup(res: Array) -> void:
 	v.add_child(UI.label(summary, Style.FONT_SMALL, Style.MUTED))
 	_modal("Spell Box ×%d" % res.size(), v, [], "Забрать")
 
+func _sound_level(value: int) -> void:
+	Sfx.set_level(value)
+	Sfx.play("coin")
+	UI.clear(popup_layer)
+	_settings_popup()
+
 func _open_box(use: String) -> void:
+	Sfx.play("box")
 	var r: Dictionary = await Game.open_box(use)
 	if r.is_empty():
 		_toast({"gold": "Не хватает золота или дневной лимит", "crystals": "Не хватает кристаллов"}.get(use, "Нечего открывать"))
@@ -1738,6 +1747,7 @@ func _potions_row() -> Control:
 	return v
 
 func _drink(res: String) -> void:
+	Sfx.play("potion")
 	var r: Dictionary = await Game.use_item(res)
 	_toast(("%s: эффект активен" % Prof.RESOURCES[res]["name"]) if r.get("ok", false) else "Не получилось")
 	_refresh()
@@ -1788,6 +1798,7 @@ func _merge(rarity: int) -> void:
 func _merge_take() -> void:
 	var r: Dictionary = await Game.merge_claim()
 	if r.get("ok", false):
+		Sfx.loot(int(r["item"]["rarity"]))
 		selected_item = r["item"]["id"]
 		_toast("Получено: %s (%s)" % [UI.item_title(r["item"]), Items.QUALITY_NAMES[int(r["item"]["rarity"])]])
 	_merge_popup()
@@ -1802,10 +1813,12 @@ func _set_bag_sort(s: String) -> void:
 	_refresh()
 
 func _equip(id: String, to: String) -> void:
+	Sfx.play("equip")
 	Game.equip(id, to)
 	_toast("Предмет надет")
 
 func _sell(id: String) -> void:
+	Sfx.play("coin")
 	Game.sell(id)
 	_toast("Продано")
 
@@ -1883,6 +1896,11 @@ func _line_edit(text: String, placeholder: String) -> LineEdit:
 
 func _settings_popup() -> void:
 	var v := UI.vbox(10)
+	var sound := UI.hbox(8)
+	sound.add_child(UI.label("Звук", Style.FONT_SMALL, Style.TEXT, true))
+	for i in Sfx.LEVELS.size():
+		sound.add_child(UI.btn(Sfx.LEVELS[i][0], _sound_level.bind(i), "secondary" if Sfx.level == i else "ghost", Style.FONT_SMALL, "", 0, 42))
+	v.add_child(sound)
 	var online := Game.is_online()
 	var head := UI.hbox(8)
 	head.add_child(UI.chip("Онлайн" if online else "Офлайн", Style.SUCCESS if online else Style.CARD_3, Style.FONT_SMALL,
@@ -2041,6 +2059,7 @@ func _on_expedition_finished(r: Dictionary) -> void:
 		if int(r["level"]) < Db.level_count():
 			buttons.append(["Следующий уровень", _start.bind(int(r["level"]) + 1, "push"), "primary", ready])
 		buttons.append(["Фармить этот уровень", _start.bind(int(r["level"]), "farm"), "secondary", ready])
+	Sfx.play("win" if r["won"] > 0 else "lose")
 	_show_rewards(r, "Уровень пройден!" if r["won"] > 0 else "Уровень не пройден", buttons)
 
 func _show_rewards(r: Dictionary, title_text: String, buttons: Array = []) -> void:
@@ -2074,7 +2093,13 @@ func _show_rewards(r: Dictionary, title_text: String, buttons: Array = []) -> vo
 	if r.get("auto_sold", 0) > 0:
 		v.add_child(UI.label("Сумка не резиновая: ещё %d предм. проданы за %d золота" % [r["auto_sold"], r["auto_sold_gold"]], Style.FONT_SMALL, Style.MUTED))
 	var items: Array = r["items"]
+	if r.get("level_ups", 0) > 0:
+		Sfx.play("level_up")
 	if items.size() > 0:
+		var best := 0
+		for it in items:
+			best = maxi(best, int(it["rarity"]))
+		get_tree().create_timer(0.5).timeout.connect(Sfx.loot.bind(best))
 		var ih := HFlowContainer.new()
 		ih.add_theme_constant_override("h_separation", 8)
 		ih.add_theme_constant_override("v_separation", 8)

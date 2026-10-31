@@ -228,6 +228,7 @@ func _gather_start(loc_id: String) -> void:
 func _gather_claim() -> void:
 	var r: Dictionary = await Game.gather_claim()
 	if r.get("ok", false):
+		Sfx.play("coin")
 		var rep: Dictionary = r["report"]
 		var v := UI.vbox(10)
 		v.add_child(UI.label("%s — %s" % [Prof.PROFESSIONS[rep["prof"]]["name"], Prof.LOCATIONS[rep["loc"]]["name"]], Style.FONT_BODY, Style.TEXT, true))
@@ -451,6 +452,9 @@ func _craft_claim(prof: String) -> void:
 	var r: Dictionary = await Game.craft_claim(prof)
 	if r.get("ok", false):
 		var rep: Dictionary = r["report"]
+		Sfx.play("craft")
+		if not rep["items"].is_empty():
+			Sfx.loot(int(rep["items"][0]["rarity"]))
 		var v := UI.vbox(10)
 		for it in rep["items"]:
 			var row := UI.hbox(10)
@@ -524,6 +528,7 @@ func _rush(what: String, prof: String) -> void:
 	_rebuild()
 
 func _use(res: String) -> void:
+	Sfx.play("potion")
 	var r: Dictionary = await Game.use_item(res)
 	main._toast(("%s: эффект активен" % Prof.RESOURCES[res]["name"]) if r.get("ok", false) else _err_text(r))
 	_rebuild()

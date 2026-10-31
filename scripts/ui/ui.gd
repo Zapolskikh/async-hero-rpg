@@ -237,10 +237,17 @@ static func tile(icon_name: String, bg: Color, size: float = 72.0, dim: bool = f
 
 # ---------------- buttons ----------------
 
+## Looked up on press: tests load this script before autoloads exist.
+static func _click_sound(b: Button) -> void:
+	var sfx := b.get_node_or_null("/root/Sfx")
+	if sfx != null:
+		sfx.play("click")
+
 static func btn(text: String, cb: Callable, kind: String = "ghost", size: int = Style.FONT_BODY,
 		icon_name: String = "", min_w: float = 0.0, min_h: float = 52.0) -> Button:
 	var b := Button.new()
 	b.text = text
+	b.pressed.connect(_click_sound.bind(b))
 	var cols := Style.button_colors(kind)
 	var boxes := Style.button_boxes(cols[0])
 	for k in boxes:

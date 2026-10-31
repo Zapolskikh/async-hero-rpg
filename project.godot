@@ -13,6 +13,7 @@ config/features=PackedStringArray("4.5", "GL Compatibility")
 [autoload]
 
 Game="*res://scripts/core/game_state.gd"
+Sfx="*res://scripts/ui/sfx.gd"
 
 [display]
 

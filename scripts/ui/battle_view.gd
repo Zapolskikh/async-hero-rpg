@@ -245,7 +245,25 @@ func _on_character_marker(action_id: int, event: StringName, _socket: StringName
 	for damage in packet["damage"]:
 		if damage not in assigned: _show_damage(damage)
 
+## The fight on the watch screen is heard; the small preview on the hub is not.
+func _heard() -> bool:
+	return show_last and is_visible_in_tree()
+
+func _hit_sound(e: Dictionary) -> void:
+	if e.get("dot",false) or not _heard():
+		return
+	if e.get("crit",false):
+		Sfx.play("crit",.04)
+		return
+	var sim := active_sim()
+	var src: BattleUnit = sim.unit_by_uid(e.get("src",-1)) if sim != null else null
+	if src == null: return
+	if src.equipped("bow"): Sfx.play("arrow_hit",.08)
+	elif src.equipped("greatsword") or src.is_boss: Sfx.play("heavy_hit",.06)
+	elif not src.equipped("staff"): Sfx.play("sword_hit",.08)
+
 func _show_damage(e: Dictionary) -> void:
+	_hit_sound(e)
 	var color := Color("#ffd27a") if e.get("dot",false) else Color.WHITE
 	if e.get("crit",false): color = Color("#ff7b4a")
 	_float(e["uid"],str(roundi(float(e["v"])))+("!" if e.get("crit",false) else ""),color,26 if e.get("crit",false) else 20)
@@ -269,6 +287,7 @@ func _consume_events(sim: BattleSim) -> void:
 				var dst := sim.unit_by_uid(e["tgt"])
 				if src != null and dst != null:
 					if src.equipped("bow") or src.ranged:
+						if _heard() and src.equipped("bow"): Sfx.play("arrow_shot",.06)
 						_shoot(src, dst, Color("#e8dcc0"), "arrow")
 					elif not src.equipped("staff"):
 						_melee_motion(src)
@@ -285,11 +304,13 @@ func _consume_events(sim: BattleSim) -> void:
 				_effect_on(sim, e["uid"], "sparkle", UI.GOOD, 0.5)
 			"absorb":
 				_float(e["uid"], "(%d)" % e["v"], Color("#9fd7ff"), 17)
+				if _heard(): Sfx.play("block",.05)
 			"shield":
 				_effect_on(sim, e["uid"], "bubble", Color("#8fd0ff"), 0.45)
 			"interrupt":
 				if characters.has(e["uid"]): characters[e["uid"]]["actor"].cancel_cast()
 				_float(e["uid"], e["text"], Color("#ff5ad1"), 26)
+				if _heard(): Sfx.play("interrupt")
 				_effect_on(sim, e["uid"], "burst", Color("#ff5ad1"), 0.35)
 			"status":
 				_float(e["uid"], e["text"], Color("#c9b6ff"), 18)
@@ -298,6 +319,7 @@ func _consume_events(sim: BattleSim) -> void:
 					if e["text"] == "Оглушён": actor.play("idle")
 					elif e["text"] == "Безмолвие" and actor.clip in ["cast","cast_hold","cast_release","aim_hold"]: actor.cancel_cast()
 			"cast":
+				if _heard() and not Db.SPELLS.get(e.get("sid",""),{}).get("weapon",false): Sfx.play("cast_start",.05)
 				if characters.has(e["uid"]):
 					var spell: Dictionary = Db.SPELLS.get(e.get("sid",""),{})
 					var actor: CharacterActor = characters[e["uid"]]["actor"]
@@ -305,6 +327,9 @@ func _consume_events(sim: BattleSim) -> void:
 					elif not spell.get("weapon",false): _magic_motion(sim.unit_by_uid(e["uid"]),spell,true)
 			"death":
 				_character_animation(e["uid"],"death")
+				if _heard():
+					var fallen := sim.unit_by_uid(e["uid"])
+					Sfx.play("death_ally" if fallen != null and fallen.side == 0 else ("death_boss" if fallen != null and fallen.is_boss else "death_enemy"))
 				_float(e["uid"], "Пал", UI.BAD, 22)
 	if floats.size() > 60:
 		floats = floats.slice(floats.size() - 60)
@@ -313,6 +338,7 @@ func _consume_events(sim: BattleSim) -> void:
 func _on_spell(sim: BattleSim, e: Dictionary) -> void:
 	var src := sim.unit_by_uid(e["uid"])
 	if src == null: return
+	if _heard(): Sfx.spell(e.get("sid",""))
 	_float(src.uid,e["text"],UI.ACCENT,17,-44.)
 	if not characters.has(src.uid): return
 	var spell: Dictionary = Db.SPELLS.get(e.get("sid",""),{})

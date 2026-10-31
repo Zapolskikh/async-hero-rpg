@@ -355,6 +355,11 @@ func _run_meter() -> void:
 	main._on_expedition_finished({"won": 1, "lost": 0, "closed": true, "level": 1, "gold": 120, "xp": 200, "items": [], "boxes": 1})
 	await _wait(0.5)
 	await _shot("29c_meter_win")
+	UI.clear(main.popup_layer)
+	main._close_watch()
+	main._settings_popup()
+	await _wait(0.4)
+	await _shot("29d_settings")
 	print("shots done")
 	get_tree().quit()
 

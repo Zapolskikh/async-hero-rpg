@@ -30,6 +30,7 @@ func _init() -> void:
 	test_real_players_and_assists()
 	test_gathering()
 	test_crafting_and_concurrency()
+	test_sounds()
 	test_items()
 	test_consumables()
 	test_combat_materials()
@@ -337,6 +338,18 @@ func test_items() -> void:
 	old["v"] = 9
 	Rules.migrate(old, T0)
 	check(int(old["inventory"][0]["rarity"]) == Items.EPIC, "old legendaries become epic: they have no unique effect")
+
+func test_sounds() -> void:
+	print("sounds")
+	var names: Array = Sfx.SPELL_SOUNDS.values() + Sfx._ENEMY.values()
+	names.append_array(["block", "crit", "cast_start", "interrupt", "death_ally", "death_boss", "arrow_hit", "click", "equip", "coin",
+		"box", "potion", "craft", "loot_common", "loot_rare", "loot_epic", "loot_legendary", "level_up", "win", "lose"])
+	for sound in names:
+		var file: String = "%s1" % sound if Sfx.VARIANTS.has(sound) else sound
+		check(ResourceLoader.exists("res://assets/sfx/%s.wav" % file), "%s has a file" % sound)
+	for sound in Sfx.VARIANTS:
+		for i in Sfx.VARIANTS[sound]:
+			check(ResourceLoader.exists("res://assets/sfx/%s%d.wav" % [sound, i + 1]), "%s variant %d exists" % [sound, i + 1])
 
 func test_rare_loot_and_mods() -> void:
 	print("rare loot, weapon recipes, enemy modifiers")
