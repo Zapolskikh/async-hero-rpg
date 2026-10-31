@@ -311,7 +311,16 @@ func test_items() -> void:
 	var helm := Items.make("tank_t2_0_plate_head", 12, "h1")
 	check(["gear:head", "plate_head_t3"] in Roster.look({"head": helm}), "worn art reaches the look layers")
 	check(not GearArt.find("plate_head_t3", "female").is_empty() and not GearArt.find("sword_t3", "male").is_empty(), "drawn gear is found for each body")
-	check(GearArt.find("plate_head_t6_epic", "male").is_empty(), "gear not drawn yet falls back to the body")
+	check(GearArt.find("no_such_look", "male").is_empty(), "gear without art falls back to the body")
+	var undrawn := []
+	for key in ItemCatalog.NAMED:
+		var spec: Dictionary = ItemCatalog.NAMED[key]
+		if not spec["slot"] in ["accessory", "trinket"] and (GearArt.find(spec["look"], "male").is_empty() or GearArt.find(spec["look"], "female").is_empty()):
+			undrawn.append(spec["look"])
+	for rid in Prof.RECIPES:
+		if Prof.RECIPES[rid].has("item") and int(Prof.RECIPES[rid]["item"]["rarity"]) > Items.COMMON and GearArt.find("crafted_" + rid, "male").is_empty():
+			undrawn.append("crafted_" + rid)
+	check(undrawn.is_empty(), "every worn item has art: %s" % str(undrawn.slice(0, 5)))
 	var old := fresh(71)
 	old["inventory"] = [{"id": "o1", "slot": "armor", "name": "Кираса", "rarity": 3, "ilvl": 5, "affixes": []}]
 	old["v"] = 9
