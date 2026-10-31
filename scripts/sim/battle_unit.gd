@@ -63,6 +63,7 @@ var summons: Array = []
 var shield_owner = null
 var shield_sid := ""
 var shield_absorbed := 0.0
+var shield_parts := []   # [{src, sid, left}], oldest first: who gets the credit in the meter
 
 func rank(id: String) -> int:
 	return int(talents.get(id, 0))

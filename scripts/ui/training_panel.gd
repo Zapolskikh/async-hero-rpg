@@ -149,7 +149,7 @@ func _process(delta: float) -> void:
 	session.advance(delta * training_speed)
 	var hero: BattleUnit = session.sim.units[0]
 	var elapsed := maxf(.1, session.sim.time)
-	summary.text = "%.1f с · Урон %d · DPS %.1f · Лечение %d · HPS %.1f%s" % [session.sim.time, hero.dealt, hero.dealt / elapsed, hero.healed, hero.healed / elapsed, " · Бой завершён — сбрось" if session.sim.finished else ""]
+	summary.text = "%.1f с · Урон %d · DPS %.1f · Лечение + поглощение %d · HPS %.1f%s" % [session.sim.time, hero.dealt, hero.dealt / elapsed, hero.healed, hero.healed / elapsed, " · Бой завершён — сбрось" if session.sim.finished else ""]
 
 func _exit_tree() -> void:
 	if session != null:

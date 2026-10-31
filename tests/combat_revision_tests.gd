@@ -259,6 +259,12 @@ func test_vengeance_and_dual_weapons() -> void:
 	var sim := battle([u])
 	var foe: BattleUnit = sim.foes_of(u)[0]
 	sim._cast(u,"vengeance",1,u)
+	var caster := unit(1,["staff"])
+	var shielded := unit(2,["sword","shield"])
+	sim._shield(caster,shielded,100.,8.,"barrier")
+	sim._shield(u,shielded,100.,8.,"barrier")
+	sim._credit_absorb(shielded,150.)
+	check(caster.healed == 100. and u.healed == 50. and caster.healed_by["barrier"] == 100.,"absorbed damage counts for each shield caster, oldest shield first")
 	sim._shield(u,u,50.,6.,"residual",false)
 	var before: float = foe.hp
 	sim._deal(foe,u,400.,false,false,"attack")

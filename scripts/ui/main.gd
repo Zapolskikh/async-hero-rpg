@@ -547,11 +547,11 @@ func _build_watch_layer() -> void:
 ## Recount-style meters: one bar per ally, total (per second), best on top.
 func _build_meter() -> void:
 	meter_rows = _build_meter_panel("Урон", "всего (DPS) · нажмите на строку", 12)
-	heal_rows = _build_meter_panel("Лечение", "всего (HPS)", 464)
+	heal_rows = _build_meter_panel("Лечение + поглощение", "всего (HPS)", 464)
 	for i in meter_rows.size():
 		UI.tap_overlay(meter_rows[i]["root"], _meter_details.bind(meter_rows, i, "dealt_by", "Урон"))
 	for i in heal_rows.size():
-		UI.tap_overlay(heal_rows[i]["root"], _meter_details.bind(heal_rows, i, "healed_by", "Лечение"))
+		UI.tap_overlay(heal_rows[i]["root"], _meter_details.bind(heal_rows, i, "healed_by", "Лечение + поглощение"))
 
 func _build_meter_panel(title: String, hint: String, x: float) -> Array:
 	var panel := PanelContainer.new()

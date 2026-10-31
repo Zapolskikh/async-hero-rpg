@@ -748,7 +748,12 @@ func _hot_tick(src: BattleUnit,t: BattleUnit,a: float,sid: String) -> void:
 
 func _shield(src: BattleUnit,t: BattleUnit,a: float,dur: float,sid: String,additive: bool = true) -> void:
 	a *= 1.+src.gear_fx.get("shield_bonus",0.)
+	if t.shield <= 0.:
+		t.shield_parts.clear()
+	var before := t.shield
 	t.shield = t.shield+a if additive else maxf(t.shield,a)
+	if t.shield > before:
+		t.shield_parts.append({"src":src,"sid":sid,"left":t.shield-before})
 	t.shield_time = maxf(t.shield_time,dur)
 	t.shield_owner = src
 	t.shield_sid = sid
@@ -757,6 +762,19 @@ func _shield(src: BattleUnit,t: BattleUnit,a: float,dur: float,sid: String,addit
 		t.buffs["vengeance_charge"].merge({"left":a,"absorbed":0.})
 	_emit({"t":"shield","uid":t.uid,"v":a})
 	_fx(src,t,"shield","#8fcfff")
+
+## A shield counts for its caster in the healing meter when it really takes a hit.
+func _credit_absorb(t: BattleUnit,amount: float) -> void:
+	while amount > 0. and not t.shield_parts.is_empty():
+		var part: Dictionary = t.shield_parts[0]
+		var taken := minf(amount,part["left"])
+		var meter_id: String = part["sid"] if Db.SPELLS.has(part["sid"]) else "heal"
+		part["src"].healed += taken
+		part["src"].healed_by[meter_id] = part["src"].healed_by.get(meter_id,0.)+taken
+		part["left"] -= taken
+		amount -= taken
+		if part["left"] <= 0.:
+			t.shield_parts.pop_front()
 
 func _break_shield(t: BattleUnit) -> void:
 	t.shield = 0.
@@ -831,10 +849,12 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 		var extra := minf(t.shield,dmg*(s["shield_bonus"]-1.))
 		t.shield -= extra
 		t.shield_absorbed += extra
+		_credit_absorb(t,extra)
 		_charge_vengeance(t,extra)
 	var absorbed := minf(t.shield,dmg)
 	t.shield -= absorbed
 	t.shield_absorbed += absorbed
+	_credit_absorb(t,absorbed)
 	_charge_vengeance(t,absorbed)
 	dmg -= absorbed
 	if absorbed > 0.:
