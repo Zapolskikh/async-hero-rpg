@@ -2,6 +2,8 @@ class_name CombatV9
 extends RefCounted
 ## The same seeded rules drive client, offline simulation and server workers.
 const STEP := 0.1
+const ENRAGE_DAMAGE := 1.8  # A boss still alive at its enrage timer hits this much harder.
+const ENRAGE_HASTE := .4
 const TIME_LIMIT := 150.0
 const DOT_TICK := 1.0
 var rng := RandomNumberGenerator.new()
@@ -141,6 +143,14 @@ func _tick(u: BattleUnit) -> void:
 				_vengeance_burst(u,b)
 	if u.regen > 0.:
 		u.hp = minf(u.max_hp,u.hp+u.max_hp*u.regen*STEP)
+	if u.stats.get("enrage",0.) > 0. and not u.counters.has("enraged"):
+		u.counters["age"] = u.counters.get("age",0.)+STEP
+		if u.counters["age"] >= u.stats["enrage"]:
+			u.counters["enraged"] = true
+			u.dmg_mult *= ENRAGE_DAMAGE
+			u.haste += ENRAGE_HASTE
+			_status(u,"Ярость")
+			_fx(u,u,"shout","#ff4a2a")
 	if u.shield > 0.:
 		u.shield_time -= STEP
 		if u.shield_time <= 0.:
@@ -418,6 +428,11 @@ func _find_spell_target(u: BattleUnit,sid: String,thr: float = -1.):
 			return u if not u.buffs.has(s.get("buff","rally")) else null
 		"self_shield":
 			return u if u.shield <= 0. else null
+		"shield_all":
+			for f in friends_of(u):
+				if f.shield <= 0.:
+					return u
+			return null
 		"taunt","summon","aoe_damage","aoe_dot","channel_aoe":
 			return u
 		"penance":
@@ -530,6 +545,13 @@ func _cast(u: BattleUnit,sid: String,lvl: int,target,scale: float = 1.,copy: boo
 				_fx(u,f,s.get("fx","heal"),s.get("color","#83efa0"))
 		"shield","self_shield":
 			_shield(u,u if s["kind"] == "self_shield" else target,a,s.get("dur",8.),sid)
+		"shield_all":
+			for f in friends_of(u):
+				_shield(u,f,a,s.get("dur",8.),sid)
+				_fx(u,f,"shield",s.get("color","#7fe0ff"))
+		"silence":
+			_silence(target,s.get("dur",3.))
+			_fx(u,target,"curse","#3ac0a8")
 		"taunt":
 			taunt_seq += 1
 			for f in friends_of(u):
@@ -762,7 +784,7 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 		return 0.
 	var s: Dictionary = Db.SPELLS.get(sid,{})
 	if school == "":
-		school = s.get("school","physical" if sid in ["attack","","e_smash","e_volley","e_backstab","e_cleave","e_crush","e_quake"] else "magic")
+		school = s.get("school","physical" if sid in ["attack","","e_smash","e_volley","e_backstab","e_cleave","e_crush","e_quake","e_execute"] else "magic")
 	if not is_dot and school == "physical" and t.equipped("shield") and rng.randf() < .1*t.rank("full_block"):
 		_status(t,"Блок")
 		return 0.
@@ -771,6 +793,8 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 		dmg *= 1.+src.buff("physical")
 		if not is_dot:
 			dmg *= 100./(100.+t.armor*(1.-t.buff("sunder")))
+	elif school == "magic":
+		dmg *= 1.-float(t.stats.get("magic_resist",0.))
 	if t.hp_frac() < .5:
 		dmg *= 1.-.1*t.rank("deep_defense")
 	var weapon: bool = s.get("weapon",false) or sid == "attack"

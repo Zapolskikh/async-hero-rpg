@@ -87,6 +87,7 @@ static func enemy_snapshot(eid: String, lvl: int) -> Dictionary:
 	var st := {
 		"hp": e["hp"] * sc * Db.level_hp_factor(lvl), "atk": e["atk"] * sc, "power": e["power"] * sc,
 		"armor": e["armor"] * Db.enemy_armor_mult(lvl), "haste": e["haste"], "crit": 0.05,
+		"magic_resist": e.get("magic_resist", 0.0), "enrage": e.get("enrage", 0.0),
 	}
 	var mods := Db.level_modifiers(lvl)
 	for m in mods:

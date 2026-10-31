@@ -28,7 +28,9 @@ const REROLL_GROWTH := 1.1
 const MAX_HIRED := 3
 const SPELL_MAX_LEVEL := 10
 ## Spare copies (duplicates from boxes) eaten by each upgrade: I->II, II->III, ... IX->X.
-const FUSE_COST := [4, 5, 6, 7, 8, 9, 10, 11, 12]
+const FUSE_COST := [2, 3, 3, 4, 4, 5, 6, 7, 8]
+## Copies of the rolled spell in one box: a box is a visible step towards an upgrade.
+const BOX_COPIES := 2
 const ASSIST_SHARE := 0.05       # owner of a hired real character gets 5% of the gold (concept 8.1)
 const MAX_ITEMS_PER_COLLECT := 30
 const REAL_SLOTS := 3            # up to 3 of 6 board places go to real players
@@ -858,9 +860,9 @@ static func _roll_box(p: Dictionary, r: RandomNumberGenerator) -> Dictionary:
 			break
 	var was_new := Roster.spell_best_level(p["collection"], pick) == 0
 	if not p["collection"].has(pick):
-		p["collection"][pick] = {"lvl": 1, "copies": 0}
+		p["collection"][pick] = {"lvl": 1, "copies": BOX_COPIES - 1}
 	else:
-		p["collection"][pick]["copies"] = int(p["collection"][pick]["copies"]) + 1
+		p["collection"][pick]["copies"] = int(p["collection"][pick]["copies"]) + BOX_COPIES
 	return {"spell": pick, "new": was_new}
 
 static func _start(p: Dictionary, r: RandomNumberGenerator, level: int, mode: String, now: float, ctx: Dictionary) -> Dictionary:

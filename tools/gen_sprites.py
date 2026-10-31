@@ -237,9 +237,21 @@ UNITS = {
     "warlock":   {"tunic": "#3a1f3f", "robe": True, "head": "horns", "hair": "#1a1020", "weapon": "staff", "orb": "#ff4a8a",
                   "skin": SKIN_GREY, "eyes_glow": "#ff4a8a", "cape": "#5a1f3a"},
     "priest":    {"tunic": "#d8c8f0", "robe": True, "head": "hood", "hood": "#8a6ac0", "weapon": "staff", "orb": "#fff27a", "skin": SKIN_GREY},
+    "swarm":     {"tunic": "#8a7a5a", "skin": (150, 130, 110), "head": "hair", "hair": "#5a4a3a", "weapon": "dagger", "tusk": True},
+    "doomcaller": {"tunic": "#a0362a", "robe": True, "head": "wizard", "hat": "#5a1a14", "weapon": "staff", "orb": "#ff5a2a", "skin": SKIN_GREY, "eyes_glow": "#ffb02a"},
+    "warden":    {"tunic": "#3a8aa0", "armor": True, "head": "helmet", "plume": "#7fe0ff", "weapon": "mace", "shield": "#2a6a80", "skin": SKIN_GREY},
+    "plaguebearer": {"tunic": "#7a8a2a", "robe": True, "head": "hood", "hood": "#4a5a1a", "weapon": "flask", "skin": (150, 170, 110), "eyes_glow": "#d8ff4a"},
+    "phantom":   {"tunic": "#8ab0c8", "robe": True, "head": "hood", "hood": "#6a90a8", "weapon": "dagger", "skin": (200, 220, 235), "eyes_glow": "#e8ffff"},
+    "ironclad":  {"tunic": "#5a6a78", "armor": True, "head": "helmet", "weapon": "mace", "shield": "#4a5a68", "bulky": True, "skin": SKIN_GREY},
+    "executioner": {"tunic": "#5a2a3a", "head": "hood", "hood": "#2a1420", "weapon": "axe", "bulky": True, "eyes_glow": "#ff4040"},
+    "siren":     {"tunic": "#3ac0a8", "robe": True, "head": "hair", "hair": "#1a7a70", "weapon": "staff", "orb": "#a8fff0", "skin": (190, 225, 215)},
 }
 
 BOSSES = {
+    "boss_titan": ({"tunic": "#6f6a62", "pants": "#5a564f", "skin": (150, 146, 136), "head": "crown", "weapon": "club", "bulky": True}, 2),
+    "boss_plague": ({"tunic": "#5a7a1a", "robe": True, "skin": (150, 170, 110), "head": "crown", "weapon": "scythe", "eyes_glow": "#d8ff4a", "cape": "#3a4a10"}, 2),
+    "boss_hierophant": ({"tunic": "#c8a23a", "robe": True, "skin": SKIN_GREY, "head": "crown", "weapon": "staff", "orb": "#ffe27a", "eyes_glow": "#ffffff", "cape": "#7a5a1a"}, 2),
+    "boss_wraith": ({"tunic": "#a8c8e0", "robe": True, "skin": (200, 220, 235), "head": "crown", "weapon": "scythe", "eyes_glow": "#e8ffff", "cape": "#6a90a8"}, 2),
     "boss_ogre": ({"tunic": "#8a3a2a", "skin": (150, 140, 90), "head": "crown", "weapon": "club", "bulky": True, "tusk": True, "beard": "#4a2a1a"}, 2),
     "boss_lich": ({"tunic": "#3a2a5a", "robe": True, "skin": BONE, "head": "crown", "weapon": "scythe", "eyes_glow": "#6af0ff", "cape": "#2a1a40"}, 2),
     "boss_warlord": ({"tunic": "#5a1f1f", "armor": True, "skin": SKIN_GREEN, "head": "helmet", "plume": "#e8ba40", "weapon": "axe",

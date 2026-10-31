@@ -29,8 +29,53 @@ func _init() -> void:
 	test_defensive_spells()
 	test_vengeance_and_dual_weapons()
 	test_migration()
+	test_specialist_enemies()
 	print("COMBAT V9: %d assertions, %d failures" % [assertions,failures])
 	quit(1 if failures else 0)
+
+func test_specialist_enemies() -> void:
+	var sim := battle([unit(0),unit(1)])
+	var foe: BattleUnit = sim.units[2]
+	foe.stats["magic_resist"] = .5
+	foe.armor = 0.
+	var plain: BattleUnit = sim.units[3]
+	var hero: BattleUnit = sim.units[0]
+	hero.crit = 0.
+	var resisted := sim._deal(hero,foe,100.,false,false,"fireball",true,"magic")
+	var full := sim._deal(hero,plain,100.,false,false,"fireball",true,"magic")
+	check(resisted == full*.5,"magic resistance cuts spell damage")
+	check(sim._deal(hero,foe,100.,false,false,"attack",true,"physical") == full,"magic resistance ignores physical damage")
+	var boss: BattleUnit = sim.units[4]
+	boss.stats["enrage"] = 1.
+	var base: float = boss.dmg_mult
+	for tick in int(1.2/sim.STEP): sim._tick(boss)
+	check(boss.counters.has("enraged") and boss.dmg_mult > base and boss.haste > 0.,"enrage strengthens a boss at its timer")
+	var once: float = boss.dmg_mult
+	for tick in int(1.2/sim.STEP): sim._tick(boss)
+	check(boss.dmg_mult == once,"enrage happens once")
+	check(sim._find_spell_target(boss,"e_ward") != null,"ward needs an unshielded ally")
+	sim._cast(boss,"e_ward",1,boss)
+	for f in sim.side_units(1): check(f.shield > 0.,"ward shields every enemy")
+	check(sim._find_spell_target(boss,"e_ward") == null,"ward waits until shields are gone")
+	sim._purge(foe)
+	check(foe.shield <= 0.,"purge answers the ward")
+	sim._cast(boss,"e_silence",1,hero)
+	check(hero.silence > 0.,"siren song silences its target")
+	hero.hp = hero.max_hp*.2
+	foe.target_rule = "weak"
+	check(sim.pick_target(foe) == hero,"weak rule hunts the most wounded")
+	sim.release()
+	var known := ["interrupt","cleanse","purge","aoe","physical","magic","healer"]
+	var seen := {}
+	for level in range(1,Db.level_count()+1):
+		for need in Db.level_needs(level):
+			check(need in known,"known level need: "+need)
+			seen[need] = true
+		for wave in Db.level_waves(level):
+			for id in wave:
+				check(ResourceLoader.exists("res://assets/units/%s.png" % Db.ENEMIES[id]["sprite"]),"enemy sprite exists: "+id)
+				if Db.ENEMIES[id].has("need"): check(Db.ENEMIES[id].has("hint"),"answer is announced: "+id)
+	check(seen.size() == known.size(),"campaign asks for every specialisation")
 
 func test_catalog() -> void:
 	check(Talents.TALENTS.size() == 64,"64 talents")

@@ -329,11 +329,12 @@ func test_spell_levels() -> void:
 	var col: Dictionary = p["collection"]
 	check(col["fireball"]["lvl"] == 1 and col["fireball"]["copies"] == 0, "starter spell is level I, no spare copies")
 	check(not Rules.apply(p, "fuse", {"sid": "fireball"}, T0)["ok"], "no upgrade without copies")
-	col["fireball"]["copies"] = 3
-	check(not Rules.can_fuse(p, "fireball"), "3 copies are not enough for II")
-	col["fireball"]["copies"] = 4
-	check(Rules.apply(p, "fuse", {"sid": "fireball"}, T0)["ok"] and col["fireball"]["lvl"] == 2 and col["fireball"]["copies"] == 0, "4 copies: I -> II")
-	col["fireball"]["copies"] = 4
+	var first_cost: int = Rules.fuse_cost(1)
+	col["fireball"]["copies"] = first_cost-1
+	check(not Rules.can_fuse(p, "fireball"), "too few copies for II")
+	col["fireball"]["copies"] = first_cost
+	check(Rules.apply(p, "fuse", {"sid": "fireball"}, T0)["ok"] and col["fireball"]["lvl"] == 2 and col["fireball"]["copies"] == 0, "exact copies: I -> II")
+	col["fireball"]["copies"] = first_cost
 	check(not Rules.can_fuse(p, "fireball"), "II -> III needs more than I -> II")
 	col["fireball"]["copies"] = 1000
 	var ups := 0
@@ -343,7 +344,7 @@ func test_spell_levels() -> void:
 	var spent := 0
 	for c in Rules.FUSE_COST:
 		spent += int(c)
-	check(col["fireball"]["copies"] == 1000 + 4 - spent, "each upgrade eats its own cost")
+	check(col["fireball"]["copies"] == 1000 + first_cost - spent, "each upgrade eats its own cost")
 	check(Rules.apply(p, "fuse", {"sid": "fireball"}, T0)["error"] == "max level", "no upgrade past X")
 	var snap := Rules.hero_snapshot(p)
 	var lv := 0
@@ -356,7 +357,7 @@ func test_spell_levels() -> void:
 	old["collection"] = {"fireball": {"1": 3, "2": 6}, "heal": {"1": 1}, "kick": {"1": 0, "2": 0}}
 	Rules.migrate(old, T0)
 	var oc: Dictionary = old["collection"]
-	check(oc["fireball"]["lvl"] == 2 and oc["fireball"]["copies"] == 3 + 30 - 1 - 4, "old II copies are refunded as spare copies (%s)" % oc["fireball"])
+	check(oc["fireball"]["lvl"] == 2 and oc["fireball"]["copies"] == 3 + 30 - 1 - Rules.fuse_cost(1), "old II copies are refunded as spare copies (%s)" % oc["fireball"])
 	check(oc["heal"]["lvl"] == 1 and oc["heal"]["copies"] == 0, "old single copy stays level I")
 	check(not oc.has("kick"), "empty entries are dropped")
 
@@ -371,7 +372,7 @@ func test_boxes_and_validation() -> void:
 	var copies_after := 0
 	for sid in p["collection"]:
 		copies_after += 1 + int(p["collection"][sid]["copies"])
-	check(r["ok"] and r["boxes"].size() == 10 and p["gold"] == 300 and copies_after == copies_before + 10, "pack of 10 for 2700 gold")
+	check(r["ok"] and r["boxes"].size() == 10 and p["gold"] == 300 and copies_after == copies_before + 10 * Rules.BOX_COPIES, "pack of 10 for 2700 gold")
 	check(not Rules.apply(p, "open_pack", {"use": "gold"}, T0)["ok"], "cannot buy without gold")
 	check(Rules.apply(p, "open_box", {"use": "free"}, T0)["ok"] and not Rules.apply(p, "open_box", {"use": "free"}, T0 + 60)["ok"], "one free box per day")
 	check(Rules.apply(p, "open_box", {"use": "free"}, T0 + 86400.0)["ok"], "free box again next day")
@@ -455,7 +456,9 @@ func test_gathering() -> void:
 	var got: Dictionary = r["report"]["res"] if r["ok"] else {}
 	check(r["ok"] and got.get("copper_ore", 0) > 0 and got.get("iron_ore", 0) > 0, "claim gives ore %s" % str(got))
 	check(Rules.res_count(p, "iron_ore") == got.get("iron_ore", -1), "ore stored in the materials inventory")
-	check(int(p["professions"]["mining"]["level"]) == 2 and int(p["professions"]["mining"]["xp"]) == 0, "100 mining XP -> level 2")
+	check(int(p["professions"]["mining"]["xp"]) == Prof.gather_xp("abandoned_quarry", 3600), "gathering gives profession XP")
+	Rules._add_prof_xp(p, "mining", Prof.xp_to_next(1) - int(p["professions"]["mining"]["xp"]))
+	check(int(p["professions"]["mining"]["level"]) == 2 and int(p["professions"]["mining"]["xp"]) == 0, "enough XP -> level 2")
 	var again := Rules.apply(p, "gather_claim", {}, T0 + 3700.0)
 	check(not again["ok"] and Rules.res_count(p, "iron_ore") == got["iron_ore"], "second claim gives nothing")
 	Rules.apply(p, "gather_start", {"prof": "skinning", "loc": "wild_plains", "sec": 28800}, T0)
@@ -488,7 +491,7 @@ func test_crafting_and_concurrency() -> void:
 	var it: Dictionary = r["report"]["items"][0] if r["ok"] else {}
 	check(it.get("slot", "") == "head" and it.get("crafted", false) and it["affixes"].size() == 2, "helmet in the bag: %s" % str(it.get("name", "")))
 	check(not Rules.apply(p, "craft_claim", {"prof": "blacksmithing"}, T0 + 400.0)["ok"], "craft claimed only once")
-	check(int(p["professions"]["blacksmithing"]["xp"]) == 40, "blacksmithing XP awarded")
+	check(int(p["professions"]["blacksmithing"]["xp"]) == int(Prof.RECIPES["simple_iron_helmet"]["xp"]), "blacksmithing XP awarded")
 	var pr := Rules.apply(p, "craft_claim", {"prof": "alchemy"}, T0 + 180.0)
 	check(pr["ok"] and Rules.res_count(p, "minor_strength_potion") == 2, "potions crafted (2)")
 	check(Rules.apply(p, "equip", {"id": it["id"]}, T0)["ok"] and p["hero"]["equipped"]["head"] != null, "crafted helmet equipped in the new head slot")

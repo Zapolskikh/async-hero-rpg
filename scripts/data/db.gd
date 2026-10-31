@@ -91,12 +91,17 @@ const SPELLS := {
 	"e_breath":     {"name": "Огненное дыхание", "kind": "aoe_damage", "mult": 1.9, "cast": 2.5, "min_targets": 1, "interruptible": false, "enemy": true},
 	"e_burn":       {"name": "Пепел",           "kind": "aoe_dot",    "mult": 0.45, "cast": 0.0, "cd": 8.0, "dur": 6.0, "min_targets": 1, "enemy": true},
 	"e_warcry":     {"name": "Боевой клич",     "kind": "shield",     "mult": 3.0, "cast": 0.0, "cd": 10.0, "dur": 8.0, "enemy": true},
+	"e_doom":       {"name": "Зов гибели",      "kind": "aoe_damage", "mult": 4.6, "cast": 3.0, "min_targets": 1, "interruptible": true, "enemy": true},
+	"e_ward":       {"name": "Рунный покров",   "kind": "shield_all", "mult": 3.2, "cast": 0.0, "cd": 12.0, "dur": 9.0, "enemy": true},
+	"e_plague":     {"name": "Моровое поветрие", "kind": "dot",       "mult": 1.5, "cast": 0.0, "cd": 5.0, "dur": 10.0, "enemy": true},
+	"e_execute":    {"name": "Казнящий удар",   "kind": "damage",     "mult": 4.2, "cast": 1.4, "interruptible": true, "enemy": true},
+	"e_silence":    {"name": "Песнь сирены",    "kind": "silence",    "mult": 0.0, "cast": 1.2, "cd": 9.0, "dur": 4.0, "interruptible": true, "enemy": true},
 }
 
 const STARTER_SPELLS := ["strike", "fireball", "heal", "barrier", "kick"]
 
 # Enemy archetypes. Stats are for campaign level 1; Db.enemy_scale() multiplies them.
-# target: front / back / random / lowest  (who basic attacks and damage spells hit)
+# target: front / back / random / weak  (who basic attacks and damage spells hit; weak = lowest hp share)
 const ENEMIES := {
 	"brute":    {"name": "Громила",  "hp": 260, "atk": 15, "power": 12, "armor": 10, "haste": 0.0, "target": "front",
 				 "spells": ["e_smash"], "color": "#c0533a", "sprite": "brute", "ranged": false, "role": "brute"},
@@ -124,6 +129,43 @@ const ENEMIES := {
 	"priest":   {"name": "Жрица", "hp": 180, "atk": 7, "power": 13, "armor": 5, "haste": 0.0, "target": "front",
 				 "spells": ["e_rejuv", "e_mend"], "color": "#d8c8f0", "sprite": "priest", "ranged": true, "role": "healer",
 				 "hint": "Жрицы лечат всех врагов: AoE"},
+	# Specialist enemies: each one asks the party for one answer (`need`, see level_needs).
+	"swarm":      {"name": "Крысолюд", "hp": 110, "atk": 13, "power": 6, "armor": 0, "haste": 0.4, "target": "random",
+				 "spells": [], "color": "#8a7a5a", "sprite": "swarm", "ranged": false, "role": "brute", "need": "aoe",
+				 "hint": "Стая крысолюдов: нужен AoE"},
+	"doomcaller": {"name": "Вестник гибели", "hp": 170, "atk": 7, "power": 15, "armor": 5, "haste": 0.0, "target": "random",
+				 "spells": ["e_doom"], "color": "#a0362a", "sprite": "doomcaller", "ranged": true, "role": "caster", "need": "interrupt",
+				 "hint": "Зов гибели бьёт всех: прервите каст"},
+	"warden":     {"name": "Рунный хранитель", "hp": 230, "atk": 8, "power": 13, "armor": 15, "haste": 0.0, "target": "front",
+				 "spells": ["e_ward"], "color": "#3a8aa0", "sprite": "warden", "ranged": false, "role": "tank", "need": "purge",
+				 "hint": "Рунные щиты: нужно развеивание"},
+	"plaguebearer": {"name": "Чумоносец", "hp": 210, "atk": 8, "power": 12, "armor": 5, "haste": 0.0, "target": "random",
+				 "spells": ["e_plague"], "color": "#7a8a2a", "sprite": "plaguebearer", "ranged": true, "role": "disruptor", "need": "cleanse",
+				 "hint": "Мор заражает союзников: нужно очищение"},
+	"phantom":    {"name": "Призрак", "hp": 220, "atk": 11, "power": 12, "armor": 0, "haste": 0.1, "target": "back", "magic_resist": 0.65,
+				 "spells": ["e_backstab"], "color": "#8ab0c8", "sprite": "phantom", "ranged": false, "role": "assassin", "need": "physical",
+				 "hint": "Призраки почти неуязвимы для магии: нужен физический урон"},
+	"ironclad":   {"name": "Панцирник", "hp": 420, "atk": 16, "power": 8, "armor": 170, "haste": -0.1, "target": "front",
+				 "spells": ["e_smash"], "color": "#5a6a78", "sprite": "ironclad", "ranged": false, "role": "tank", "need": "magic",
+				 "hint": "Панцирники гасят физический урон: нужна магия"},
+	"executioner": {"name": "Палач", "hp": 240, "atk": 14, "power": 14, "armor": 15, "haste": 0.0, "target": "weak",
+				 "spells": ["e_execute"], "color": "#5a2a3a", "sprite": "executioner", "ranged": false, "role": "assassin", "need": "healer",
+				 "hint": "Палач добивает раненых: нужно сильное лечение"},
+	"siren":      {"name": "Сирена", "hp": 165, "atk": 7, "power": 11, "armor": 0, "haste": 0.1, "target": "back",
+				 "spells": ["e_silence", "e_bolt"], "color": "#3ac0a8", "sprite": "siren", "ranged": true, "role": "caster", "need": "interrupt",
+				 "hint": "Сирены лишают заклинаний: прервите песнь"},
+	"boss_titan": {"name": "Каменный титан", "hp": 2300, "atk": 26, "power": 15, "armor": 90, "haste": -0.15, "target": "front", "enrage": 75.0,
+				 "spells": ["e_quake", "e_crush"], "color": "#6f6a62", "sprite": "boss_titan", "ranged": false, "role": "boss", "boss": true, "need": "magic",
+				 "hint": "Титан впадает в ярость через 75 с: нужен урон"},
+	"boss_plague": {"name": "Чумной король", "hp": 1700, "atk": 14, "power": 16, "armor": 20, "haste": 0.0, "target": "random", "enrage": 120.0,
+				 "spells": ["e_plague", "e_curse", "e_bolt"], "color": "#5a7a1a", "sprite": "boss_plague", "ranged": true, "role": "boss", "boss": true, "need": "cleanse",
+				 "hint": "Король заражает союзников: нужно очищение"},
+	"boss_hierophant": {"name": "Иерофант", "hp": 1900, "atk": 15, "power": 17, "armor": 25, "haste": 0.0, "target": "random", "enrage": 120.0,
+				 "spells": ["e_ward", "e_doom", "e_bolt"], "color": "#c8a23a", "sprite": "boss_hierophant", "ranged": true, "role": "boss", "boss": true, "need": "interrupt",
+				 "hint": "Иерофант: прерывайте Зов гибели и снимайте щиты"},
+	"boss_wraith": {"name": "Королева призраков", "hp": 1800, "atk": 17, "power": 16, "armor": 0, "haste": 0.25, "target": "back", "magic_resist": 0.45, "enrage": 140.0,
+				 "spells": ["e_silence", "e_backstab", "e_execute"], "color": "#a8c8e0", "sprite": "boss_wraith", "ranged": false, "role": "boss", "boss": true, "need": "physical",
+				 "hint": "Королева режет тыл и почти неуязвима для магии"},
 	"boss_ogre":  {"name": "Вождь огров", "hp": 1500, "atk": 22, "power": 16, "armor": 20, "haste": 0.0, "target": "front",
 				 "spells": ["e_crush", "e_smash"], "color": "#9c2f2f", "sprite": "boss_ogre", "ranged": false, "role": "boss", "boss": true},
 	"boss_lich":  {"name": "Лич", "hp": 1100, "atk": 14, "power": 18, "armor": 15, "haste": 0.0, "target": "random",
@@ -135,8 +177,9 @@ const ENEMIES := {
 				 "hint": "Босс бьёт по тылу"},
 	"boss_drake":   {"name": "Драконид", "hp": 1600, "atk": 16, "power": 17, "armor": 25, "haste": 0.0, "target": "random",
 				 "spells": ["e_breath", "e_burn", "e_crush"], "color": "#2f6a3a", "sprite": "boss_drake", "ranged": true, "role": "boss", "boss": true},
-	"boss_archlich": {"name": "Архилич", "hp": 2900, "atk": 15, "power": 19, "armor": 20, "haste": 0.0, "target": "random",
-				 "spells": ["e_cataclysm", "e_curse", "e_dark_mend", "e_bolt"], "color": "#0f3a3a", "sprite": "boss_archlich", "ranged": true, "role": "boss", "boss": true},
+	"boss_archlich": {"name": "Архилич", "hp": 3000, "atk": 15, "power": 19, "armor": 25, "haste": 0.0, "target": "random", "enrage": 200.0, "need": "interrupt",
+				 "hint": "Архилич: прерывания, очищение и успеть за 3 минуты",
+				 "spells": ["e_cataclysm", "e_doom", "e_curse", "e_ward"], "color": "#0f3a3a", "sprite": "boss_archlich", "ranged": true, "role": "boss", "boss": true},
 }
 
 # Campaign: each level is a list of waves; each wave is 1-4 enemy ids.
@@ -154,28 +197,28 @@ const LEVELS := [
 	{"name": "Склеп лича",        "waves": [["caster", "caster", "healer"], ["tank", "poisoner", "assassin", "caster"], ["brute", "brute", "healer", "healer"], ["boss_lich", "healer", "tank"]]},
 	# --- Chapter 2: northern wastes (berserkers, golems, priests) ---
 	{"name": "Перевал берсерков", "waves": [["berserker"], ["berserker", "ranged"], ["berserker", "berserker", "ranged"], ["boss_ogre", "berserker"]]},
-	{"name": "Ледяной лагерь",    "waves": [["tank", "berserker"], ["ranged", "ranged", "healer"], ["berserker", "berserker", "healer"], ["tank", "ranged", "ranged", "healer"]]},
-	{"name": "Каменоломня",       "waves": [["golem"], ["golem", "ranged"], ["golem", "healer"], ["golem", "golem", "caster"]]},
-	{"name": "Жертвенник",        "waves": [["priest", "brute"], ["priest", "berserker", "ranged"], ["priest", "priest", "tank"], ["brute", "brute", "priest", "caster"]]},
+	{"name": "Ледяной лагерь",    "waves": [["swarm", "swarm", "swarm"], ["tank", "berserker"], ["swarm", "swarm", "swarm", "swarm"], ["berserker", "berserker", "healer"], ["tank", "swarm", "swarm", "healer"]]},
+	{"name": "Каменоломня",       "waves": [["golem"], ["ironclad", "ranged"], ["golem", "healer"], ["ironclad", "golem", "caster"], ["boss_titan"]]},
+	{"name": "Жертвенник",        "waves": [["doomcaller", "brute"], ["priest", "berserker", "ranged"], ["doomcaller", "priest", "tank"], ["brute", "brute", "priest", "doomcaller"]]},
 	{"name": "Ставка полководца", "waves": [["berserker", "berserker", "ranged"], ["tank", "priest", "ranged"], ["golem", "berserker", "healer"], ["boss_warlord", "berserker"]]},
 	# --- Chapter 3: shadows and curses ---
 	{"name": "Проклятый лес",     "waves": [["warlock"], ["warlock", "brute"], ["warlock", "warlock", "tank"], ["warlock", "poisoner", "assassin"]]},
 	{"name": "Гнездо убийц",      "waves": [["assassin", "assassin"], ["assassin", "warlock", "ranged"], ["assassin", "assassin", "priest"], ["assassin", "assassin", "assassin", "healer"]]},
-	{"name": "Чумной квартал",    "waves": [["poisoner", "poisoner", "brute"], ["warlock", "poisoner", "priest"], ["poisoner", "poisoner", "tank"], ["golem", "poisoner", "warlock"]]},
-	{"name": "Зал зеркал",        "waves": [["caster", "caster", "caster"], ["warlock", "caster", "priest"], ["tank", "caster", "caster", "healer"], ["warlock", "warlock", "assassin", "priest"]]},
+	{"name": "Чумной квартал",    "waves": [["plaguebearer", "brute"], ["warlock", "plaguebearer", "priest"], ["plaguebearer", "poisoner", "tank"], ["golem", "plaguebearer", "warlock"], ["boss_plague", "poisoner"]]},
+	{"name": "Зал зеркал",        "waves": [["phantom", "phantom"], ["siren", "caster", "priest"], ["tank", "phantom", "siren", "healer"], ["warlock", "siren", "phantom", "priest"]]},
 	{"name": "Трон теней",        "waves": [["assassin", "warlock", "priest"], ["berserker", "assassin", "poisoner", "ranged"], ["golem", "warlock", "warlock"], ["boss_shadow", "assassin", "priest"]]},
 	# --- Chapter 4: dragon mountains ---
-	{"name": "Предгорья",         "waves": [["golem", "berserker"], ["ranged", "ranged", "ranged"], ["golem", "priest", "ranged"], ["berserker", "berserker", "berserker", "healer"]]},
-	{"name": "Пепельная долина",  "waves": [["poisoner", "warlock", "ranged"], ["golem", "golem", "healer"], ["berserker", "assassin", "priest", "caster"], ["tank", "tank", "priest", "priest"]]},
-	{"name": "Кладбище драконов", "waves": [["warlock", "warlock", "priest"], ["golem", "berserker", "berserker"], ["caster", "caster", "poisoner", "priest"], ["boss_lich", "golem"]]},
-	{"name": "Логово выводка",    "waves": [["berserker", "berserker", "ranged", "ranged"], ["tank", "warlock", "priest", "priest"], ["golem", "golem", "assassin"], ["assassin", "berserker", "warlock", "priest"]]},
+	{"name": "Предгорья",         "waves": [["warden", "berserker"], ["ranged", "ranged", "warden"], ["golem", "priest", "warden"], ["berserker", "berserker", "warden", "healer"]]},
+	{"name": "Пепельная долина",  "waves": [["executioner", "ranged"], ["golem", "executioner", "healer"], ["berserker", "executioner", "priest", "caster"], ["tank", "ironclad", "priest", "executioner"]]},
+	{"name": "Кладбище драконов", "waves": [["warlock", "warlock", "priest"], ["golem", "berserker", "berserker"], ["doomcaller", "caster", "poisoner", "priest"], ["boss_hierophant", "warden"]]},
+	{"name": "Логово выводка",    "waves": [["swarm", "swarm", "swarm", "swarm"], ["tank", "warlock", "priest", "priest"], ["ironclad", "golem", "assassin"], ["swarm", "swarm", "berserker", "executioner"]]},
 	{"name": "Драконья вершина",  "waves": [["golem", "warlock", "priest"], ["berserker", "berserker", "poisoner", "ranged"], ["tank", "caster", "caster", "priest"], ["boss_drake", "priest"]]},
 	# --- Chapter 5: the archlich's realm ---
-	{"name": "Врата некрополя",   "waves": [["tank", "tank", "warlock", "priest"], ["assassin", "assassin", "poisoner"], ["golem", "golem", "priest"], ["boss_ogre", "berserker", "berserker"]]},
-	{"name": "Костяные залы",     "waves": [["caster", "caster", "warlock", "priest"], ["berserker", "berserker", "priest"], ["golem", "assassin", "healer"], ["boss_lich", "warlock"]]},
-	{"name": "Река душ",          "waves": [["poisoner", "poisoner", "warlock", "warlock"], ["tank", "golem", "priest", "priest"], ["assassin", "assassin", "berserker", "caster"], ["boss_shadow", "warlock", "priest"]]},
-	{"name": "Последний рубеж",   "waves": [["golem", "golem", "golem"], ["berserker", "assassin", "warlock", "priest"], ["tank", "priest", "caster", "caster"], ["boss_drake", "boss_warlord"]]},
-	{"name": "Цитадель архилича", "waves": [["warlock", "warlock", "priest", "priest"], ["golem", "berserker", "assassin", "poisoner"], ["tank", "tank", "caster", "priest"], ["boss_archlich", "priest", "warlock"]]},
+	{"name": "Врата некрополя",   "waves": [["tank", "tank", "warlock", "priest"], ["assassin", "assassin", "poisoner"], ["ironclad", "ironclad", "priest"], ["boss_titan", "berserker", "berserker"]]},
+	{"name": "Костяные залы",     "waves": [["caster", "caster", "warlock", "priest"], ["berserker", "berserker", "priest"], ["phantom", "phantom", "healer"], ["boss_wraith", "siren"]]},
+	{"name": "Река душ",          "waves": [["plaguebearer", "plaguebearer", "warlock", "siren"], ["warden", "golem", "priest", "priest"], ["phantom", "assassin", "berserker", "doomcaller"], ["boss_shadow", "plaguebearer", "priest"]]},
+	{"name": "Последний рубеж",   "waves": [["ironclad", "ironclad", "golem"], ["executioner", "assassin", "warlock", "priest"], ["warden", "priest", "doomcaller", "caster"], ["boss_drake", "boss_warlord"]]},
+	{"name": "Цитадель архилича", "waves": [["warlock", "siren", "priest", "priest"], ["golem", "phantom", "assassin", "plaguebearer"], ["warden", "caster", "doomcaller", "priest"], ["boss_archlich", "warden"]]},
 ]
 
 const CHAPTERS := [
@@ -191,8 +234,9 @@ const GOLD_MULT := 0.3
 const LEVEL_SCALE := 1.25   # enemy stat growth per level for chapter 1 (levels 1-10)
 const SCALE_BREAK := 10     # after this level enemies follow the party's expected growth
 const HERO_AT_BREAK := 16.0 # hero level a typical player has when clearing SCALE_BREAK
-const HERO_PER_LEVEL := 1.2 # expected hero levels per campaign level after the break
-const LATE_TOUGHNESS := 1.09 # extra difficulty multiplier per level after the break (tuning knob)
+const HERO_PER_LEVEL := 1.4 # expected hero levels per campaign level after the break
+const LATE_TOUGHNESS := 1.07 # extra difficulty multiplier per level after the break (tuning knob)
+const TOUGHNESS_LEVELS := 15 # the extra multiplier stops here, so difficulty does not pile up on the last chapter
 
 static func level_count() -> int:
 	return LEVELS.size()
@@ -287,7 +331,7 @@ static func enemy_scale(level: int) -> float:
 		return pow(LEVEL_SCALE, level - 1)
 	var base := pow(LEVEL_SCALE, SCALE_BREAK - 1)
 	var h := HERO_AT_BREAK + HERO_PER_LEVEL * (level - SCALE_BREAK)
-	return base * party_strength(h) / party_strength(HERO_AT_BREAK) * pow(LATE_TOUGHNESS, level - SCALE_BREAK)
+	return base * party_strength(h) / party_strength(HERO_AT_BREAK) * pow(LATE_TOUGHNESS, mini(level - SCALE_BREAK, TOUGHNESS_LEVELS))
 
 ## Rough strength of a character of hero level h: sqrt(damage x health).
 static func party_strength(h: float) -> float:
@@ -296,7 +340,7 @@ static func party_strength(h: float) -> float:
 	return sqrt(st["power"] * spell_mult * st["hp"])
 
 static func enemy_armor_mult(level: int) -> float:
-	return 1.0 + 0.12 * (min(level, SCALE_BREAK) - 1) + 0.04 * max(0, level - SCALE_BREAK)
+	return 1.0 + 0.12 * (min(level, SCALE_BREAK) - 1) + 0.012 * max(0, level - SCALE_BREAK)
 
 ## Qualitative preview hints for a level (concept 7.2: no exact income forecast).
 static func level_hints(level: int) -> Array:
@@ -326,7 +370,7 @@ static func level_hints(level: int) -> Array:
 			ids[e] = ids.get(e, 0) + 1
 	for e in ids:
 		var en: Dictionary = ENEMIES[e]
-		if en.has("hint") and (ids[e] >= 2 or en.get("boss", false)):
+		if en.has("hint") and (ids[e] >= 2 or en.get("boss", false) or en.has("need")):
 			hints.append(en["hint"])
 		if en.get("boss", false):
 			for sp in en["spells"]:
@@ -344,6 +388,16 @@ static func level_hints(level: int) -> Array:
 	if counts.get("brute", 0) >= 4:
 		hints.append("Тяжёлые удары: щиты")
 	return hints
+
+## Answers a level asks for: interrupt, cleanse, purge, aoe, physical, magic, healer.
+static func level_needs(level: int) -> Array:
+	var out := []
+	for wave in LEVELS[level - 1]["waves"]:
+		for e in wave:
+			var need: String = ENEMIES[e].get("need", "")
+			if need != "" and not need in out:
+				out.append(need)
+	return out
 
 static func boss_of(level: int) -> String:
 	for wave in LEVELS[level - 1]["waves"]:
@@ -374,11 +428,16 @@ static func xp_level_factor(level: int) -> float:
 ## (x2.3 at 6, x8.6 at 10, x28 at 20): progress needs a good build or hours of farm.
 const XP_SLOWDOWN_FROM := 6
 const XP_SLOWDOWN_POW := 1.2
+## After XP_LATE_FROM a hero level is a days-long goal, so gear, spells and professions get time to matter.
+const XP_LATE_FROM := 12
+const XP_LATE_POW := 1.25
 
 static func xp_to_next(level: int) -> int:
 	var base := 60.0 * pow(level, 1.4)
 	if level >= XP_SLOWDOWN_FROM:
 		base *= pow(level - XP_SLOWDOWN_FROM + 2, XP_SLOWDOWN_POW)
+	if level > XP_LATE_FROM:
+		base *= pow(level - XP_LATE_FROM + 1, XP_LATE_POW)
 	return int(base)
 
 ## Spells whose hp threshold the player can choose, and the choices.
