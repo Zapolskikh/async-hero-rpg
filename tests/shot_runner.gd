@@ -17,6 +17,8 @@ var farm_only := false
 var fb_only := false
 var mythic_only := false
 var dev_only := false
+var fx_level := 0
+var enemy_fx := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -48,9 +50,17 @@ func _ready() -> void:
 			mythic_only = true
 		if a == "--shots-dev":
 			dev_only = true
+		if a == "--shots-enemyfx":
+			enemy_fx = true
+		if a.begins_with("--shots-fx="):
+			fx_level = a.trim_prefix("--shots-fx=").to_int()
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if dev_only:
+	if enemy_fx:
+		_run_enemy_fx()
+	elif fx_level > 0:
+		_run_fx()
+	elif dev_only:
 		_run_dev()
 	elif mythic_only:
 		_run_mythic()
@@ -587,4 +597,82 @@ func _run_dev() -> void:
 	main._stats_popup()
 	await _wait(0.4)
 	await _shot("d2_stats")
+	get_tree().quit()
+
+## Spell visuals: a push on a level with enemy casters, a frame every 0.12 s.
+func _run_fx() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	Game.profile["closed_level"] = fx_level - 1
+	Game.profile["hero"]["level"] = 12
+	await _wait(0.3)
+	main._start(fx_level, "push")
+	Game.watch_speed = 1.0
+	await _wait(1.0)
+	for i in 70:
+		await _wait(0.12)
+		await _shot("fx_%03d" % i)
+	get_tree().quit()
+
+## Every enemy spell cast on the party, three frames per spell; plus a shot absorbed by a shield,
+## a killing blow and an enemy cast aimed at an ally.
+func _run_enemy_fx() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	var ex := Expedition.new()
+	ex.level = 1
+	ex.mode = "push"
+	var allies := []
+	for i in 4:
+		var weapons: Array = [["sword","shield"],["bow"],["staff"],["staff"]][i]
+		allies.append(BattleUnit.new(i,0,i,{"name":["Страж","Лучник","Маг","Лекарь"][i],"ranged":i>0,"stats":{"hp":10000.,"atk":0.,"power":90.,"str":100.,"agi":100.},"weapons":weapons,"talents":{},"spells":[]}))
+	var foes := []
+	for i in 3:
+		var eid: String = ["warlock","caster","boss_lich"][i]
+		var snap := Expedition.enemy_snapshot(eid, 5)
+		snap["stats"]["hp"] = 100000.
+		snap["stats"]["atk"] = 0.
+		snap["spells"] = []
+		foes.append(snap)
+	ex.allies = allies
+	ex.sim = BattleSim.new()
+	ex.sim.setup(allies,foes,123)
+	Game.expedition = ex
+	main._open_watch()
+	Game.watch_speed = 1.0
+	await _wait(.5)
+	var caster: BattleUnit = ex.sim.foes_of(allies[0])[0]
+	# an enemy cast with its aim shown
+	caster.casting = {"spell":"e_bolt","lvl":1,"remaining":1.6,"total":2.4,"target":allies[2],"interruptible":true,"threshold":-1.}
+	await _wait(.3)
+	await _shot("e_00_aim")
+	caster.casting = {}
+	for sid in ["e_bolt","e_curse","e_plague","e_volley","e_cataclysm","e_breath","e_doom","e_quake","e_mend","e_smash"]:
+		var tgt: BattleUnit = allies[2] if Db.SPELLS[sid]["kind"] != "heal" else caster
+		ex.sim._cast(caster,sid,1,tgt)
+		ex.sim.events.append_array([])
+		await _wait(.12)
+		await _shot("e_%s_1" % sid)
+		await _wait(.2)
+		await _shot("e_%s_2" % sid)
+		await _wait(.35)
+		await _shot("e_%s_3" % sid)
+		for a in allies: a.hp = a.max_hp
+	# absorbed by a shield
+	allies[2].shield = 99999.
+	ex.sim._cast(caster,"e_bolt",1,allies[2])
+	await _wait(.2)
+	await _shot("e_zz_absorb_1")
+	await _wait(.35)
+	await _shot("e_zz_absorb_2")
+	allies[2].shield = 0.
+	# killing blow: the body waits for the bolt
+	allies[3].hp = 5.
+	ex.sim._cast(caster,"e_bolt",1,allies[3])
+	await _wait(.15)
+	await _shot("e_zz_kill_1")
+	await _wait(.35)
+	await _shot("e_zz_kill_2")
+	await _wait(.6)
+	await _shot("e_zz_kill_3")
 	get_tree().quit()

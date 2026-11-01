@@ -527,6 +527,7 @@ func _cast(u: BattleUnit,sid: String,lvl: int,target,scale: float = 1.,copy: boo
 			for i in mini(foes.size(),s.get("max_targets",99)):
 				var f: BattleUnit = foes[i]
 				if s["kind"] == "aoe_dot":
+					_fx(u,f,s.get("fx","curse"),s.get("color","#9fdc6a"))
 					_apply_dot(u,f,sid,a,s.get("dur",6.))
 				else:
 					if s.get("interrupt",false) and i == 0:
@@ -834,6 +835,9 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 	var s: Dictionary = Db.SPELLS.get(sid,{})
 	if school == "":
 		school = s.get("school","physical" if sid in ["attack","","e_smash","e_volley","e_backstab","e_cleave","e_crush","e_quake","e_execute"] else "magic")
+	# The visual comes before the hit: the view flies a projectile and shows the damage when it lands.
+	if not is_dot and sid != "attack" and with_fx:
+		_fx(src,t,s.get("fx","slash"),s.get("color","#ffffff"))
 	if t.buffs.has("intervene") and not _redirecting:
 		var guard: BattleUnit = t.buffs["intervene"]["src"]
 		if guard != t and guard.alive() and guard.side == t.side:
@@ -894,7 +898,7 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 	_charge_vengeance(t,absorbed)
 	dmg -= absorbed
 	if absorbed > 0.:
-		_emit({"t":"absorb","uid":t.uid,"v":absorbed})
+		_emit({"t":"absorb","uid":t.uid,"v":absorbed,"src":src.uid})
 	if t.shield <= 0. and t.shield_sid != "":
 		_break_shield(t)
 	if dmg >= t.hp and t.rank("undying") and not t.spent.has("undying"):
@@ -912,8 +916,6 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 	src.dealt += lost+absorbed
 	var meter_id: String = sid if Db.SPELLS.has(sid) else "attack"
 	src.dealt_by[meter_id] = src.dealt_by.get(meter_id,0.)+lost+absorbed
-	if not is_dot and sid != "attack" and with_fx:
-		_fx(src,t,s.get("fx","slash"),s.get("color","#ffffff"))
 	if lost > 0. and src.alive() and src.rank("life_source"):
 		for f in friends_of(src):
 			_heal(src,f,lost*[0.,.01,.03,.05][src.rank("life_source")],false,meter_id)

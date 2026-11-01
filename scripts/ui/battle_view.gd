@@ -21,6 +21,9 @@ const HURT_TIME := 0.22
 const DEATH_TIME := 1.1 # Matches the hero fall clip; the body fades during the last DEATH_FADE seconds.
 const DEATH_FADE := .35
 const PROJ_TIME := 0.28
+const MAGIC_TIME := 0.42        # spell projectiles fly slower than arrows, so their path can be followed
+const DEATH_HOLD_MAX := 1.5     # a body waits at most this long for the projectile that killed it
+const MAGIC_KINDS := ["orb", "fire", "shadow", "arcane", "holy", "heal", "water", "nature", "spirit", "poison", "prism", "meteor", "frost"]
 const Character := preload("res://scripts/ui/character_actor.gd")
 
 const SPELL_COLORS := {
@@ -62,6 +65,7 @@ var _preview_key := ""
 var characters := {}
 var animation_rate := 1.0
 var pending_actions := {}
+var death_hold := {}            # uid -> seconds held: the unit is dead, its killing blow is still in flight
 var _pose_time := 0.
 var _display_time := 0.
 var _advance_origin := 0.
@@ -89,6 +93,7 @@ func _process(delta: float) -> void:
 			_pose_time = 0.
 			_display_time = 0.
 			pending_actions.clear()
+			death_hold.clear()
 			for item in characters.values():
 				item["actor"].play("idle")
 			_sim_ref = sim
@@ -107,7 +112,11 @@ func _process(delta: float) -> void:
 			var a: Dictionary = _anim(u.uid)
 			a["lunge"] = max(0.0, a["lunge"] - dt)
 			a["hurt"] = max(0.0, a["hurt"] - dt)
-			if not u.alive():
+			if death_hold.has(u.uid):
+				death_hold[u.uid] += dt
+				if death_hold[u.uid] >= DEATH_HOLD_MAX:
+					_release_death(u.uid)
+			elif not u.alive():
 				a["dead"] = min(DEATH_TIME, a["dead"] + dt)
 			else:
 				a["dead"] = 0.0
@@ -117,10 +126,10 @@ func _process(delta: float) -> void:
 			floats.erase(f)
 	for p in projectiles.duplicate():
 		p["t"] = maxf(0.,_display_time-p["born"]) if p.has("born") else float(p["t"])+dt
-		if p["t"] >= PROJ_TIME:
+		if p["t"] >= _flight(p):
 			projectiles.erase(p)
-			for damage in p.get("damage",[]): _show_damage(damage)
-			effects.append({"pos": p["to"], "t": 0.0, "dur": 0.25, "kind": "burst", "color": p["color"], "radius": 18.0})
+			_impact(p)
+			for hit in p.get("damage",[]): _show_hit(hit)
 	for e in effects.duplicate():
 		e["t"] += dt
 		if e["t"] >= e["dur"]:
@@ -175,13 +184,13 @@ func _sync_characters(units: Array, synchronize_state: bool = true) -> void:
 						if actor.clip not in ["cast","cast_hold"] or actor.magic_color != color: _magic_motion(u,spell,true)
 				elif actor.clip in ["cast","cast_hold","aim_hold"]:
 					actor.cancel_cast()
-			else:
+			elif not death_hold.has(u.uid):
 				if actor.clip != "death":
 					actor.play("death")
 		actor.position = _home(u) + offset
 		actor.scale = Vector2.ONE * (_sprite_size(u).y / 350.)
 		actor.modulate = Color(1., .55, .55) if a["hurt"] > 0. else Color.WHITE
-		actor.modulate.a = 1. if u.alive() else clampf((DEATH_TIME-float(a["dead"]))/DEATH_FADE,0.,1.)
+		actor.modulate.a = 1. if u.alive() or death_hold.has(u.uid) else clampf((DEATH_TIME-float(a["dead"]))/DEATH_FADE,0.,1.)
 	for id in characters.keys():
 		if id not in present:
 			characters[id]["actor"].queue_free()
@@ -220,7 +229,7 @@ func _melee_motion(src: BattleUnit, shield: bool = false) -> void:
 func _on_character_cancelled(action_id: int, uid: int) -> void:
 	if not pending_actions.has(uid) or pending_actions[uid]["id"] != action_id: return
 	# Damage has already been calculated by BattleSim; cancel only its pending visuals.
-	for event in pending_actions[uid]["damage"]: _show_damage(event)
+	for event in pending_actions[uid]["damage"]: _show_hit(event)
 	pending_actions.erase(uid)
 
 func _on_character_marker(action_id: int, event: StringName, _socket: StringName, transform: Transform2D, uid: int) -> void:
@@ -243,7 +252,7 @@ func _on_character_marker(action_id: int, event: StringName, _socket: StringName
 		projectiles.append(projectile)
 	for effect in packet["effects"]: effects.append(effect)
 	for damage in packet["damage"]:
-		if damage not in assigned: _show_damage(damage)
+		if damage not in assigned: _show_hit(damage)
 
 ## The fight on the watch screen is heard; the small preview on the hub is not.
 func _heard() -> bool:
@@ -261,6 +270,62 @@ func _hit_sound(e: Dictionary) -> void:
 	if src.equipped("bow"): Sfx.play("arrow_hit",.08)
 	elif src.equipped("greatsword") or src.is_boss: Sfx.play("heavy_hit",.06)
 	elif not src.equipped("staff"): Sfx.play("sword_hit",.08)
+
+## A hit event that waited for its projectile (or melee swing): damage, absorbed damage or the death it caused.
+func _show_hit(e: Dictionary) -> void:
+	match e.get("t", "dmg"):
+		"absorb": _show_absorb(e)
+		"death": _release_death(int(e["uid"]))
+		_: _show_damage(e)
+
+func _show_absorb(e: Dictionary) -> void:
+	_float(e["uid"], "щит −%d" % roundi(float(e["v"])), Color("#9fd7ff"), 21)
+	var sim := active_sim()
+	if sim != null:
+		var u := sim.unit_by_uid(e["uid"])
+		if u != null: effects.append({"pos": _center(u), "t": 0.0, "dur": 0.4, "kind": "bubble", "color": Color("#9fd7ff"), "radius": 40.0})
+	if _heard(): Sfx.play("block",.05)
+
+func _release_death(uid: int) -> void:
+	death_hold.erase(uid)
+	_character_animation(uid,"death")
+	var sim := active_sim()
+	var fallen := sim.unit_by_uid(uid) if sim != null else null
+	if _heard():
+		Sfx.play("death_ally" if fallen != null and fallen.side == 0 else ("death_boss" if fallen != null and fallen.is_boss else "death_enemy"))
+	_float(uid, "Пал", UI.BAD, 22)
+
+## Attaches a hit to the visual that is about to deliver it: the attacker's pending swing or cast,
+## or a projectile launched at this moment towards this target. False: show it right away.
+func _hold_for_visual(e: Dictionary, source: int, target: int) -> bool:
+	if source >= 0 and pending_actions.has(source):
+		pending_actions[source]["damage"].append(e)
+		return true
+	for i in range(projectiles.size() - 1, -1, -1):
+		var p: Dictionary = projectiles[i]
+		if int(p.get("target_uid", -1)) != target or p.get("landed", false):
+			continue
+		if (source < 0 or int(p.get("src_uid", -2)) == source) and (source < 0 or is_equal_approx(float(p.get("born", -1.0)), _processing_time)):
+			p["damage"].append(e)
+			return true
+	return false
+
+func _flight(p: Dictionary) -> float:
+	return MAGIC_TIME if p.get("kind", "") in MAGIC_KINDS else PROJ_TIME
+
+## Where a projectile lands: a burst sized and coloured by the kind of attack.
+func _impact(p: Dictionary) -> void:
+	var col: Color = p["color"]
+	var kind: String = p.get("kind", "")
+	if kind in ["arrow", "poison_arrow", "fire_arrow", "arrow_rain", "beast", "shield_throw", "blade"]:
+		effects.append({"pos": p["to"], "t": 0.0, "dur": 0.25, "kind": "burst", "color": col, "radius": 18.0})
+	elif kind in ["shadow", "doom"]:
+		effects.append({"pos": p["to"], "t": 0.0, "dur": 0.5, "kind": "shadow_burst", "color": col, "radius": 46.0})
+	elif kind in ["meteor", "fire"]:
+		effects.append({"pos": p["to"], "t": 0.0, "dur": 0.45, "kind": "explosion", "color": col, "radius": 40.0})
+	else:
+		effects.append({"pos": p["to"], "t": 0.0, "dur": 0.4, "kind": "burst", "color": col, "radius": 34.0})
+		effects.append({"pos": p["to"], "t": 0.0, "dur": 0.4, "kind": "bubble", "color": col.lightened(0.3), "radius": 30.0})
 
 func _show_damage(e: Dictionary) -> void:
 	_hit_sound(e)
@@ -297,14 +362,12 @@ func _consume_events(sim: BattleSim) -> void:
 				_on_spell(sim, e)
 			"dmg":
 				var source: int = e.get("src",-1)
-				if not e.get("dot",false) and pending_actions.has(source): pending_actions[source]["damage"].append(e)
-				else: _show_damage(e)
+				if e.get("dot",false) or not _hold_for_visual(e, source, int(e["uid"])): _show_damage(e)
 			"heal":
 				_float(e["uid"], "+%d" % e["v"], UI.GOOD, 20)
 				_effect_on(sim, e["uid"], "sparkle", UI.GOOD, 0.5)
 			"absorb":
-				_float(e["uid"], "(%d)" % e["v"], Color("#9fd7ff"), 17)
-				if _heard(): Sfx.play("block",.05)
+				if not _hold_for_visual(e, int(e.get("src", -1)), int(e["uid"])): _show_absorb(e)
 			"shield":
 				_effect_on(sim, e["uid"], "bubble", Color("#8fd0ff"), 0.45)
 			"interrupt":
@@ -326,14 +389,22 @@ func _consume_events(sim: BattleSim) -> void:
 					if spell.get("weapon",false) and actor.preset == "bow": actor.begin_aim()
 					elif not spell.get("weapon",false): _magic_motion(sim.unit_by_uid(e["uid"]),spell,true)
 			"death":
-				_character_animation(e["uid"],"death")
-				if _heard():
-					var fallen := sim.unit_by_uid(e["uid"])
-					Sfx.play("death_ally" if fallen != null and fallen.side == 0 else ("death_boss" if fallen != null and fallen.is_boss else "death_enemy"))
-				_float(e["uid"], "Пал", UI.BAD, 22)
+				if _hold_for_visual(e, -1, int(e["uid"])) or _held_by_packet(e):
+					death_hold[int(e["uid"])] = 0.0
+				else:
+					_release_death(int(e["uid"]))
 	if floats.size() > 60:
 		floats = floats.slice(floats.size() - 60)
 	_advance_characters_to(_display_time)
+
+## A death waits for a pending swing or cast aimed at that unit (its projectile is made on release).
+func _held_by_packet(e: Dictionary) -> bool:
+	for uid in pending_actions:
+		for hit in pending_actions[uid]["damage"]:
+			if int(hit.get("uid", -1)) == int(e["uid"]):
+				pending_actions[uid]["damage"].append(e)
+				return true
+	return false
 
 func _on_spell(sim: BattleSim, e: Dictionary) -> void:
 	var src := sim.unit_by_uid(e["uid"])
@@ -367,8 +438,10 @@ func _on_fx(sim: BattleSim, e: Dictionary) -> void:
 	if kind in ["slash","heavy","bleed","shield_hit","whirlwind"]:
 		if not pending_actions.has(src.uid): _melee_motion(src,kind == "shield_hit")
 		_effect_on(sim,dst.uid,kind,col,.42,src.uid)
-	elif kind in ["shout","shield","cleanse","curse","shockwave","explosion","nature","earth","resurrect"]:
+	elif kind in ["shout","shield","cleanse","curse","shockwave","explosion","nature","earth","resurrect","quake"]:
 		_effect_on(sim,dst.uid,kind,col,.65,src.uid)
+	elif kind == "doom":
+		_put_effect(src.uid,{"pos":_center(dst),"t":0.,"dur":.6,"kind":"shadow_burst","color":col,"radius":60.})
 	elif kind in ["lightning","heal_chain"]:
 		_put_effect(src.uid,{"pos":_center(dst),"from":_center(src),"t":0.,"dur":.38,"kind":kind,"color":col,"radius":40.})
 	else:
@@ -380,10 +453,12 @@ func _on_fx(sim: BattleSim, e: Dictionary) -> void:
 					break
 			projectiles.append({"from":origin,"to":_center(dst),"t":0.,"kind":kind,"color":col,"born":_processing_time})
 		else:
+			if not characters.has(src.uid) and kind in MAGIC_KINDS and kind != "meteor":
+				effects.append({"pos": _center(src) + Vector2(0, -10), "t": 0.0, "dur": 0.3, "kind": "burst", "color": col, "radius": 26.0})
 			_shoot(src,dst,col,kind)
 
 func _shoot(src: BattleUnit, dst: BattleUnit, col: Color, kind: String) -> void:
-	var projectile := {"from":_center(src)+Vector2(0,-10),"to":_center(dst),"t":0.,"color":col,"kind":kind,"target_uid":dst.uid,"born":_processing_time}
+	var projectile := {"from":_center(src)+Vector2(0,-10),"to":_center(dst),"t":0.,"color":col,"kind":kind,"target_uid":dst.uid,"src_uid":src.uid,"born":_processing_time,"damage":[]}
 	if characters.has(src.uid) and src.equipped("bow") and kind in ["arrow","poison_arrow","fire_arrow","arrow_rain"]:
 		if not pending_actions.has(src.uid):
 			var actor: CharacterActor = characters[src.uid]["actor"]
@@ -525,6 +600,7 @@ func _draw() -> void:
 	for u in order:
 		if u.alive():
 			_draw_unit(u, font)
+	_draw_cast_targets(sim)
 	for e in effects:
 		_draw_effect(e)
 	for p in projectiles:
@@ -654,7 +730,7 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 			draw_rect(rect, u.color * tint)
 		draw_set_transform(Vector2.ZERO)
 
-	if not u.alive():
+	if not u.alive() and not death_hold.has(u.uid):
 		return
 	var r := Rect2(home + offset - Vector2(sz.x / 2.0, sz.y), sz)
 	if u.shield > 0.0:
@@ -697,15 +773,52 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 		var sw2 := font.get_string_size(sname, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
 		_text(font, Vector2(home.x - sw2 / 2.0, cb.end.y + 17), sname, 15, Color.WHITE, 4)
 
+## Who a cast is aimed at: a dashed line to the target and a closing reticle on it;
+## an area cast marks the ground under every unit it will hit.
+func _draw_cast_targets(sim: BattleSim) -> void:
+	for u in sim.units:
+		if not u.alive() or not u.is_casting():
+			continue
+		var c: Dictionary = u.casting if not u.casting.is_empty() else u.channel
+		var spell: Dictionary = Db.SPELLS.get(c["spell"], {})
+		var col := Color(spell.get("color", "#ffd27a"))
+		var frac: float = clampf(1.0 - float(c["remaining"]) / maxf(0.01, float(c["total"])), 0.0, 1.0)
+		var tgt = c.get("target")
+		if tgt is BattleUnit and tgt != u and tgt.alive():
+			var a := _center(u) + Vector2(0, -10)
+			var b := _center(tgt)
+			var n := 16
+			for i in range(0, n, 2):
+				var p0 := a.lerp(b, i / float(n))
+				var p1 := a.lerp(b, (i + 1) / float(n))
+				draw_line(p0, p1, Color(0, 0, 0, 0.35), 7.0)
+				draw_line(p0, p1, Color(col, 0.55 + 0.4 * frac), 4.0)
+			var rr := 58.0 - 22.0 * frac
+			for i in 3:
+				var a0 := clock * 2.5 + i * TAU / 3.0
+				draw_arc(b, rr, a0, a0 + PI * 0.45, 10, Color(0, 0, 0, 0.4), 8.0)
+				draw_arc(b, rr, a0, a0 + PI * 0.45, 10, Color(col, 0.75 + 0.25 * frac), 5.0)
+			# a marker over the target's head bobs while the cast fills
+			var top := unit_rect(tgt).position + Vector2(unit_rect(tgt).size.x / 2.0, -58.0 - _status_height(tgt) + sin(clock * 7.0) * 4.0)
+			draw_colored_polygon(PackedVector2Array([top + Vector2(-13, -16), top + Vector2(13, -16), top + Vector2(0, 2)]), Color(0, 0, 0, 0.5))
+			draw_colored_polygon(PackedVector2Array([top + Vector2(-10, -14), top + Vector2(10, -14), top + Vector2(0, -1)]), col)
+		elif spell.get("kind", "") in ["aoe_damage", "aoe_dot", "channel_aoe"]:
+			for f in sim.foes_of(u):
+				var fsz := _sprite_size(f)
+				var pulse := 0.25 + 0.2 * sin(clock * 8.0)
+				_ellipse(_home(f), Vector2(fsz.x * 0.6, 16), Color(col, pulse * (0.5 + frac)))
+				_ellipse(_home(f), Vector2(fsz.x * 0.6, 16), Color(col, 0.7), false, 3.0)
+
 func _draw_projectile(p: Dictionary) -> void:
 	if p["t"] < 0.:
 		return
-	var k: float = p["t"] / PROJ_TIME
+	var k: float = minf(1.0, p["t"] / _flight(p))
 	var from: Vector2 = p["from"]
 	var to: Vector2 = p["to"]
-	var pos := from.lerp(to, k) + Vector2(0, -sin(k * PI) * 30.0)
-	if p["kind"] == "arrow_rain":
-		from = to + Vector2(-35,-170)
+	var arc := 30.0 if p["kind"] not in MAGIC_KINDS else 14.0
+	var pos := from.lerp(to, k) + Vector2(0, -sin(k * PI) * arc)
+	if p["kind"] in ["arrow_rain", "meteor"]:
+		from = to + Vector2(-35 if p["kind"] == "arrow_rain" else -90,-170 if p["kind"] == "arrow_rain" else -300)
 		pos = from.lerp(to,k)
 	var col: Color = p["color"]
 	if p["kind"] in ["arrow","poison_arrow","fire_arrow","arrow_rain"]:
@@ -722,20 +835,49 @@ func _draw_projectile(p: Dictionary) -> void:
 		draw_rect(Rect2(-7,-7,14,14),col)
 		draw_line(Vector2(-4,0),Vector2(4,0),Color.WHITE,3.)
 		draw_set_transform(Vector2.ZERO)
+	elif p["kind"] == "shadow":
+		# dark bolt: a black core in a purple flame with a curling smoky trail
+		var dir := (to - from).normalized()
+		var side := Vector2(-dir.y, dir.x)
+		for i in 7:
+			var back := pos - dir * (i * 9.0) + side * sin(clock * 18.0 + i) * (2.0 + i * 1.5)
+			draw_circle(back, 11.0 - i * 1.3, Color(col, 0.55 - i * 0.07))
+		draw_circle(pos, 18.0, Color(col, 0.3))
+		draw_circle(pos, 13.0, col)
+		draw_circle(pos, 6.0, Color("#1a0a24"))
+		for i in 3:
+			var ang := clock * 9.0 + i * TAU / 3.0
+			draw_circle(pos + Vector2(cos(ang), sin(ang)) * 14.0, 2.5, col.lightened(0.4))
+	elif p["kind"] == "meteor":
+		var dir := (to - from).normalized()
+		for i in 8:
+			draw_circle(pos - dir * (i * 12.0), 16.0 - i * 1.7, Color(col.lerp(Color("#ff9a3a"), i / 8.0), 0.6 - i * 0.07))
+		draw_circle(pos, 15.0, col)
+		draw_circle(pos, 7.0, Color("#fff0c0"))
+	elif p["kind"] == "poison":
+		for i in 5:
+			var tk: float = max(0.0, k - i * 0.05)
+			var tp := from.lerp(to, tk) + Vector2(sin(i * 2.3) * 5.0, -sin(tk * PI) * arc)
+			draw_circle(tp, 9.0 - i * 1.4, Color(col, 0.6 - i * 0.1))
+		draw_circle(pos, 10.0, col)
+		draw_circle(pos + Vector2(-3, -3), 3.0, col.lightened(0.6))
 	elif p["kind"] == "frost":
 		var dir := (to-from).normalized()
 		for i in 4:
 			var center := pos-dir*i*8.
 			draw_colored_polygon(PackedVector2Array([center+Vector2(0,-7),center+dir*9.,center+Vector2(0,7),center-dir*6.]),Color(col,1.-i*.18))
 	else:
-		for i in 4:
-			var tk: float = max(0.0, k - i * 0.06)
-			var tp := from.lerp(to, tk) + Vector2(0, -sin(tk * PI) * 30.0)
+		# a glowing orb with a trail: fire, arcane, holy, healing and the rest of the magic
+		var big := 1.6 if p["kind"] in MAGIC_KINDS else 1.0
+		draw_circle(pos, 14.0 * big, Color(col, 0.25))
+		for i in 6:
+			var tk: float = max(0.0, k - i * 0.05)
+			var tp := from.lerp(to, tk) + Vector2(0, -sin(tk * PI) * arc)
 			var tc := col
-			tc.a = 0.5 - i * 0.12
-			draw_circle(tp, 8.0 - i * 1.5, tc)
-		draw_circle(pos, 8.0, col)
-		draw_circle(pos, 4.0, col.lightened(0.6))
+			tc.a = 0.55 - i * 0.09
+			draw_circle(tp, (8.0 - i * 1.1) * big, tc)
+		draw_circle(pos, 8.0 * big, col)
+		draw_circle(pos, 4.0 * big, col.lightened(0.6))
 
 func _draw_effect(e: Dictionary) -> void:
 	var k: float = e["t"] / e["dur"]
@@ -781,6 +923,21 @@ func _draw_effect(e: Dictionary) -> void:
 				var p := pos+Vector2((i-2.5)*12.,30.-k*100.+sin(i)*15.)
 				draw_rect(Rect2(p-Vector2(2,6),Vector2(4,12)),col)
 				draw_rect(Rect2(p-Vector2(6,2),Vector2(12,4)),col)
+		"shadow_burst":
+			var r: float = e["radius"]
+			draw_circle(pos, 8.0 + k * r, Color(Color("#1a0a24"), (1.0 - k) * 0.55))
+			draw_arc(pos, 8.0 + k * r, 0.0, TAU, 24, col, 4.0)
+			for i in 8:
+				var ang := i * TAU / 8.0 + k * 1.5
+				var p := pos + Vector2(cos(ang), sin(ang)) * (10.0 + k * r * 1.1)
+				draw_circle(p, 5.0 * (1.0 - k) + 1.0, col)
+		"quake":
+			for i in 3:
+				var w := 20.0 + k * 90.0 + i * 12.0
+				draw_line(pos + Vector2(-w, 48 + i * 4), pos + Vector2(w, 48 + i * 4), col, 3.0)
+			for i in 6:
+				var p := pos + Vector2((i - 2.5) * 22.0, 40.0 - sin(k * PI) * (16.0 + (i % 3) * 8.0))
+				draw_rect(Rect2(p, Vector2(8, 8)), col.darkened(0.3))
 		"burst":
 			draw_circle(pos, 6.0 + k * e["radius"], Color(col, (1.0 - k) * 0.5))
 			draw_arc(pos, 6.0 + k * e["radius"], 0.0, TAU, 20, col, 3.0)
