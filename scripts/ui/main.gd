@@ -489,7 +489,7 @@ func _level_card() -> Control:
 	v.add_child(row)
 
 	var hints := Db.level_hints(lvl)
-	if not closed and Game.hero["level"] < mini(int(lvl * 1.4), Db.HERO_MAX_LEVEL):
+	if not closed and Game.hero["level"] < Db.expected_hero_level(lvl):
 		hints.append("Risky")
 	var flow := HFlowContainer.new()
 	flow.add_theme_constant_override("h_separation", 6)
