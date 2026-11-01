@@ -190,7 +190,7 @@ func test_healing() -> void:
 func test_weapons_and_damage() -> void:
 	var u := unit(0,["sword","sword"],{"throwing":3})
 	var sim := battle([u])
-	check(sim._usable(u,"aimed_shot") and is_equal_approx(sim._amount(u,"aimed_shot",1),300.),"throwing uses strength at full rank")
+	check(sim._usable(u,"aimed_shot") and is_equal_approx(sim._amount(u,"aimed_shot",1),Db.SPELLS["aimed_shot"]["mult"]*100.),"throwing uses strength at full rank")
 	var target: BattleUnit = sim.foes_of(u)[0]
 	sim._cast(u,"cleave",1,u)
 	check(sim.foes_of(u)[1].hp < 100000.,"cleave hits a second target")

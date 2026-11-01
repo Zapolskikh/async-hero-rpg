@@ -83,7 +83,7 @@ static func effects(sid: String, lvl: int, caster: Dictionary) -> Array:
 	return [["star", s.get("desc", "")], ["power", "Сила эффекта: %d" % a]]
 
 ## Timing lines: cast time and own cooldown.
-static func timing(sid: String, caster: Dictionary = {}) -> Array:
+static func timing(sid: String, caster: Dictionary = {}, lvl: int = 1) -> Array:
 	var s: Dictionary = Db.SPELLS[sid]
 	var out := []
 	var cast: float = s.get("cast", 0.0)
@@ -94,8 +94,9 @@ static func timing(sid: String, caster: Dictionary = {}) -> Array:
 			cast *= 1.-.05*int(talents.get("steady_hand",0))
 	cast /= 1.+float(caster.get("stats",{}).get("haste",0.))
 	out.append(["haste", ("Каст %.1f с" % cast) if cast > 0.0 else "Мгновенно"])
-	var cd: float = s.get("cd", 0.0)
-	out.append(["loop", ("Перезарядка %.0f с" % cd) if cd > 0.0 else "Без перезарядки"])
+	var cd: float = Db.spell_cd(sid, lvl)
+	var cd_text := ("%.0f" % cd) if is_equal_approx(cd, roundf(cd)) else ("%.1f" % cd)
+	out.append(["loop", ("Перезарядка %s с" % cd_text) if cd > 0.0 else "Без перезарядки"])
 	return out
 
 ## One short line for tiles and cards, e.g. "Урон 42" or "Щит 90".

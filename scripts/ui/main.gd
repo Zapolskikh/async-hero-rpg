@@ -1196,7 +1196,7 @@ func _spell_numbers(sid: String, lvl: int, snap: Dictionary) -> Control:
 		h.add_child(UI.expand(UI.wrap(line[1], Style.FONT_SMALL, Style.SUCCESS if line[2] else Style.WARNING)))
 		v.add_child(h)
 	var th := UI.hbox(16)
-	for line in SpellInfo.timing(sid,snap):
+	for line in SpellInfo.timing(sid,snap,max(1,lvl)):
 		var h := UI.hbox(6)
 		h.add_child(UI.icon(line[0], 20))
 		h.add_child(UI.label(line[1], Style.FONT_SMALL, Style.TEXT))
@@ -1517,7 +1517,7 @@ func _spell_card(sid: String) -> Control:
 	name.clip_text = true
 	v.add_child(name)
 	var num := UI.label(SpellInfo.short(sid, max(1, lvl), Game.hero_snapshot()) +
-		(("  · кд %.0f с" % d["cd"]) if d.get("cd", 0.0) > 0.0 else ""), Style.FONT_TINY, Style.TEXT if lvl > 0 else Style.MUTED)
+		(("  · кд %.0f с" % Db.spell_cd(sid, max(1, lvl))) if d.get("cd", 0.0) > 0.0 else ""), Style.FONT_TINY, Style.TEXT if lvl > 0 else Style.MUTED)
 	num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
 	num.clip_text = true
 	num.text_overrun_behavior = TextServer.OVERRUN_TRIM_ELLIPSIS

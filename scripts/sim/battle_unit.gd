@@ -4,7 +4,7 @@ extends RefCounted
 
 const ATTACK_INTERVAL := 1.6   # base seconds between basic attacks
 const SPELL_INTERVAL := 3.2    # base seconds between rotation steps
-const RETRY_DELAY := 0.4       # if no rotation spell is valid, look again this soon
+const RETRY_DELAY := 0.1       # if no rotation spell is valid, look again this soon
 
 var uid: int
 var side: int            # 0 = allies (left), 1 = enemies (right)

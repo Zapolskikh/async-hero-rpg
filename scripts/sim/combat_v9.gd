@@ -244,7 +244,7 @@ func _act(u: BattleUnit) -> void:
 		# Taunt uses its own cooldown rather than waiting for a rotation turn.
 		for e in u.spells:
 			if Db.SPELLS[e["id"]]["kind"] == "taunt" and not u.cooldowns.has(e["id"]):
-				u.cooldowns[e["id"]] = Db.SPELLS[e["id"]]["cd"]
+				u.cooldowns[e["id"]] = Db.spell_cd(e["id"],e.get("lvl",1))
 				_cast(u,e["id"],e.get("lvl",1),u)
 				return
 		for e in u.spells:
@@ -252,7 +252,7 @@ func _act(u: BattleUnit) -> void:
 			if (s["kind"] == "interrupt" or s.get("reactive",false)) and not u.cooldowns.has(e["id"]) and _usable(u,e["id"]):
 				for f in foes_of(u):
 					if _interruptible(f):
-						u.cooldowns[e["id"]] = s["cd"]
+						u.cooldowns[e["id"]] = Db.spell_cd(e["id"],e.get("lvl",1))
 						_cast(u,e["id"],e.get("lvl",1),f)
 						return
 		if u.rank("emergency") and not u.cooldowns.has("emergency"):
@@ -321,7 +321,7 @@ func _try_rotation(u: BattleUnit) -> bool:
 		var s: Dictionary = Db.SPELLS[sid]
 		u.rot_index = idx
 		if s.get("cd",0.) > 0. and not (u.gear_fx.has("cd_refund") and rng.randf() < u.gear_fx["cd_refund"]):
-			u.cooldowns[sid] = s["cd"]
+			u.cooldowns[sid] = Db.spell_cd(sid,e.get("lvl",1))
 		var duration: float = s.get("cast",0.)
 		if not s.get("weapon",false):
 			duration *= 1.-.03*u.rank("fast_cast")-u.gear_fx.get("cast_speed",0.)
