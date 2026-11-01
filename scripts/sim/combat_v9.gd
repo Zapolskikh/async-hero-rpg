@@ -212,6 +212,9 @@ func _tick(u: BattleUnit) -> void:
 func _act(u: BattleUnit) -> void:
 	if u.stun > 0.:
 		return
+	# The rotation interval (global cooldown) starts on the button press and keeps
+	# running while that spell is still being cast or channelled.
+	u.spell_cd -= STEP
 	if not u.channel.is_empty():
 		if u.silence > 0.:
 			u.channel.clear()
@@ -263,7 +266,6 @@ func _act(u: BattleUnit) -> void:
 						u.cooldowns["emergency"] = 30.-5.*u.rank("emergency")
 						_cast(u,e["id"],e.get("lvl",1),f)
 						return
-	u.spell_cd -= STEP
 	if u.spell_cd <= 0. and u.silence <= 0. and not u.spells.is_empty():
 		if _try_rotation(u):
 			u.spell_cd = u.spell_interval()
