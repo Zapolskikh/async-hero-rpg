@@ -172,3 +172,61 @@ def test_professions_are_server_timed(client):
     me = client.get("/v1/me", headers=h).json()["profile"]
     assert me["resources"]["minor_strength_potion"] == 1
     assert me["gathering"]["loc"] == "abandoned_quarry"
+
+
+def _edit_profile(account_id, fn):
+    """Changes a stored profile directly (test setup only)."""
+    import asyncio
+    import copy
+    import os
+    from sqlalchemy.ext.asyncio import create_async_engine, async_sessionmaker
+    from app import db
+
+    async def run():
+        eng = create_async_engine(os.environ["DATABASE_URL"])
+        async with async_sessionmaker(eng)() as s, s.begin():
+            row = await s.get(db.Profile, account_id)
+            data = copy.deepcopy(row.data)   # a new object, so the JSON column is saved
+            fn(data)
+            row.data = data
+        await eng.dispose()
+    asyncio.run(run())
+
+
+def test_mythic_season(client):
+    set_clock(client, 0)
+    d, h = guest(client, "Мификер")
+    st = act(client, h, "start", mode="mythic")
+    assert not st["ok"] and "30" in st["error"], "Mythic+ opens at hero level 30"
+
+    def level_30(p):
+        p["hero"]["level"] = 30
+        p["resources"] = dict(p["resources"], mythic_key=2)
+    _edit_profile(d["account_id"], level_30)
+    st = act(client, h, "start", mode="mythic")
+    assert st["ok"], st
+    ex = st["profile"]["expedition"]
+    assert ex["mode"] == "mythic" and ex["level"] == 1 and st["profile"]["resources"]["mythic_key"] == 1
+    set_clock(client, ex["tl"]["t_end"] + 1)
+    me = client.get("/v1/me", headers=h).json()
+    assert any(r["type"] == "mythic_end" for r in me["reports"]), me["reports"]
+
+    def record(p):
+        p["mythic"].update(best=4, best_time=321.5, level=5)
+    _edit_profile(d["account_id"], record)
+    client.get("/v1/me", headers=h)
+    lb = client.get("/v1/leaderboard").json()
+    assert lb["season"] >= 1 and {"name": "Мификер", "level": 4, "time": 321.5} in lb["mythic"], lb["mythic"]
+
+    from app.config import settings
+    settings.admin_token = "secret"
+    assert client.post("/v1/admin/season/close", json={"season": lb["season"]}).status_code == 403
+    r = client.post("/v1/admin/season/close", json={"season": lb["season"]}, headers={"X-Admin-Token": "secret"})
+    assert r.status_code == 200 and r.json()["rewarded"] >= 1, r.text
+    again = client.post("/v1/admin/season/close", json={"season": lb["season"]}, headers={"X-Admin-Token": "secret"})
+    assert again.status_code == 409, "a season is paid once"
+    crystals = me["profile"]["crystals"]
+    me = client.get("/v1/me", headers=h).json()
+    rewards = [x for x in me["reports"] if x["type"] == "season_reward"]
+    assert rewards and rewards[0]["rank"] >= 1 and me["profile"]["crystals"] > crystals, me["reports"]
+    assert not any(x["type"] == "season_reward" for x in client.get("/v1/me", headers=h).json()["reports"])

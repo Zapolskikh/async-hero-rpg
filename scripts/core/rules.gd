@@ -43,7 +43,15 @@ const AUTHORITY_ACTIONS := ["reroll", "open_box", "open_pack", "start", "collect
 	"gather_start", "gather_claim", "gather_cancel", "prof_choose", "craft_start", "craft_claim", "use_item",
 	"fake_purchase", "buy_cosmetic", "rush", "buy_boost", "merge_items", "merge_claim"]
 ## Server-internal actions, never accepted from a client.
-const INTERNAL_ACTIONS := ["grant_assists"]
+const INTERNAL_ACTIONS := ["grant_assists", "grant_season_reward"]
+## Mythic+ season rewards by final place (granted by the server when the season closes):
+## crystals and one level 30 item of the given quality (Items: 3 rare, 4 epic, 5 legendary).
+const MYTHIC_SEASON_REWARDS := [
+	{"to": 1, "crystals": 1000, "quality": 5},
+	{"to": 3, "crystals": 600, "quality": 5},
+	{"to": 10, "crystals": 300, "quality": 4},
+	{"to": 50, "crystals": 150, "quality": 3},
+]
 
 # =====================================================================
 # Profile lifecycle
@@ -59,6 +67,7 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 		"rerolls_today": 0, "reroll_day": "", "free_box_day": "",
 		"expedition": null, "reports": [], "stats": {"hired_total": 0, "assist_gold_total": 0},
 		"resources": {}, "recipes_known": [], "crystals": 0, "cosmetics_owned": [], "gold_box_day": "", "gold_boxes_today": 0, "professions": _fresh_professions(), "craft_prof": "", "gathering": null, "crafting": {}, "merging": null, "buffs": {},
+		"mythic": _fresh_mythic(),
 		"rng": {"seed": str(seed_value), "state": ""},
 	}
 	var r := _rng(p)
@@ -122,6 +131,7 @@ static func migrate(p: Dictionary, now: float) -> void:
 	for k in hero["talents"].keys():
 		hero["talents"][k] = int(hero["talents"][k])
 	hero["xp"] = int(hero["xp"])
+	_migrate_mythic(p)
 	for slot in hero["equipped"]:
 		_fix_item(hero["equipped"][slot])
 	# v5: a two-handed weapon and something in the left hand cannot be held together
@@ -159,6 +169,31 @@ static func migrate(p: Dictionary, now: float) -> void:
 	p.erase("time")
 	p.erase("v")
 	p["v"] = VERSION
+
+static func _fresh_mythic() -> Dictionary:
+	return {"season": Db.MYTHIC_SEASON, "level": 1, "best": 0, "best_time": 0.0, "runs": 0}
+
+## Season 1 caps the hero at level 30 (talent points past the cap are refunded)
+## and starts Mythic+ progress; a new season resets the key level and the record.
+static func _migrate_mythic(p: Dictionary) -> void:
+	var hero: Dictionary = p["hero"]
+	if int(hero["level"]) > Db.HERO_MAX_LEVEL:
+		hero["level"] = Db.HERO_MAX_LEVEL
+		if Talents.points_spent(hero["talents"]) > Talents.points_total(Db.HERO_MAX_LEVEL):
+			hero["talents"] = {}
+	if int(hero["level"]) >= Db.HERO_MAX_LEVEL:
+		hero["xp"] = 0
+	var m = p.get("mythic")
+	if typeof(m) != TYPE_DICTIONARY or int(m.get("season", 0)) != Db.MYTHIC_SEASON:
+		p["mythic"] = _fresh_mythic()
+		return
+	for k in ["season", "level", "best", "runs"]:
+		m[k] = int(m.get(k, 0))
+	m["level"] = maxi(1, int(m["level"]))
+	m["best_time"] = float(m.get("best_time", 0.0))
+
+static func mythic_open(p: Dictionary) -> bool:
+	return int(p["hero"]["level"]) >= Db.HERO_MAX_LEVEL
 
 static func _empty_equipment() -> Dictionary:
 	var e := {}
@@ -417,7 +452,7 @@ static func pending(p: Dictionary, now: float) -> Dictionary:
 
 static func push_finished(p: Dictionary, now: float) -> bool:
 	var ex = p.get("expedition")
-	return ex != null and ex["mode"] == "push" and now - float(ex["started_at"]) >= float(ex["tl"]["t_end"])
+	return ex != null and Expedition.is_attempt(ex["mode"]) and now - float(ex["started_at"]) >= float(ex["tl"]["t_end"])
 
 # =====================================================================
 # Actions
@@ -455,6 +490,7 @@ static func apply(p: Dictionary, action: String, args: Dictionary, now: float, c
 		"collect": res = _collect(p, r, now, ctx, false)
 		"stop": res = _collect(p, r, now, ctx, true)
 		"grant_assists": res = _grant_assists(p, int(args.get("gold", 0)), int(args.get("hires", 0)))
+		"grant_season_reward": res = _grant_season_reward(p, r, int(args.get("season", 0)), int(args.get("rank", 0)))
 		"gather_start": res = _gather_start(p, str(args.get("prof", "")), str(args.get("loc", "")), int(args.get("sec", 0)), now)
 		"gather_claim": res = _gather_claim(p, r, now)
 		"gather_cancel": res = _gather_cancel(p)
@@ -879,6 +915,8 @@ static func _roll_box(p: Dictionary, r: RandomNumberGenerator) -> Dictionary:
 	return {"spell": pick, "new": was_new}
 
 static func _start(p: Dictionary, r: RandomNumberGenerator, level: int, mode: String, now: float, ctx: Dictionary) -> Dictionary:
+	if mode == "mythic":
+		return _start_mythic(p, r, now, ctx)
 	if not mode in ["push", "farm"]:
 		return _err("bad mode")
 	if not party_ready(p):
@@ -898,6 +936,31 @@ static func _start(p: Dictionary, r: RandomNumberGenerator, level: int, mode: St
 		_apply_potion(p, party, Prof.CONSUMABLES[potion["res"]])
 	p["expedition"] = _make_expedition(p, level, mode, party, r.randi(), level > int(p["closed_level"]), now)
 	var out := _ok({"expedition": p["expedition"]["id"]})
+	if not prev.is_empty():
+		out["previous"] = prev.get("report", {})
+		out["assists"] = prev.get("assists", [])
+	return out
+
+## One Mythic+ attempt at the player's current key level. Costs a key whatever the result.
+static func _start_mythic(p: Dictionary, r: RandomNumberGenerator, now: float, ctx: Dictionary) -> Dictionary:
+	if not mythic_open(p):
+		return _err("mythic opens at hero level %d" % Db.HERO_MAX_LEVEL)
+	if res_count(p, Db.MYTHIC_KEY) < 1:
+		return _err("no mythic key")
+	if not party_ready(p):
+		return _err("party not ready")
+	var prev := {}
+	if p.get("expedition") != null:
+		prev = _collect(p, r, now, ctx, true)
+	_add_res(p, Db.MYTHIC_KEY, -1)
+	var key: int = p["mythic"]["level"]
+	p["mythic"]["runs"] = int(p["mythic"]["runs"]) + 1
+	var party := party_snapshots(p).duplicate(true)
+	var potion = active_buffs(p, now).get("potion")
+	if potion != null:
+		_apply_potion(p, party, Prof.CONSUMABLES[potion["res"]])
+	p["expedition"] = _make_expedition(p, key, "mythic", party, Db.mythic_seed(key), false, now)
+	var out := _ok({"expedition": p["expedition"]["id"], "key": key})
 	if not prev.is_empty():
 		out["previous"] = prev.get("report", {})
 		out["assists"] = prev.get("assists", [])
@@ -941,11 +1004,12 @@ static func _collect(p: Dictionary, r: RandomNumberGenerator, now: float, ctx: D
 		else:
 			rep["auto_sold"] += 1
 			rep["auto_sold_gold"] += Loot.sell_price(it)
-	var push_over: bool = ex["mode"] == "push" and t >= float(ex["tl"]["t_end"])
-	if ex["mode"] == "push":
+	var push_over: bool = Expedition.is_attempt(ex["mode"]) and t >= float(ex["tl"]["t_end"])
+	if Expedition.is_attempt(ex["mode"]):
 		rep["closed"] = push_over and bool(ex["tl"]["closed"])
 		if push_over:
-			rep["type"] = "push_end"
+			rep["type"] = "mythic_end" if ex["mode"] == "mythic" else "push_end"
+			rep["time"] = float(ex["tl"]["t_end"])
 			rep["reason"] = ex["tl"]["reason"]
 			rep["waves"] = ex["tl"]["waves"]
 			rep["total_waves"] = ex["tl"]["total"]
@@ -980,6 +1044,9 @@ static func _apply_rewards(p: Dictionary, r: RandomNumberGenerator, rep: Diction
 	for res in rep.get("mats", {}):
 		_add_res(p, res, int(rep["mats"][res]))
 	rep["board_refreshed"] = false
+	if rep.get("mode", "") == "mythic":
+		_mythic_result(p, rep)
+		return
 	if rep.get("closed", false) and int(rep["level"]) > int(p["closed_level"]):
 		p["closed_level"] = int(rep["level"])
 		if int(rep["level"]) % Shop.CRYSTALS_FIRST_CLEAR_EVERY == 0:
@@ -994,15 +1061,53 @@ static func _apply_rewards(p: Dictionary, r: RandomNumberGenerator, rep: Diction
 			if m.get("npc", true) and int(m["level"]) < lvl - 1:
 				p["board"][i] = Roster.relevel(r, m, lvl)
 
+## A cleared key raises the key level by one; a failed one leaves it. The record is the
+## highest cleared key, ties broken by the shorter battle time.
+static func _mythic_result(p: Dictionary, rep: Dictionary) -> void:
+	var m: Dictionary = p["mythic"]
+	if not rep.get("closed", false):
+		return
+	var key := int(rep["level"])
+	var time := float(rep.get("time", 0.0))
+	if key >= int(m["level"]):
+		m["level"] = key + 1
+	if key > int(m["best"]) or (key == int(m["best"]) and time < float(m["best_time"])):
+		m["best"] = key
+		m["best_time"] = time
+		rep["mythic_record"] = true
+	rep["mythic_next"] = m["level"]
+
 static func _add_xp(p: Dictionary, amount: int) -> int:
 	var hero: Dictionary = p["hero"]
 	var ups := 0
 	hero["xp"] = int(hero["xp"]) + amount
-	while int(hero["xp"]) >= Db.xp_to_next(int(hero["level"])):
+	while int(hero["level"]) < Db.HERO_MAX_LEVEL and int(hero["xp"]) >= Db.xp_to_next(int(hero["level"])):
 		hero["xp"] = int(hero["xp"]) - Db.xp_to_next(int(hero["level"]))
 		hero["level"] = int(hero["level"]) + 1
 		ups += 1
+	if int(hero["level"]) >= Db.HERO_MAX_LEVEL:
+		hero["xp"] = 0   # the season cap: experience no longer accumulates
 	return ups
+
+static func season_reward(rank: int) -> Dictionary:
+	if rank < 1:
+		return {}
+	for tier in MYTHIC_SEASON_REWARDS:
+		if rank <= int(tier["to"]):
+			return tier
+	return {}
+
+static func _grant_season_reward(p: Dictionary, r: RandomNumberGenerator, season: int, rank: int) -> Dictionary:
+	var tier := season_reward(rank)
+	if tier.is_empty():
+		return _err("no reward for this place")
+	p["crystals"] = int(p["crystals"]) + int(tier["crystals"])
+	var role := Items.role_of(Loot.weapon_types(p["hero"]["equipped"]))
+	var it := Loot.roll_gear(r, Db.HERO_MAX_LEVEL, "drop", "", "", role, int(tier["quality"]))
+	p["inventory"].append(it)
+	var rep := {"type": "season_reward", "season": season, "rank": rank, "crystals": int(tier["crystals"]), "items": [it]}
+	p["reports"].append(rep)
+	return _ok({"report": rep})
 
 static func _grant_assists(p: Dictionary, gold: int, hires: int) -> Dictionary:
 	if gold <= 0 and hires <= 0:
@@ -1032,6 +1137,8 @@ static func _add_res(p: Dictionary, res: String, n: int) -> void:
 			p["recipes_known"].append(rid)
 		return
 	p["resources"][res] = res_count(p, res) + n
+	if res == Db.MYTHIC_KEY:
+		p["resources"][res] = mini(int(p["resources"][res]), Db.MYTHIC_KEY_CAP)
 	if int(p["resources"][res]) <= 0:
 		p["resources"].erase(res)
 

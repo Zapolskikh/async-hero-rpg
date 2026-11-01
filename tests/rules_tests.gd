@@ -36,6 +36,8 @@ func _init() -> void:
 	test_consumables()
 	test_combat_materials()
 	test_v2_migration()
+	test_hero_cap()
+	test_mythic()
 	print("FAILURES: %d" % failures)
 	quit(1 if failures > 0 else 0)
 
@@ -726,3 +728,75 @@ func test_v2_migration() -> void:
 	check(q["v"] == Rules.VERSION and q["professions"].size() == 6 and q["hero"]["equipped"].has("feet"), "old profile gets professions and new slots")
 	check(q["craft_prof"] == "", "old profile chooses its craft freely")
 	check(Rules.apply(q, "gather_start", {"prof": "herbalism", "loc": "green_meadow", "sec": 900}, T0)["ok"], "migrated profile can gather")
+
+func test_hero_cap() -> void:
+	var p := Rules.new_profile(31, T0)
+	p["hero"]["level"] = Db.HERO_MAX_LEVEL - 1
+	Rules._add_xp(p, 1_000_000_000)
+	check(p["hero"]["level"] == Db.HERO_MAX_LEVEL and p["hero"]["xp"] == 0, "hero stops at level %d and stores no extra xp" % Db.HERO_MAX_LEVEL)
+	var old := Rules.new_profile(32, T0)
+	old["hero"]["level"] = 41
+	old["hero"]["talents"] = {"focus": 5, "fast_cast": 5}
+	for id in Talents.TALENTS:
+		if Talents.points_spent(old["hero"]["talents"]) < Talents.points_total(41):
+			old["hero"]["talents"][id] = Talents.TALENTS[id]["ranks"]
+	Rules.migrate(old, T0)
+	check(old["hero"]["level"] == Db.HERO_MAX_LEVEL and Talents.points_spent(old["hero"]["talents"]) <= Talents.points_total(Db.HERO_MAX_LEVEL), "older heroes are brought to the cap, extra talent points refunded")
+	check(Db.enemy_scale(30) < Db.enemy_scale(29) * 1.2, "campaign enemies stop tracking hero growth past the cap")
+
+func test_mythic() -> void:
+	var p := Rules.new_profile(33, T0)
+	check(p["mythic"]["level"] == 1 and p["mythic"]["best"] == 0, "Mythic+ starts at key +1")
+	p["resources"][Db.MYTHIC_KEY] = 3
+	check(not Rules.apply(p, "start", {"mode": "mythic"}, T0)["ok"], "Mythic+ is locked below hero level 30")
+	p["hero"]["level"] = Db.HERO_MAX_LEVEL
+	var r := Rules.apply(p, "start", {"mode": "mythic"}, T0)
+	check(r["ok"] and Rules.res_count(p, Db.MYTHIC_KEY) == 2, "an attempt costs one key")
+	var ex: Dictionary = p["expedition"]
+	check(ex["mode"] == "mythic" and int(ex["seed"]) == Db.mythic_seed(1) and int(ex["tl"]["total"]) == Db.MYTHIC_WAVES.size(), "the dungeon uses the shared seed and all its waves")
+	var other := Rules.new_profile(34, T0)
+	other["hero"]["level"] = Db.HERO_MAX_LEVEL
+	other["resources"][Db.MYTHIC_KEY] = 1
+	other["hired"] = p["hired"].duplicate(true)
+	other["hero"] = p["hero"].duplicate(true)
+	other["party_order"] = p["party_order"].duplicate()
+	Rules.apply(other, "start", {"mode": "mythic"}, T0)
+	check(other["expedition"]["tl"]["t_end"] == ex["tl"]["t_end"] and other["expedition"]["tl"]["won"] == ex["tl"]["won"], "the same party gets the same result for any player")
+	var t_end: float = ex["tl"]["t_end"]
+	var won: bool = ex["tl"]["won"]
+	var out := Rules.tick(p, T0 + t_end + 1.0)
+	var rep: Dictionary = out["reports"][0]
+	check(rep["type"] == "mythic_end" and rep["xp"] == 0 and rep["items"].is_empty(), "Mythic+ pays no kill rewards and no items")
+	if won:
+		check(p["mythic"]["level"] == 2 and p["mythic"]["best"] == 1 and rep["gold"] == Db.mythic_gold(1) and rep["boxes"] == 1, "a clear raises the key and pays gold and a box")
+	else:
+		check(p["mythic"]["level"] == 1 and rep["gold"] == 0, "a failed key keeps its level and pays nothing")
+	# record: higher key wins, a tie goes to the faster clear
+	var m: Dictionary = p["mythic"]
+	m["level"] = 5
+	m["best"] = 4
+	m["best_time"] = 300.0
+	Rules._mythic_result(p, {"mode": "mythic", "closed": true, "level": 4, "time": 280.0})
+	check(m["best"] == 4 and m["best_time"] == 280.0 and m["level"] == 5, "a faster clear of the same key is the new record")
+	Rules._mythic_result(p, {"mode": "mythic", "closed": false, "level": 5, "time": 100.0})
+	check(m["level"] == 5 and m["best"] == 4, "a failed key changes nothing")
+	Rules._mythic_result(p, {"mode": "mythic", "closed": true, "level": 5, "time": 400.0})
+	check(m["level"] == 6 and m["best"] == 5 and m["best_time"] == 400.0, "a higher key beats any time")
+	# keys drop in the campaign: always on a first clear, capped
+	var q := Rules.new_profile(35, T0)
+	var tl := Expedition.build_timeline(1, "push", Rules.party_snapshots(q), 77, true)
+	if tl["won"]:
+		check(int(tl["pts"][-1][Expedition.P_MATS].get(Db.MYTHIC_KEY, 0)) == 1, "a first clear drops a Mythic+ key")
+	q["resources"][Db.MYTHIC_KEY] = Db.MYTHIC_KEY_CAP
+	Rules._add_res(q, Db.MYTHIC_KEY, 5)
+	check(Rules.res_count(q, Db.MYTHIC_KEY) == Db.MYTHIC_KEY_CAP, "keys stop at the cap")
+	# season reward
+	var g := Rules.new_profile(36, T0)
+	var cr: int = g["crystals"]
+	check(Rules.apply(g, "grant_season_reward", {"season": 1, "rank": 1}, T0)["ok"] and g["crystals"] == cr + 1000 and int(g["inventory"][-1]["rarity"]) == Items.LEGENDARY, "first place: crystals and a legendary item")
+	check(not Rules.apply(g, "grant_season_reward", {"season": 1, "rank": 999}, T0)["ok"], "no reward outside the paid places")
+	# season change resets progress
+	g["mythic"]["season"] = 0
+	g["mythic"]["best"] = 9
+	Rules.migrate(g, T0)
+	check(g["mythic"]["best"] == 0 and g["mythic"]["season"] == Db.MYTHIC_SEASON, "a new season starts the key from +1")

@@ -224,6 +224,52 @@ const LEVELS := [
 	{"name": "Цитадель архилича", "waves": [["warlock", "siren", "priest", "priest"], ["golem", "phantom", "assassin", "plaguebearer"], ["warden", "caster", "doomcaller", "priest"], ["boss_archlich", "warden"]]},
 ]
 
+# --- Mythic+ (season 1 endgame): one long dungeon, the same for every player ---
+## Hero level cap for the season: campaign enemies stop tracking hero growth here too.
+const HERO_MAX_LEVEL := 30
+const MYTHIC_SEASON := 1
+const MYTHIC_ENEMY_LEVEL := 30      # enemies use campaign level 30 stats and modifiers
+const MYTHIC_BASE := 0.36           # key +1 strength relative to campaign level 30 (tuned: any level 30 party clears it)
+const MYTHIC_STEP := 0.05           # each key level: enemy health and damage +5%, compounding
+const MYTHIC_KEY := "mythic_key"
+const MYTHIC_KEY_CHANCE := 0.03     # per won campaign run that is not a first clear (first clears always give one)
+const MYTHIC_KEY_CAP := 20
+## Every enemy in the game, in different packs; a pair of bosses closes each quarter.
+const MYTHIC_WAVES := [
+	["brute", "caster", "ranged"],
+	["tank", "healer", "assassin", "poisoner"],
+	["berserker", "berserker", "ranged"],
+	["boss_ogre", "boss_lich"],
+	["golem", "warlock", "priest"],
+	["swarm", "swarm", "swarm", "swarm"],
+	["doomcaller", "warden", "caster"],
+	["boss_warlord", "boss_titan"],
+	["plaguebearer", "phantom", "healer"],
+	["ironclad", "executioner", "priest"],
+	["siren", "assassin", "warlock", "ranged"],
+	["boss_plague", "boss_shadow"],
+	["phantom", "phantom", "siren", "priest"],
+	["executioner", "golem", "plaguebearer", "doomcaller"],
+	["warden", "ironclad", "berserker", "priest"],
+	["boss_wraith", "boss_hierophant"],
+	["swarm", "swarm", "executioner", "warlock"],
+	["tank", "warden", "priest", "doomcaller"],
+	["assassin", "poisoner", "plaguebearer", "siren"],
+	["boss_drake", "boss_archlich"],
+]
+
+## Enemy health and damage multiplier at this key level.
+static func mythic_scale(key: int) -> float:
+	return MYTHIC_BASE * pow(1.0 + MYTHIC_STEP, maxi(1, key) - 1)
+
+## The same battle seed for every player at a key level.
+static func mythic_seed(key: int) -> int:
+	return hash(["mythic", MYTHIC_SEASON, key]) & 0x7fffffff
+
+## Gold for a cleared key (plus one spell box).
+static func mythic_gold(key: int) -> int:
+	return 200 + 20 * maxi(1, key)
+
 const CHAPTERS := [
 	{"from": 1, "name": "Пограничье"},
 	{"from": 11, "name": "Северные пустоши"},
@@ -338,7 +384,7 @@ static func enemy_scale(level: int) -> float:
 	if level <= SCALE_BREAK:
 		return pow(LEVEL_SCALE, level - 1)
 	var base := pow(LEVEL_SCALE, SCALE_BREAK - 1)
-	var h := HERO_AT_BREAK + HERO_PER_LEVEL * (level - SCALE_BREAK)
+	var h := minf(HERO_AT_BREAK + HERO_PER_LEVEL * (level - SCALE_BREAK), HERO_MAX_LEVEL)
 	return base * party_strength(h) / party_strength(HERO_AT_BREAK) * pow(LATE_TOUGHNESS, mini(level - SCALE_BREAK, TOUGHNESS_LEVELS)) * float(LEVEL_PACE.get(level, 1.0))
 
 ## Rough strength of a character of hero level h: sqrt(damage x health).

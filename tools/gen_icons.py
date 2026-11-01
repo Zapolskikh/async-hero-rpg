@@ -345,6 +345,14 @@ ICONS.update({
 })
 
 
+ICONS.update({
+    # Mythic+ key: a golden key with a purple gem in the bow.
+    "res_mythic_key": lambda d: (d.ellipse([1, 1, 8, 8], fill=C["gold"]), d.ellipse([3, 3, 6, 6], fill=C["purple"]),
+                                 d.line([(7, 7), (14, 14)], fill=C["gold"], width=2),
+                                 d.line([(11, 11), (13, 9)], fill=C["gold_d"], width=2), d.line([(13, 13), (15, 11)], fill=C["gold_d"], width=1)),
+})
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for name, fn in ICONS.items():

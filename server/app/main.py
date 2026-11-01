@@ -3,7 +3,9 @@
   POST /v1/auth/guest   {"name": "..."}           -> {"account_id", "token", ...profile view}
   GET  /v1/me                                      -> profile view (finishes pushes, pays assist rewards)
   POST /v1/action       {"action": "...", "args": {...}} -> profile view + result
-  GET  /v1/leaderboard                             -> top players, most hired heroes
+  GET  /v1/leaderboard                             -> top players, most hired heroes, Mythic+ season board
+  POST /v1/admin/season/close {"season": 1}        -> ranks the Mythic+ season and queues place rewards
+                                                     (header X-Admin-Token, disabled when ADMIN_TOKEN is empty)
   GET  /health                                     -> liveness
 
 Auth: "Authorization: Bearer <token>" (guest token from /v1/auth/guest).
@@ -12,6 +14,7 @@ Profile view: {ok, error, result, reports, profile, pending, server_time}.
 from __future__ import annotations
 
 import logging
+import secrets
 import time
 from contextlib import asynccontextmanager
 
@@ -110,6 +113,17 @@ async def me(request: Request, account_id: str = Depends(current_account)):
 @app.post("/v1/action")
 async def action(body: ActionIn, request: Request, account_id: str = Depends(current_account)):
     return await game(request).action(account_id, body.action, body.args)
+
+
+class SeasonIn(BaseModel):
+    season: int = Field(ge=1)
+
+
+@app.post("/v1/admin/season/close")
+async def close_season(body: SeasonIn, request: Request, x_admin_token: str = Header(default="")):
+    if not settings.admin_token or not secrets.compare_digest(x_admin_token, settings.admin_token):
+        raise HTTPException(403, "admin only")
+    return await game(request).close_season(body.season)
 
 
 @app.get("/v1/leaderboard")

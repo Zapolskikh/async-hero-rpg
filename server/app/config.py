@@ -28,6 +28,11 @@ class Settings:
     rate_burst: int = int(os.getenv("RATE_BURST", "30"))
     # prototype: "Купить (тест)" grants crystals for free. Set ALLOW_FAKE_PURCHASES=0 before real payments.
     allow_fake_purchases: bool = os.getenv("ALLOW_FAKE_PURCHASES", "1") == "1"
+    # Mythic+ seasons: closing a season pays the places (POST /v1/admin/season/close, header X-Admin-Token).
+    # Empty token disables the admin endpoint.
+    admin_token: str = os.getenv("ADMIN_TOKEN", "")
+    season_reward_places: int = int(os.getenv("SEASON_REWARD_PLACES", "50"))   # tiers live in Rules.MYTHIC_SEASON_REWARDS
+    mythic_board_size: int = int(os.getenv("MYTHIC_BOARD_SIZE", "50"))
 
 
 settings = Settings()

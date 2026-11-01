@@ -63,6 +63,8 @@ const RESOURCES := {
 	"fine_cloth":       {"name": "Тонкая ткань",      "cat": "cloth", "tier": 2},
 	"boss_core":        {"name": "Ядро босса",        "cat": "special", "tier": 2},
 	"enchanted_thread": {"name": "Зачарованная нить", "cat": "special", "tier": 2},
+	"mythic_key":       {"name": "Ключ Мифик+",       "cat": "special", "tier": 3,
+		"desc": "Одна попытка в подземелье Мифик+. Доступ откроется на 30 уровне героя."},
 	# consumables (crafted by alchemy, used from the materials screen)
 	"minor_strength_potion":   {"name": "Малое зелье силы",          "cat": "alchemy", "tier": 0},
 	"minor_recovery_potion":   {"name": "Малое зелье восстановления", "cat": "alchemy", "tier": 0},

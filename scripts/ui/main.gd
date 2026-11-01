@@ -16,6 +16,8 @@ const TABS := [
 
 var current_tab := "expedition"
 var selected_level := 1
+const MYTHIC_NODE := -1     # selected_level value of the Mythic+ node after the last level
+const MYTHIC_HINT := "Ключи выпадают на уровнях кампании 1–30: за первое прохождение и иногда на фарме."
 var _built_tab := ""         # tab whose content is on screen (scroll is kept when rebuilding the same tab)
 var bag_sort := "level"     # bag order: level / rarity / type
 var selected_item := ""
@@ -249,6 +251,16 @@ func _campaign_path() -> Control:
 		if lvl == selected_level:
 			focus = node
 		h.add_child(node)
+	var gap := ColorRect.new()
+	gap.custom_minimum_size = Vector2(26, 6)
+	gap.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	gap.color = Style.SECONDARY if Game.mythic_open() else Style.CARD_3
+	gap.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	h.add_child(gap)
+	var mnode := _mythic_node()
+	if selected_level == MYTHIC_NODE:
+		focus = mnode
+	h.add_child(mnode)
 	var s := UI.scroll(h, true)
 	s.custom_minimum_size.y = 92
 	c.add_child(s)
@@ -319,10 +331,43 @@ func _path_node(lvl: int) -> Control:
 		holder.add_child(sk)
 	return holder
 
+## The Mythic+ dungeon at the end of the path; it can be looked at before it opens.
+func _mythic_node() -> Control:
+	var open := Game.mythic_open()
+	var col := Style.SECONDARY if open else Style.CARD_3
+	var holder := Control.new()
+	holder.custom_minimum_size = Vector2(96, 86)
+	var b := Button.new()
+	b.size = Vector2(96, 76)
+	b.position = Vector2(0, 6)
+	var sb := Style.box(col, 18, 4)
+	sb.border_width_bottom = 5
+	sb.border_color = col.darkened(0.35)
+	if selected_level == MYTHIC_NODE:
+		for side in ["left", "right", "top"]:
+			sb.set("border_width_" + side, 4)
+		sb.border_color = Color.WHITE
+	for k in ["normal", "hover", "pressed", "focus", "disabled"]:
+		b.add_theme_stylebox_override(k, sb)
+	b.pressed.connect(_select_level.bind(MYTHIC_NODE))
+	holder.add_child(b)
+	var inner := UI.vbox(0)
+	inner.set_anchors_preset(Control.PRESET_FULL_RECT)
+	inner.alignment = BoxContainer.ALIGNMENT_CENTER
+	inner.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	var icn := UI.icon("res_mythic_key" if open else "lock", 30)
+	icn.size_flags_horizontal = Control.SIZE_SHRINK_CENTER
+	inner.add_child(icn)
+	var num := UI.label("М+ %d" % int(Game.mythic().get("level", 1)) if open else "М+", Style.FONT_SMALL, Style.TEXT, true)
+	num.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	inner.add_child(num)
+	b.add_child(inner)
+	return holder
+
 func _go_to_expedition() -> void:
 	var ex = Game.exp_info()
 	if ex != null:
-		selected_level = int(ex["level"])
+		selected_level = MYTHIC_NODE if ex["mode"] == "mythic" else int(ex["level"])
 	current_tab = ""
 	_switch("expedition")
 
@@ -360,9 +405,8 @@ func _battle_card() -> Control:
 		return c
 	UI.tap_overlay(holder, _open_watch)
 	holder.add_child(top)
-	var mode := "Фарм" if ex["mode"] == "farm" else "Штурм"
 	var run_txt := (" · забег %d" % (view.run_index + 1)) if view != null and ex["mode"] == "farm" else ""
-	top.add_child(UI.chip("%s · ур. %d%s" % [mode, ex["level"], run_txt],
+	top.add_child(UI.chip("%s%s" % [_run_name(ex["mode"], int(ex["level"])), run_txt],
 		Style.SUCCESS if ex["mode"] == "farm" else Style.PRIMARY, Style.FONT_SMALL,
 		Color("#062b16") if ex["mode"] == "farm" else Style.PRIMARY_TEXT))
 	var watch := UI.btn("Смотреть", _open_watch, "secondary", Style.FONT_SMALL, "watch", 150, 46)
@@ -374,7 +418,16 @@ func _battle_card() -> Control:
 	holder.add_child(watch)
 	return c
 
+## "Штурм · ур. 5", "Фарм · ур. 5" or "Мифик+ 7".
+func _run_name(mode: String, level: int) -> String:
+	match mode:
+		"mythic": return "Мифик+ %d" % level
+		"farm": return "Фарм · ур. %d" % level
+	return "Штурм · ур. %d" % level
+
 func _level_card() -> Control:
+	if selected_level == MYTHIC_NODE:
+		return _mythic_card()
 	var lvl := selected_level
 	var closed := lvl <= Game.closed_level
 	var c := UI.card(Style.CARD, 14)
@@ -398,9 +451,9 @@ func _level_card() -> Control:
 		Style.FONT_TINY, Color("#062b16") if closed else Style.PRIMARY_TEXT))
 	v.add_child(head)
 	var run = Game.exp_info()
-	if run != null and int(run["level"]) != lvl:
-		v.add_child(UI.btn("Идёт %s на ур. %d — открыть" % ["фарм" if run["mode"] == "farm" else "штурм", int(run["level"])],
-			_select_level.bind(int(run["level"])), "secondary", Style.FONT_SMALL, "loop", 0, 44))
+	if run != null and (int(run["level"]) != lvl or run["mode"] == "mythic"):
+		v.add_child(UI.btn("Идёт %s — открыть" % _run_name(run["mode"], int(run["level"])),
+			_go_to_expedition, "secondary", Style.FONT_SMALL, "loop", 0, 44))
 
 	var foes := UI.hbox(6)
 	var seen := {}
@@ -436,7 +489,7 @@ func _level_card() -> Control:
 	v.add_child(row)
 
 	var hints := Db.level_hints(lvl)
-	if not closed and Game.hero["level"] < int(lvl * 1.4):
+	if not closed and Game.hero["level"] < mini(int(lvl * 1.4), Db.HERO_MAX_LEVEL):
 		hints.append("Risky")
 	var flow := HFlowContainer.new()
 	flow.add_theme_constant_override("h_separation", 6)
@@ -472,7 +525,7 @@ func _level_card() -> Control:
 func _level_actions(lvl: int, closed: bool) -> Control:
 	var h := UI.hbox(8)
 	var ex = Game.exp_info()
-	if ex != null and int(ex["level"]) == lvl:
+	if ex != null and int(ex["level"]) == lvl and ex["mode"] != "mythic":
 		if ex["mode"] == "farm":
 			h.add_child(UI.expand(UI.btn("Забрать добычу", _collect_farm, "primary", 22, "gold", 0, 62)))
 		h.add_child(UI.btn("Стоп", _stop_expedition, "danger", 20, "", 110, 62))
@@ -495,17 +548,148 @@ func _tick_status() -> void:
 	if exp_status == null or not is_instance_valid(exp_status):
 		return
 	var ex = Game.exp_info()
+	if selected_level == MYTHIC_NODE and (ex == null or ex["mode"] != "mythic"):
+		exp_status.text = MYTHIC_HINT
+		return
 	if ex == null:
 		exp_status.text = "Поход идёт и при закрытой игре (до 12 ч)."
 		return
 	var pd := Game.pending()
 	var where := ""
+	if ex["mode"] == "mythic":
+		exp_status.text = "Мифик+ %d, волна %d/%d. Награда только за прохождение." % [ex["level"], min(int(pd.get("wave", 0)) + 1, int(ex["tl"]["total"])), int(ex["tl"]["total"])]
+		return
 	if ex["mode"] == "push":
 		where = "Штурм ур. %d, волна %d/%d" % [ex["level"], min(int(pd.get("wave", 0)) + 1, int(ex["tl"]["total"])), int(ex["tl"]["total"])]
 	else:
 		where = "Фарм ур. %d, %s" % [ex["level"], UI.format_time(pd["t"])]
 	exp_status.text = "%s · накоплено %d золота, %d опыта, %d предм. · побед %d, поражений %d" % [
 		where, pd["gold"], pd["xp"], pd["items"], pd["won"], pd["lost"]]
+
+# =====================================================================
+# Mythic+
+# =====================================================================
+
+func _mythic_card() -> Control:
+	var m := Game.mythic()
+	var open := Game.mythic_open()
+	var key := int(m.get("level", 1))
+	var keys := Game.mythic_keys()
+	var c := UI.card(Style.CARD, 14)
+	c.custom_minimum_size.x = 430
+	var outer := UI.vbox(8)
+	c.add_child(outer)
+	var v := UI.vbox(10)
+	var info := UI.scroll(v)
+	info.size_flags_vertical = Control.SIZE_EXPAND_FILL
+	info.custom_minimum_size.y = 60
+	outer.add_child(info)
+
+	var head := UI.hbox(8)
+	var hv := UI.vbox(0)
+	hv.add_child(UI.label("Сезон %d · эндгейм" % Db.MYTHIC_SEASON, Style.FONT_TINY, Style.MUTED, true))
+	hv.add_child(UI.title("Мифик+ %d" % key if open else "Мифик+", 24))
+	head.add_child(UI.expand(hv))
+	head.add_child(UI.pill("res_mythic_key", "%d/%d" % [keys, Db.MYTHIC_KEY_CAP], Style.FONT_SMALL))
+	v.add_child(head)
+	if not open:
+		v.add_child(UI.chip("Откроется на %d уровне героя" % Db.HERO_MAX_LEVEL, Style.CARD_3, Style.FONT_SMALL))
+	v.add_child(UI.wrap("Одно длинное подземелье: %d волн, в нём все противники игры, здоровье между волнами не восстанавливается. Подземелье одинаковое для всех игроков. Каждая попытка тратит ключ. После прохождения уровень ключа растёт на 1, а враги становятся на %d%% сильнее. Провал уровень не снижает." % [
+		Db.MYTHIC_WAVES.size(), roundi(Db.MYTHIC_STEP * 100)], Style.FONT_SMALL))
+	var run = Game.exp_info()
+	if run != null and run["mode"] != "mythic":
+		v.add_child(UI.btn("Идёт %s — открыть" % _run_name(run["mode"], int(run["level"])),
+			_go_to_expedition, "secondary", Style.FONT_SMALL, "loop", 0, 44))
+	var rw := UI.hbox(8)
+	rw.add_child(UI.label("За прохождение:", Style.FONT_TINY, Style.MUTED))
+	rw.add_child(UI.pill("gold", "%d" % Db.mythic_gold(key), Style.FONT_SMALL))
+	rw.add_child(UI.pill("box", "1", Style.FONT_SMALL))
+	v.add_child(rw)
+	if int(m.get("best", 0)) > 0:
+		v.add_child(UI.label("Рекорд: +%d за %s" % [int(m["best"]), _fight_time(float(m["best_time"]))], Style.FONT_SMALL, Style.TEXT, true))
+	var foes := HFlowContainer.new()
+	foes.add_theme_constant_override("h_separation", 4)
+	foes.add_theme_constant_override("v_separation", 4)
+	var seen := {}
+	for w in Db.MYTHIC_WAVES:
+		for e in w:
+			if not seen.has(e):
+				seen[e] = true
+				foes.add_child(UI.avatar(Db.ENEMIES[e]["sprite"], Color("#5a2a3a") if Db.ENEMIES[e].get("boss", false) else Style.CARD_2, 40, true))
+	v.add_child(foes)
+	var mods := Db.level_modifiers(Db.MYTHIC_ENEMY_LEVEL)
+	if not mods.is_empty():
+		var mh := UI.hbox(6)
+		for md in mods:
+			mh.add_child(UI.pill(Db.MODIFIERS[md]["icon"], Db.MODIFIERS[md]["name"], Style.FONT_TINY, Color("#5a2530")))
+		v.add_child(mh)
+
+	var h := UI.hbox(8)
+	if run != null and run["mode"] == "mythic":
+		h.add_child(UI.expand(UI.btn("Смотреть", _open_watch, "secondary", 22, "watch", 0, 62)))
+		h.add_child(UI.btn("Стоп", _stop_expedition, "danger", 20, "", 110, 62))
+	elif not open:
+		h.add_child(UI.expand(UI.btn("Нужен %d уровень героя" % Db.HERO_MAX_LEVEL, func(): pass, "ghost", 20, "lock", 0, 62)))
+	elif keys < 1:
+		h.add_child(UI.expand(UI.btn("Нет ключей", func(): pass, "ghost", 20, "res_mythic_key", 0, 62)))
+	elif not Game.party_ready():
+		h.add_child(UI.expand(UI.btn("Наберите группу", _switch.bind("mercs"), "secondary", 22, "nav_mercs", 0, 62)))
+	else:
+		h.add_child(UI.expand(UI.btn("Начать +%d (ключ)" % key, _start_mythic, "primary", 22, "swords", 0, 62)))
+	h.add_child(UI.btn("Рейтинг", _mythic_leaderboard_popup, "ghost", Style.FONT_SMALL, "trophy", 0, 62))
+	exp_status = UI.wrap(MYTHIC_HINT, Style.FONT_TINY, Style.MUTED)
+	outer.add_child(exp_status)
+	outer.add_child(h)
+	if run != null and run["mode"] == "mythic":
+		_tick_status()
+	return c
+
+func _fight_time(t: float) -> String:
+	return "%d:%04.1f" % [int(t) / 60, fmod(t, 60.0)]
+
+func _start_mythic() -> void:
+	if Game.exp_info() != null and Game.has_pending():
+		_show_rewards(await Game.stop_expedition(), "Прошлый поход завершён")
+	var r: Dictionary = await Game.start_mythic()
+	if r.get("ok", false):
+		selected_level = MYTHIC_NODE
+		_open_watch()
+	else:
+		_toast("Не удалось начать: " + str(r.get("error", "")))
+
+func _mythic_leaderboard_popup() -> void:
+	var v := UI.vbox(6)
+	v.add_child(UI.wrap("Выше тот, кто закрыл более высокий ключ; при равном ключе — у кого бой короче. Награды за места выдаются в конце сезона.", Style.FONT_TINY))
+	var tiers := UI.vbox(2)
+	var from := 1
+	for t in Rules.MYTHIC_SEASON_REWARDS:
+		var place := ("%d" % from) if from == int(t["to"]) else ("%d–%d" % [from, int(t["to"])])
+		var thing: String = {3: "редкая", 4: "эпическая", 5: "легендарная"}.get(int(t["quality"]), "")
+		tiers.add_child(UI.label("%s место: %d кристаллов и %s вещь 30 ур." % [place, int(t["crystals"]), thing], Style.FONT_TINY, Style.TEXT))
+		from = int(t["to"]) + 1
+	v.add_child(tiers)
+	var box := UI.vbox(4)
+	v.add_child(box)
+	if not Game.is_online():
+		box.add_child(UI.wrap("Рейтинг ведётся на сервере: подключитесь в настройках (шестерёнка).", Style.FONT_SMALL, Style.MUTED))
+	else:
+		box.add_child(UI.label("Загрузка…", Style.FONT_SMALL, Style.MUTED))
+		_fill_mythic_board(box)
+	_modal("Рейтинг Мифик+ · сезон %d" % Db.MYTHIC_SEASON, v)
+
+func _fill_mythic_board(box: VBoxContainer) -> void:
+	var d: Dictionary = await Game.leaderboard()
+	if not is_instance_valid(box):
+		return
+	UI.clear(box)
+	var rows: Array = d.get("mythic", [])
+	if rows.is_empty():
+		box.add_child(UI.label("Пока никто не прошёл ни одного ключа", Style.FONT_SMALL, Style.MUTED))
+		return
+	var i := 0
+	for row in rows:
+		i += 1
+		box.add_child(UI.label("%d. %s — +%d за %s" % [i, row["name"], int(row["level"]), _fight_time(float(row["time"]))], Style.FONT_SMALL, Style.TEXT, i <= 3))
 
 func _start(lvl: int, mode: String) -> void:
 	if Game.exp_info() != null and Game.has_pending():
@@ -682,8 +866,7 @@ func _process(_delta: float) -> void:
 		if Game.expedition == null:
 			watch_label.text = "Поход завершён"
 		else:
-			var mode := "Штурм" if ex.mode == "push" else "Фарм"
-			watch_label.text = "%s · ур. %d · забег %d · волна %d/%d · x%d" % [mode, ex.level, ex.run_index + 1,
+			watch_label.text = "%s · забег %d · волна %d/%d · x%d" % [_run_name(ex.mode, ex.level), ex.run_index + 1,
 				min(ex.wave_index + 1, ex.total_waves()), ex.total_waves(), int(Game.watch_speed)]
 		_update_meter(ex)
 
@@ -1960,6 +2143,12 @@ func _fill_leaderboard(box: VBoxContainer) -> void:
 	for row in d.get("campaign", []).slice(0, 5):
 		i += 1
 		box.add_child(UI.label("%d. %s — уровень %d, герой %d ур." % [i, row["name"], row["closed_level"], row["level"]], Style.FONT_SMALL, Style.TEXT))
+	if not d.get("mythic", []).is_empty():
+		box.add_child(UI.label("Мифик+, сезон %d:" % int(d.get("season", Db.MYTHIC_SEASON)), Style.FONT_TINY, Style.MUTED, true))
+		var j := 0
+		for row in d["mythic"].slice(0, 3):
+			j += 1
+			box.add_child(UI.label("%d. %s — +%d за %s" % [j, row["name"], int(row["level"]), _fight_time(float(row["time"]))], Style.FONT_SMALL, Style.TEXT))
 	if not d.get("most_hired", []).is_empty():
 		box.add_child(UI.label("Чаще всех нанимают:", Style.FONT_TINY, Style.MUTED, true))
 		for row in d["most_hired"].slice(0, 3):
@@ -2048,8 +2237,20 @@ func _on_report(r: Dictionary) -> void:
 			_modal("Вашего героя нанимали", v, [], "Отлично")
 		"rewards", "push_abort":
 			_show_rewards(r, "Добыча")
+		"season_reward":
+			var v := UI.vbox(10)
+			v.add_child(UI.wrap("Сезон %d Мифик+ завершён. Ваше место: %d." % [int(r["season"]), int(r["rank"])], Style.FONT_BODY, Style.TEXT))
+			var ph := UI.hbox(10)
+			ph.add_child(UI.pill("crystal", "+%d" % int(r["crystals"]), 24, Color("#3a2f5a")))
+			for it in r.get("items", []):
+				ph.add_child(UI.tile(UI.item_icon(it), Style.QUALITY[it["rarity"]], 64))
+			v.add_child(ph)
+			_modal("Награда сезона", v, [], "Отлично")
 
 func _on_expedition_finished(r: Dictionary) -> void:
+	if r.get("mode", "") == "mythic":
+		_on_mythic_finished(r)
+		return
 	if r.get("closed", false):
 		selected_level = min(Game.closed_level + 1, Db.level_count())
 		_refresh()
@@ -2062,11 +2263,34 @@ func _on_expedition_finished(r: Dictionary) -> void:
 	Sfx.play("win" if r["won"] > 0 else "lose")
 	_show_rewards(r, "Уровень пройден!" if r["won"] > 0 else "Уровень не пройден", buttons)
 
+func _on_mythic_finished(r: Dictionary) -> void:
+	selected_level = MYTHIC_NODE
+	_refresh()
+	var won: bool = r.get("closed", false)
+	Sfx.play("win" if won else "lose")
+	var v := UI.vbox(12)
+	if won:
+		v.add_child(UI.wrap("Ключ +%d пройден за %s. Следующий уровень: +%d." % [int(r["level"]), _fight_time(float(r.get("time", 0.0))), int(r.get("mythic_next", int(r["level"]) + 1))], Style.FONT_BODY, Style.TEXT))
+		if r.get("mythic_record", false):
+			v.add_child(UI.chip("Новый личный рекорд", Style.SUCCESS, Style.FONT_SMALL, Color("#062b16")))
+		var pills := UI.hbox(10)
+		pills.add_child(UI.pill("gold", "+%d" % int(r["gold"]), 24))
+		pills.add_child(UI.pill("box", "+%d" % int(r.get("boxes", 0)), 24))
+		v.add_child(pills)
+	else:
+		v.add_child(UI.wrap("%s на волне %d из %d. Уровень ключа не меняется, ключ потрачен." % [r.get("reason", "Группа пала"), int(r.get("waves", 0)) + 1, int(r.get("total_waves", Db.MYTHIC_WAVES.size()))], Style.FONT_BODY, Style.TEXT))
+	var buttons := []
+	if Game.mythic_keys() > 0:
+		buttons.append(["Ещё попытка (+%d)" % int(Game.mythic().get("level", 1)), _start_mythic, "primary", Game.party_ready()])
+	_modal("Мифик+ пройден!" if won else "Мифик+ не пройден", v, buttons, "Закрыть" if not buttons.is_empty() else "Хорошо")
+
 func _show_rewards(r: Dictionary, title_text: String, buttons: Array = []) -> void:
 	if r.is_empty():
 		return
 	var v := UI.vbox(12)
-	if r.has("reason") and r["won"] == 0:
+	if r.get("mode", "") == "mythic":
+		v.add_child(UI.wrap("Попытка Мифик+ прервана, ключ потрачен.", Style.FONT_BODY, Style.TEXT))
+	elif r.has("reason") and r["won"] == 0:
 		v.add_child(UI.wrap("%s на волне %d из %d. Уровень не открыт, награда за достигнутый прогресс." % [
 			r["reason"], r["waves"] + 1, r["total_waves"]], Style.FONT_BODY, Style.TEXT))
 	if r.get("closed", false):
@@ -2200,8 +2424,7 @@ func _reveal_box(stage: Control, reveal: Control) -> void:
 
 func _show_offline_report(o: Dictionary) -> void:
 	var v := UI.vbox(12)
-	var mode := "штурм" if o["mode"] == "push" else "фарм"
-	v.add_child(UI.wrap("Прошло %s, шёл %s уровня %d." % [UI.format_time(o["away"]), mode, o["level"]], Style.FONT_BODY, Style.TEXT))
+	v.add_child(UI.wrap("Прошло %s, шёл %s." % [UI.format_time(o["away"]), _run_name(str(o["mode"]), int(o["level"])).to_lower()], Style.FONT_BODY, Style.TEXT))
 	var pills := UI.hbox(10)
 	pills.add_child(UI.pill("gold", "+%d" % o["gold"], 24))
 	pills.add_child(UI.pill("xp", "+%d" % o["xp"], 24))

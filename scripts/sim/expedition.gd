@@ -3,6 +3,8 @@ extends RefCounted
 ## An AFK expedition on one campaign level (concept 7.1).
 ##   push: a single attempt at a level. A wipe ends it with partial rewards.
 ##   farm: a closed level looped forever; each run gives full rewards.
+##   mythic: a single attempt at the Mythic+ dungeon; `level` is the key level.
+##     No kill rewards: a clear pays gold and one spell box, a wipe pays nothing.
 ## HP carries over between waves, so sustain matters over a whole level.
 
 const WAVE_PAUSE := 1.5
@@ -53,7 +55,11 @@ func start(p_level: int, p_mode: String, p_party: Array, p_seed: int, p_first_cl
 	_start_run()
 
 func waves() -> Array:
-	return Db.level_waves(level)
+	return Db.MYTHIC_WAVES if mode == "mythic" else Db.level_waves(level)
+
+## True for single attempts (push and Mythic+), false for the endless farm.
+static func is_attempt(p_mode: String) -> bool:
+	return p_mode != "farm"
 
 ## Battle time of the finished waves of the current run (damage meter: DPS per run).
 var run_time_done := 0.0
@@ -71,7 +77,7 @@ func _start_run() -> void:
 func _start_wave() -> void:
 	var snaps := []
 	for eid in waves()[wave_index]:
-		snaps.append(enemy_snapshot(eid, level))
+		snaps.append(mythic_snapshot(eid, level) if mode == "mythic" else enemy_snapshot(eid, level))
 	if sim != null and wave_index > 0:
 		run_time_done += sim.time
 		sim.release(true)
@@ -109,6 +115,15 @@ static func enemy_snapshot(eid: String, lvl: int) -> Dictionary:
 		"stats": st, "spells": spells, "mods": mods, "id": eid,
 	}
 
+## An enemy of the Mythic+ dungeon at this key level: campaign level 30 stats, scaled.
+static func mythic_snapshot(eid: String, key: int) -> Dictionary:
+	var snap := enemy_snapshot(eid, Db.MYTHIC_ENEMY_LEVEL)
+	var k := Db.mythic_scale(key)
+	for stat in ["hp", "atk", "power", "start_shield"]:
+		if snap["stats"].has(stat):
+			snap["stats"][stat] *= k
+	return snap
+
 func advance(dt: float) -> void:
 	if finished:
 		return
@@ -141,6 +156,8 @@ func _on_wave_end() -> void:
 	for u in sim.units:
 		if u.side == 1 and not u.alive():
 			kills += 1
+			if mode == "mythic":
+				continue
 			var mult := 8 if u.is_boss else 1
 			_gold_change += Db.kill_gold(level, mode) * mult
 			gold += int(_gold_change)
@@ -166,8 +183,21 @@ func _on_wave_end() -> void:
 func _on_run_end(cleared: bool, reason: String) -> void:
 	last_reason = reason
 	run_index += 1
+	if mode == "mythic":
+		if cleared:
+			runs_won += 1
+			gold += Db.mythic_gold(level)
+			boxes += 1
+			level_closed_now = true
+		else:
+			runs_lost += 1
+		finished = true
+		return
 	if cleared:
 		runs_won += 1
+		# Mythic+ keys drop on every level of the campaign; they open at hero level 30.
+		if first_clear_pending or mat_rng.randf() < Db.MYTHIC_KEY_CHANCE:
+			_add_mat(Db.MYTHIC_KEY, 1)
 		if mode == "push":
 			var table := Prof.cloth_table(level)
 			var best: String = table.keys()[-1]
@@ -186,7 +216,7 @@ func _on_run_end(cleared: bool, reason: String) -> void:
 			items.append(drop_item(rng, level, "drop", loot_role))
 	else:
 		runs_lost += 1
-	if mode == "push":
+	if is_attempt(mode):
 		finished = true
 	else:
 		_start_run()
@@ -298,12 +328,12 @@ static func build_timeline(p_level: int, p_mode: String, p_party: Array, p_seed:
 		ex.recipe_pool = p_recipes
 	ex.start(p_level, p_mode, p_party, p_seed, p_first)
 	var pts := []
-	if p_mode == "push":
+	if is_attempt(p_mode):
 		while not ex.finished:
 			ex.step_wave_headless()
 			pts.append(ex._point())
 		ex.sim.release()
-		return {"mode": "push", "level": p_level, "seed": p_seed, "pts": pts, "items": ex.items.duplicate(true),
+		return {"mode": p_mode, "level": p_level, "seed": p_seed, "pts": pts, "items": ex.items.duplicate(true),
 			"t_end": snappedf(ex.elapsed, 0.01), "won": ex.runs_won > 0, "reason": ex.last_reason,
 			"waves": ex.best_wave, "total": ex.total_waves(), "closed": ex.level_closed_now}
 	var last_run := 0

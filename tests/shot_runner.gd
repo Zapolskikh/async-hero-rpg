@@ -15,6 +15,7 @@ var doll_only := false
 var shop_only := false
 var farm_only := false
 var fb_only := false
+var mythic_only := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -42,9 +43,13 @@ func _ready() -> void:
 			farm_only = true
 		if a == "--shots-fb":
 			fb_only = true
+		if a == "--shots-mythic":
+			mythic_only = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if fb_only:
+	if mythic_only:
+		_run_mythic()
+	elif fb_only:
 		_run_fb()
 	elif farm_only:
 		_run_farm()
@@ -522,4 +527,37 @@ func _run_fb() -> void:
 	await _wait(0.4)
 	await _shot("48_meter_breakdown")
 	print("shots done")
+	get_tree().quit()
+
+## Mythic+: locked card, open card with keys, a running attempt and the result window.
+func _run_mythic() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	await _wait(0.5)
+	main._select_level(main.MYTHIC_NODE)
+	await _wait(0.4)
+	await _shot("m1_locked")
+	Game.profile["hero"]["level"] = Db.HERO_MAX_LEVEL
+	Game.profile["resources"][Db.MYTHIC_KEY] = 3
+	Game.profile["mythic"]["best"] = 2
+	Game.profile["mythic"]["best_time"] = 254.3
+	Game.profile["mythic"]["level"] = 3
+	Game.changed.emit()
+	main._refresh()
+	await _wait(0.5)
+	await _shot("m2_open")
+	main._mythic_leaderboard_popup()
+	await _wait(0.4)
+	await _shot("m3_board")
+	UI.clear(main.popup_layer)
+	main._start_mythic()
+	Game.watch_speed = 4.0
+	await _wait(3.0)
+	await _shot("m4_battle")
+	main._close_watch()
+	await _wait(0.4)
+	await _shot("m5_running")
+	main._on_mythic_finished({"mode": "mythic", "closed": true, "level": 3, "time": 241.7, "gold": Db.mythic_gold(3), "boxes": 1, "mythic_next": 4, "mythic_record": true})
+	await _wait(0.4)
+	await _shot("m6_result")
 	get_tree().quit()

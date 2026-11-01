@@ -6,12 +6,14 @@ Tables
   snapshots  - public copy of each hero for other players' mercenary boards
   assists    - rewards owed to owners of hired heroes (5% of gold), claimed on next login
   action_log - audit trail of authority actions (concept 12: anti-exploit)
+  mythic_records - best Mythic+ key per account and season (leaderboard)
+  season_rewards - places granted when a season closes, paid into the profile on next login
 """
 from __future__ import annotations
 
 import datetime as dt
 
-from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Index, Integer, String, func
+from sqlalchemy import JSON, BigInteger, Boolean, DateTime, Float, Index, Integer, String, UniqueConstraint, func
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.ext.asyncio import AsyncEngine, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
@@ -85,6 +87,30 @@ class ActionLog(Base):
     gold_after: Mapped[int] = mapped_column(BigInteger, default=0)
     info: Mapped[dict] = mapped_column(JsonType, default=dict)
     at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+
+class MythicRecord(Base):
+    __tablename__ = "mythic_records"
+    season: Mapped[int] = mapped_column(Integer, primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(32), primary_key=True)
+    name: Mapped[str] = mapped_column(String(32), default="")
+    level: Mapped[int] = mapped_column(Integer, default=0)
+    time: Mapped[float] = mapped_column(Float, default=0.0)   # battle seconds of the best clear
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
+
+    __table_args__ = (Index("ix_mythic_rank", "season", "level", "time"),)
+
+
+class SeasonReward(Base):
+    __tablename__ = "season_rewards"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    season: Mapped[int] = mapped_column(Integer, index=True)
+    account_id: Mapped[str] = mapped_column(String(32), index=True)
+    rank: Mapped[int] = mapped_column(Integer)
+    claimed: Mapped[bool] = mapped_column(Boolean, default=False, index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (UniqueConstraint("season", "account_id", name="uq_season_reward"),)
 
 
 engine: AsyncEngine | None = None

@@ -158,7 +158,7 @@ func _tick() -> void:
 	_after_change()
 
 func _emit_report(rep: Dictionary) -> void:
-	if rep.get("type", "") == "push_end":
+	if rep.get("type", "") in ["push_end", "mythic_end"]:
 		expedition_finished.emit(rep)
 	else:
 		report.emit(rep)
@@ -194,7 +194,7 @@ func _sync_view() -> void:
 	_view_id = ex["id"]
 	var v := Expedition.new()
 	v.start(int(ex["level"]), ex["mode"], ex["party"], int(ex["seed"]), bool(ex.get("first", false)))
-	if ex["mode"] == "push":
+	if Expedition.is_attempt(ex["mode"]):
 		# jump to the wave the push is at right now (deterministic: same seed as the authority)
 		var done := Expedition.waves_done_at(ex["tl"], now() - float(ex["started_at"]))
 		v.record_events = false
@@ -401,6 +401,18 @@ func open_box(use: String) -> Dictionary:
 func open_box_pack(use: String) -> Array:
 	var res: Dictionary = await act_authority("open_pack", {"use": use})
 	return res["boxes"] if res.get("ok", false) else []
+
+func mythic() -> Dictionary:
+	return profile.get("mythic", {})
+
+func mythic_keys() -> int:
+	return Rules.res_count(profile, Db.MYTHIC_KEY)
+
+func mythic_open() -> bool:
+	return Rules.mythic_open(profile)
+
+func start_mythic() -> Dictionary:
+	return await act_authority("start", {"mode": "mythic"})
 
 func start_expedition(level: int, mode_name: String) -> bool:
 	var res: Dictionary = await act_authority("start", {"level": level, "mode": mode_name})

@@ -99,7 +99,8 @@ docker compose exec -T db psql -U hero hero < backup.sql     # восстано�
 | POST | `/v1/auth/guest` | `{"name": "Олег"}` | `account_id`, `token` + вид профиля |
 | GET | `/v1/me` | — | вид профиля: завершает штурмы, выплачивает награды за найм |
 | POST | `/v1/action` | `{"action": "...", "args": {...}}` | вид профиля + `result` |
-| GET | `/v1/leaderboard` | — | число игроков, топ кампании, самые нанимаемые |
+| GET | `/v1/leaderboard` | — | число игроков, топ кампании, самые нанимаемые, рейтинг Мифик+ текущего сезона (`season`, `mythic`) |
+| POST | `/v1/admin/season/close` | `{"season": 1}` | закрывает сезон Мифик+: ранжирует игроков и ставит в очередь награды за места; каждый получает свою при следующем запросе. Заголовок `X-Admin-Token`, повторно для того же сезона — 409 |
 | GET | `/health` | — | `{"ok": true}` |
 
 Вид профиля: `{ok, error, result, reports, profile, pending, server_time}`.
@@ -123,6 +124,9 @@ docker compose exec -T db psql -U hero hero < backup.sql     # восстано�
 | `ASSIST_PAIR_DAILY_EVENTS` | 30 | лимит событий «владелец ← наниматель» в день |
 | `POOL_LEVEL_RANGE` | 3 | разброс уровней для доски наёмников |
 | `RATE_PER_SEC`, `RATE_BURST` | 8, 30 | ограничение запросов на аккаунт |
+| `ADMIN_TOKEN` | пусто | токен для `/v1/admin/...`; пусто — админ-запросы выключены |
+| `SEASON_REWARD_PLACES` | 50 | сколько мест получают награду сезона (размеры наград — `Rules.MYTHIC_SEASON_REWARDS`) |
+| `MYTHIC_BOARD_SIZE` | 50 | сколько строк рейтинга Мифик+ отдаёт `/v1/leaderboard` |
 
 ## Производительность
 

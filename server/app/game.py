@@ -105,6 +105,7 @@ class GameService:
                 ctx = {"account": account_id,
                        "real_pool": await self._real_pool(s, account_id, level) if need_pool else []}
                 p = await self._claim_assists(s, account_id, p, now)
+                p = await self._claim_season_rewards(s, account_id, p, now)
                 if action is None:
                     res = await self.pool.call("tick", profile=p, now=now, ctx=ctx)
                 else:
@@ -125,6 +126,7 @@ class GameService:
                 row.data = p
                 row.version = row.version + 1
                 await self._upsert_snapshot(s, account_id, res)
+                await self._record_mythic(s, account_id, res)
                 if action == "set_name" and result.get("ok"):
                     await s.execute(update(db.Account).where(db.Account.id == account_id).values(name=p["name"]))
                 if action in AUTHORITY_ACTIONS or reports:
@@ -221,6 +223,55 @@ class GameService:
                                    now=now, internal=True, ctx={"account": account_id})
         return res["profile"] if res.get("ok") else p
 
+    # ------------------------------------------------------------------ Mythic+
+
+    async def _record_mythic(self, s, account_id: str, res: dict) -> None:
+        """Keeps the leaderboard row in step with the profile's best key (the rules decide the record)."""
+        m = res.get("mythic") or {}
+        best = int(m.get("best", 0) or 0)
+        if best <= 0:
+            return
+        season = int(m.get("season", 0) or 0)
+        time_ = float(m.get("best_time", 0.0) or 0.0)
+        name = str(res.get("snapshot", {}).get("name", ""))[:32]
+        row = await s.get(db.MythicRecord, (season, account_id))
+        if row is None:
+            s.add(db.MythicRecord(season=season, account_id=account_id, name=name, level=best, time=time_))
+        elif row.level != best or row.time != time_ or row.name != name:
+            row.level, row.time, row.name = best, time_, name
+
+    async def mythic_board(self, s, season: int, limit: int) -> list:
+        q = (select(db.MythicRecord.account_id, db.MythicRecord.name, db.MythicRecord.level, db.MythicRecord.time)
+             .where(db.MythicRecord.season == season)
+             .order_by(db.MythicRecord.level.desc(), db.MythicRecord.time.asc(), db.MythicRecord.updated_at.asc())
+             .limit(limit))
+        return (await s.execute(q)).all()
+
+    async def close_season(self, season: int) -> dict:
+        """Ranks the season once and queues the rewards; each player gets theirs on the next request."""
+        async with db.Session() as s, s.begin():
+            done = (await s.execute(select(func.count()).select_from(db.SeasonReward)
+                                    .where(db.SeasonReward.season == season))).scalar_one()
+            if done:
+                raise GameError(409, "season already closed")
+            rows = await self.mythic_board(s, season, self.s.season_reward_places)
+            for rank, (account_id, _name, _level, _time) in enumerate(rows, start=1):
+                s.add(db.SeasonReward(season=season, account_id=account_id, rank=rank))
+        return {"ok": True, "season": season, "rewarded": len(rows)}
+
+    async def _claim_season_rewards(self, s, account_id: str, p: dict, now: float) -> dict:
+        rows = (await s.execute(select(db.SeasonReward).where(db.SeasonReward.account_id == account_id,
+                                                               db.SeasonReward.claimed.is_(False))
+                                .with_for_update())).scalars().all()
+        for r in rows:
+            r.claimed = True
+            res = await self.pool.call("apply", profile=p, action="grant_season_reward",
+                                       args={"season": r.season, "rank": r.rank}, now=now, internal=True,
+                                       ctx={"account": account_id})
+            if res.get("ok") and res.get("result", {}).get("ok"):
+                p = res["profile"]
+        return p
+
     # ------------------------------------------------------------------ public info
 
     async def leaderboard(self) -> dict:
@@ -232,8 +283,12 @@ class GameService:
                                      .where(db.Snapshot.hires_total > 0)
                                      .order_by(db.Snapshot.hires_total.desc()).limit(10))).all()
             players = (await s.execute(select(func.count()).select_from(db.Account))).scalar_one()
+            season = (await s.execute(select(func.max(db.MythicRecord.season)))).scalar_one() or 1
+            mythic = await self.mythic_board(s, season, self.s.mythic_board_size)
         return {
             "players": players,
+            "season": season,
+            "mythic": [{"name": n, "level": l, "time": round(t, 1)} for _a, n, l, t in mythic],
             "campaign": [{"name": n, "closed_level": c, "level": l, "power": pw} for n, c, l, pw in top],
             "most_hired": [{"name": n, "hires": h, "role": r} for n, h, r in hired],
         }

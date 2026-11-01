@@ -74,4 +74,5 @@ func _wrap(p: Dictionary, account: String, now: float, result: Dictionary, t: Di
 		"snapshot": Rules.public_snapshot(p, account),
 		"pending": Rules.pending(p, now),
 		"closed_level": p["closed_level"], "hero_level": p["hero"]["level"],
+		"mythic": p.get("mythic", {}),
 	}
