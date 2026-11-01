@@ -227,6 +227,7 @@ const LEVELS := [
 # --- Mythic+ (season 1 endgame): one long dungeon, the same for every player ---
 ## Hero level cap for the season: campaign enemies stop tracking hero growth here too.
 const HERO_MAX_LEVEL := 30
+const POST_CAP_GROWTH := 1.03       # campaign enemy growth per level once the expected hero is at the cap
 const MYTHIC_SEASON := 1
 const MYTHIC_ENEMY_LEVEL := 30      # enemies use campaign level 30 stats and modifiers
 const MYTHIC_BASE := 0.36           # key +1 strength relative to campaign level 30 (tuned: any level 30 party clears it)
@@ -384,8 +385,11 @@ static func enemy_scale(level: int) -> float:
 	if level <= SCALE_BREAK:
 		return pow(LEVEL_SCALE, level - 1)
 	var base := pow(LEVEL_SCALE, SCALE_BREAK - 1)
-	var h := minf(HERO_AT_BREAK + HERO_PER_LEVEL * (level - SCALE_BREAK), HERO_MAX_LEVEL)
-	return base * party_strength(h) / party_strength(HERO_AT_BREAK) * pow(LATE_TOUGHNESS, mini(level - SCALE_BREAK, TOUGHNESS_LEVELS)) * float(LEVEL_PACE.get(level, 1.0))
+	var h_raw := HERO_AT_BREAK + HERO_PER_LEVEL * (level - SCALE_BREAK)
+	var h := minf(h_raw, HERO_MAX_LEVEL)
+	# Past the hero cap the party still grows through gear and spell levels, not hero levels.
+	var past_cap := pow(POST_CAP_GROWTH, maxf(0.0, (h_raw - HERO_MAX_LEVEL) / HERO_PER_LEVEL))
+	return base * past_cap * party_strength(h) / party_strength(HERO_AT_BREAK) * pow(LATE_TOUGHNESS, mini(level - SCALE_BREAK, TOUGHNESS_LEVELS)) * float(LEVEL_PACE.get(level, 1.0))
 
 ## Rough strength of a character of hero level h: sqrt(damage x health).
 static func party_strength(h: float) -> float:
