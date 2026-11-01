@@ -614,7 +614,7 @@ func _run_fx() -> void:
 		await _shot("fx_%03d" % i)
 	get_tree().quit()
 
-## Every enemy spell cast on the party, three frames per spell; plus a shot absorbed by a shield,
+## Every enemy spell cast on the party, three frames per spell; plus a shot absorbed by a shield
 ## a killing blow and an enemy cast aimed at an ally.
 func _run_enemy_fx() -> void:
 	Game.reset_progress()

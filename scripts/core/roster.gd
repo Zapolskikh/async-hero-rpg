@@ -107,7 +107,8 @@ static func make_merc(rng: RandomNumberGenerator, _template_idx: int, level: int
 
 ## Guild mercenaries on the board grow with the hero (same build, new gear).
 static func relevel(rng: RandomNumberGenerator, merc: Dictionary, level: int) -> Dictionary:
-	var fresh := MercGenerator.make(rng, level, merc.get("weapons",[]))
+	var spec: String = merc.get("spec", "hybrid")
+	var fresh := MercGenerator.make(rng, level, merc.get("weapons",[]), "", [], spec if MercGenerator.SPECS.has(spec) else "hybrid")
 	fresh["spells"] = merc["spells"].duplicate(true)
 	for entry in fresh["spells"]:
 		entry["lvl"] = maxi(int(entry["lvl"]),baseline_spell_level(level))

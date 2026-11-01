@@ -39,6 +39,7 @@ func _init() -> void:
 	test_hero_cap()
 	test_mythic()
 	test_play_stats()
+	test_merc_specs()
 	print("FAILURES: %d" % failures)
 	quit(1 if failures > 0 else 0)
 
@@ -823,3 +824,27 @@ func test_play_stats() -> void:
 	var copy = JSON.parse_string(JSON.stringify(p))
 	Rules.migrate(copy, T0)
 	check(int(copy["stats"]["pushes"]) == 1 and copy["stats"]["levels"]["1"]["tries"] == 1, "statistics survive a save")
+
+func test_merc_specs() -> void:
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 41
+	var count := {}
+	var fit := true
+	for i in 400:
+		var m := MercGenerator.make(rng, 25)
+		count[m["spec"]] = count.get(m["spec"], 0) + 1
+		if MercGenerator.SPECS.has(m["spec"]):
+			var d: Dictionary = MercGenerator.SPECS[m["spec"]]
+			for e in m["spells"]:
+				if not (e["id"] in d["spells"] or e["id"] in d["core"]):
+					fit = false
+			var main := Talents.points_spent(m["talents"], MercGenerator.spec_branch(m["spec"], m["weapons"]))
+			for br in Talents.BRANCHES:
+				if Talents.points_spent(m["talents"], br["id"]) > main:
+					fit = false
+	check(count.get("hybrid", 0) > 150 and count.get("hybrid", 0) < 250, "about half of the board mercenaries are hybrids (%s)" % str(count))
+	check(count.has("healer") and count.has("mage") and count.has("tank") and count.has("physical"), "every specialization appears")
+	check(fit, "specialists take spells from their job and put the most talent points into its branch")
+	var healer := MercGenerator.make(rng, 20, [], "", [], "healer")
+	var grown := Roster.relevel(rng, healer, 24)
+	check(grown["spec"] == "healer" and Talents.points_spent(grown["talents"], "life") > Talents.points_spent(grown["talents"]) / 2, "a specialist stays one when it levels up")

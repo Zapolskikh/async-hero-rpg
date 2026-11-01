@@ -600,7 +600,6 @@ func _draw() -> void:
 	for u in order:
 		if u.alive():
 			_draw_unit(u, font)
-	_draw_cast_targets(sim)
 	for e in effects:
 		_draw_effect(e)
 	for p in projectiles:
@@ -772,42 +771,6 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 		var sname: String = Db.SPELLS[c["spell"]]["name"]
 		var sw2 := font.get_string_size(sname, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
 		_text(font, Vector2(home.x - sw2 / 2.0, cb.end.y + 17), sname, 15, Color.WHITE, 4)
-
-## Who a cast is aimed at: a dashed line to the target and a closing reticle on it;
-## an area cast marks the ground under every unit it will hit.
-func _draw_cast_targets(sim: BattleSim) -> void:
-	for u in sim.units:
-		if not u.alive() or not u.is_casting():
-			continue
-		var c: Dictionary = u.casting if not u.casting.is_empty() else u.channel
-		var spell: Dictionary = Db.SPELLS.get(c["spell"], {})
-		var col := Color(spell.get("color", "#ffd27a"))
-		var frac: float = clampf(1.0 - float(c["remaining"]) / maxf(0.01, float(c["total"])), 0.0, 1.0)
-		var tgt = c.get("target")
-		if tgt is BattleUnit and tgt != u and tgt.alive():
-			var a := _center(u) + Vector2(0, -10)
-			var b := _center(tgt)
-			var n := 16
-			for i in range(0, n, 2):
-				var p0 := a.lerp(b, i / float(n))
-				var p1 := a.lerp(b, (i + 1) / float(n))
-				draw_line(p0, p1, Color(0, 0, 0, 0.35), 7.0)
-				draw_line(p0, p1, Color(col, 0.55 + 0.4 * frac), 4.0)
-			var rr := 58.0 - 22.0 * frac
-			for i in 3:
-				var a0 := clock * 2.5 + i * TAU / 3.0
-				draw_arc(b, rr, a0, a0 + PI * 0.45, 10, Color(0, 0, 0, 0.4), 8.0)
-				draw_arc(b, rr, a0, a0 + PI * 0.45, 10, Color(col, 0.75 + 0.25 * frac), 5.0)
-			# a marker over the target's head bobs while the cast fills
-			var top := unit_rect(tgt).position + Vector2(unit_rect(tgt).size.x / 2.0, -58.0 - _status_height(tgt) + sin(clock * 7.0) * 4.0)
-			draw_colored_polygon(PackedVector2Array([top + Vector2(-13, -16), top + Vector2(13, -16), top + Vector2(0, 2)]), Color(0, 0, 0, 0.5))
-			draw_colored_polygon(PackedVector2Array([top + Vector2(-10, -14), top + Vector2(10, -14), top + Vector2(0, -1)]), col)
-		elif spell.get("kind", "") in ["aoe_damage", "aoe_dot", "channel_aoe"]:
-			for f in sim.foes_of(u):
-				var fsz := _sprite_size(f)
-				var pulse := 0.25 + 0.2 * sin(clock * 8.0)
-				_ellipse(_home(f), Vector2(fsz.x * 0.6, 16), Color(col, pulse * (0.5 + frac)))
-				_ellipse(_home(f), Vector2(fsz.x * 0.6, 16), Color(col, 0.7), false, 3.0)
 
 func _draw_projectile(p: Dictionary) -> void:
 	if p["t"] < 0.:
