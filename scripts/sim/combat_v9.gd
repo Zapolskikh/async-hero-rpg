@@ -17,6 +17,7 @@ var events: Array = []
 var event_seq := 0
 var _acc := 0.0
 var taunt_seq := 0
+var _redirecting := false  # guards Intervene from redirecting its own share again
 
 func setup(allies: Array, enemy_snaps: Array, seed_value: int) -> void:
 	rng.seed = seed_value
@@ -258,6 +259,13 @@ func _act(u: BattleUnit) -> void:
 						u.cooldowns[e["id"]] = Db.spell_cd(e["id"],e.get("lvl",1))
 						_cast(u,e["id"],e.get("lvl",1),f)
 						return
+		for e in u.spells:
+			if Db.SPELLS[e["id"]]["kind"] == "suppress" and not u.cooldowns.has(e["id"]) and _usable(u,e["id"]):
+				var f = _find_spell_target(u,e["id"],e.get("threshold",-1.))
+				if f != null:
+					u.cooldowns[e["id"]] = Db.spell_cd(e["id"],e.get("lvl",1))
+					_cast(u,e["id"],e.get("lvl",1),f)
+					return
 		if u.rank("emergency") and not u.cooldowns.has("emergency"):
 			var f := _injured(u,.25)
 			if f != null:
@@ -419,6 +427,17 @@ func _find_spell_target(u: BattleUnit,sid: String,thr: float = -1.):
 			for f in foes_of(u):
 				if not f.buffs.has(s["debuff"]) or f.buffs[s["debuff"]]["remaining"] <= 2.:
 					return f
+			return null
+		"intervene","suppress":
+			var best: BattleUnit = null
+			for f in friends_of(u):
+				if (f != u or s["kind"] == "suppress") and f.hp_frac() < threshold and not f.buffs.has(s["kind"]) and (best == null or f.hp_frac() < best.hp_frac()):
+					best = f
+			return best
+		"mark":
+			var marked := pick_target(u)
+			if marked != null and (not marked.buffs.has("mark") or marked.buffs["mark"]["remaining"] <= 2.):
+				return marked
 			return null
 		"seed","explosive":
 			if u.equipped("bow") and u.rank("weak_hunt"):
@@ -599,8 +618,14 @@ func _cast(u: BattleUnit,sid: String,lvl: int,target,scale: float = 1.,copy: boo
 					f.buffs["rally"]["amount"] = extra
 					_fx(u,f,"shout","#ffd377")
 		"debuff":
-			_buff(target,s["debuff"],s["value"],s["dur"],u)
-			_fx(u,target,"curse",s["color"])
+			for f in (foes_of(u) if s.get("aoe",false) else [target]):
+				_buff(f,s["debuff"],s["value"],s["dur"],u)
+				_fx(u,f,"curse",s["color"])
+		"intervene","suppress","mark":
+			_buff(target,s["kind"],s["value"],s["dur"],u)
+			_fx(u,target,s.get("fx","shield"),s["color"])
+			if s["kind"] == "intervene":
+				_status(target,"Под защитой")
 		"earth_shield","prayer":
 			_buff(target,sid,a,s["dur"],u)
 			target.buffs[sid].merge({"charges":s["charges"],"ready":0.})
@@ -634,8 +659,9 @@ func _channel_pulse(u: BattleUnit,c: Dictionary) -> void:
 			else:
 				_deal(u,t,c["amount"],true,false,sid)
 	else:
+		var ranged_bonus: float = Db.SPELLS[sid].get("ranged_bonus",0.)
 		for f in foes_of(u):
-			_deal(u,f,c["amount"],true,false,sid)
+			_deal(u,f,c["amount"]*(1.+ranged_bonus if f.ranged else 1.),true,false,sid)
 
 func _offensive(s: Dictionary) -> bool:
 	return s["kind"] in ["damage","execute","dot","aoe_dot","aoe_damage","seed","explosive","prism","drain"]
@@ -808,16 +834,24 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 	var s: Dictionary = Db.SPELLS.get(sid,{})
 	if school == "":
 		school = s.get("school","physical" if sid in ["attack","","e_smash","e_volley","e_backstab","e_cleave","e_crush","e_quake","e_execute"] else "magic")
+	if t.buffs.has("intervene") and not _redirecting:
+		var guard: BattleUnit = t.buffs["intervene"]["src"]
+		if guard != t and guard.alive() and guard.side == t.side:
+			var share: float = amount*t.buffs["intervene"]["value"]
+			amount -= share
+			_redirecting = true
+			_deal(src,guard,share,can_crit,is_dot,sid,true,school,false)
+			_redirecting = false
 	if not is_dot and school == "physical" and t.equipped("shield") and rng.randf() < .1*t.rank("full_block"):
 		_status(t,"Блок")
 		return 0.
-	var dmg: float = amount*src.dmg_mult*(1.-src.buff("weakness"))*(1.-t.buff("wall"))
+	var dmg: float = amount*src.dmg_mult*(1.-src.buff("weakness"))*(1.-t.buff("wall"))*(1.-t.buff("suppress"))*(1.+t.buff("mark"))
 	if not src.gear_fx.is_empty():
 		dmg *= 1.+Items.damage_bonus(src.gear_fx,sid,s.get("kind",""),is_dot,school,t.is_boss,t.hp_frac())
 	if school == "physical":
 		dmg *= 1.+src.buff("physical")
 		if not is_dot:
-			dmg *= 100./(100.+t.armor*(1.-t.buff("sunder")))
+			dmg *= 100./(100.+t.armor*(1.-t.buff("sunder"))*(1.-float(s.get("armor_pen",0.))))
 	elif school == "magic":
 		dmg *= 1.-float(t.stats.get("magic_resist",0.))
 	if t.hp_frac() < .5:

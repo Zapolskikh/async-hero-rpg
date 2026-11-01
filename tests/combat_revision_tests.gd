@@ -30,6 +30,7 @@ func _init() -> void:
 	test_vengeance_and_dual_weapons()
 	test_migration()
 	test_specialist_enemies()
+	test_new_mechanics()
 	print("COMBAT V9: %d assertions, %d failures" % [assertions,failures])
 	quit(1 if failures else 0)
 
@@ -92,7 +93,7 @@ func test_catalog() -> void:
 		if not Db.SPELLS[id].get("enemy",false) and not Db.SPELLS[id].get("hidden",false):
 			count += 1
 			check(ResourceLoader.exists("res://assets/icons/sp_%s.png"%id),"icon: "+id)
-	check(count == 50,"50 collectible spells")
+	check(count == 53,"53 collectible spells")
 
 func test_every_spell() -> void:
 	for id in Db.SPELLS:
@@ -297,3 +298,54 @@ func test_vengeance_and_dual_weapons() -> void:
 		single_poisons += int(duel._own_dot(target,single,"poison_blades") != null)
 	check(dual_poisons > single_poisons*1.4,"two swords provide independent poison checks")
 	duel.release()
+
+func test_new_mechanics() -> void:
+	var tank := unit(0)
+	var ally := unit(1,["staff"])
+	var sim := battle([tank,ally])
+	var foe: BattleUnit = sim.foes_of(tank)[0]
+	foe.crit = 0.
+	ally.hp = ally.max_hp*.5
+	check(sim._find_spell_target(tank,"intervene") == ally,"intervene picks the injured ally, not the tank")
+	sim._cast(tank,"intervene",1,ally)
+	var tank_hp: float = tank.hp
+	var ally_hp: float = ally.hp
+	sim._deal(foe,ally,100.,false,false,"fireball",true,"magic")
+	check(is_equal_approx(ally_hp-ally.hp,50.) and is_equal_approx(tank_hp-tank.hp,50.),"intervene moves half the damage to the tank")
+	check(sim._find_spell_target(tank,"intervene") == null,"intervene is not reapplied while it lasts")
+	ally.buffs.clear()
+	ally.hp = ally.max_hp*.2
+	tank.spells = [{"id":"pain_suppression","lvl":1}]
+	tank.spell_cd = 99.
+	sim._act(tank)
+	check(ally.buffs.has("suppress") and tank.cooldowns.has("pain_suppression"),"pain suppression fires out of rotation below 30% HP")
+	ally_hp = ally.hp
+	sim._deal(foe,ally,100.,false,false,"fireball",true,"magic")
+	check(is_equal_approx(ally_hp-ally.hp,60.),"pain suppression cuts damage by 40%")
+	var hunter := unit(2,["bow"])
+	sim._cast(hunter,"hunters_mark",1,foe)
+	var foe_hp: float = foe.hp
+	sim._deal(tank,foe,100.,false,false,"fireball",true,"magic")
+	check(is_equal_approx(foe_hp-foe.hp,110.),"hunter's mark adds 10% damage from anyone")
+	sim._cast(ally,"weakness",1,foe)
+	for f in sim.foes_of(ally): check(f.buffs.has("weakness"),"weakness curses every enemy")
+	var armored: BattleUnit = sim.foes_of(tank)[1]
+	armored.armor = 100.
+	armored.buffs.clear()
+	tank.crit = 0.
+	var plain := sim._deal(tank,armored,100.,false,false,"strike",true,"physical")
+	var pierced := sim._deal(tank,armored,100.,false,false,"mortal_strike",true,"physical")
+	check(is_equal_approx(plain,50.) and is_equal_approx(pierced,round(100.*100./170.)),"mortal strike ignores 30% armor")
+	var near: BattleUnit = sim.foes_of(hunter)[1]
+	var far: BattleUnit = sim.foes_of(hunter)[2]
+	far.ranged = true
+	near.armor = 0.
+	far.armor = 0.
+	near.buffs.clear()
+	far.buffs.clear()
+	hunter.crit = 0.
+	var near_hp: float = near.hp
+	var far_hp: float = far.hp
+	sim._channel_pulse(hunter,{"spell":"arrow_rain","amount":100.,"target":near})
+	check(is_equal_approx(near_hp-near.hp,100.) and is_equal_approx(far_hp-far.hp,150.),"arrow rain hits ranged enemies 50% harder")
+	sim.release()

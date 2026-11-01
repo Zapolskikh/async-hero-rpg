@@ -80,6 +80,16 @@ static func effects(sid: String, lvl: int, caster: Dictionary) -> Array:
 			return [["sp_barrier", "Щит на себя на %d урона, %.0f с" % [a, dur]]]
 		"cleanse":
 			return [["sp_cleanse", "Снимает яды, горение, оглушение"], ["hp", "Лечение %d" % a]]
+		"debuff":
+			return [["sp_weakness", "Урон %s −%d%% на %.0f с" % ["всех врагов" if s.get("aoe", false) else "цели", roundi(s["value"] * 100), dur]]]
+		"intervene":
+			return [["sp_intervene", "Принимаешь %d%% урона по союзнику, %.0f с" % [roundi(s["value"] * 100), dur]],
+				["star", "Цель: самый раненый союзник ниже %d%% HP" % roundi(s.get("threshold", 0.8) * 100)]]
+		"suppress":
+			return [["sp_pain_suppression", "Урон по союзнику −%d%% на %.0f с" % [roundi(s["value"] * 100), dur]],
+				["star", "Вне очереди, когда союзник ниже %d%% HP" % roundi(s.get("threshold", 0.3) * 100)]]
+		"mark":
+			return [["sp_hunters_mark", "Цель получает +%d%% урона от группы, %.0f с" % [roundi(s["value"] * 100), dur]]]
 	return [["star", s.get("desc", "")], ["power", "Сила эффекта: %d" % a]]
 
 ## Timing lines: cast time and own cooldown.
@@ -137,7 +147,13 @@ static func short(sid: String, lvl: int, caster: Dictionary) -> String:
 		"prism":
 			return "Урон %d + лечение группы" % a
 		"debuff":
-			return "Урон врага −15% · 15 с"
+			return "Урон %s −%d%% · %.0f с" % ["врагов" if s.get("aoe", false) else "врага", roundi(s["value"] * 100), s["dur"]]
+		"intervene":
+			return "%d%% урона на себя · %.0f с" % [roundi(s["value"] * 100), s["dur"]]
+		"suppress":
+			return "Урон −%d%% · %.0f с" % [roundi(s["value"] * 100), s["dur"]]
+		"mark":
+			return "+%d%% урона по цели · %.0f с" % [roundi(s["value"] * 100), s["dur"]]
 		"summon":
 			return "Зверь · %.0f с" % s["dur"]
 		"taunt":

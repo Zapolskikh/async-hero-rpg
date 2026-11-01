@@ -15,7 +15,7 @@ var is_boss := false
 var is_npc := false
 var target_rule := "front"
 var sprite := ""         # visual only: assets/units/<sprite>.png
-var ranged := false      # visual only: shoots instead of stepping forward
+var ranged := false      # shoots instead of stepping forward; Arrow Rain hits ranged foes harder
 var look: Array = []     # visual only: paper-doll layers (Roster.look), empty = use `sprite`
 var cosmetics: Dictionary = {}  # visual only: {"glow": hex, "aura": hex}
 var appearance: Dictionary = {}

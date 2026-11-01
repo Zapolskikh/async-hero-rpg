@@ -27,7 +27,7 @@ const ROLE_OF_KIND := {
 	"aoe_damage":"aoe","channel_aoe":"aoe","seed":"aoe","explosive":"aoe",
 	"heal":"healing","hot":"healing","hot_all":"healing","riptide":"healing","chain_heal":"healing",
 	"shield":"healing","earth_shield":"healing","prayer":"healing","penance":"healing",
-	"taunt":"tank","buff_self":"tank","self_shield":"tank",
+	"taunt":"tank","buff_self":"tank","self_shield":"tank","intervene":"tank","suppress":"healing",
 }
 
 var seeds := 40

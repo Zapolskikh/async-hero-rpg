@@ -329,6 +329,22 @@ ICONS.update({
 })
 
 
+ICONS.update({
+    # Bulwark: a shield stepping in front of a small ally figure.
+    "sp_intervene": lambda d: (d.ellipse([9, 3, 13, 7], fill=C["skin"]), d.rectangle([9, 8, 13, 14], fill=C["green_d"]),
+                               d.polygon([(1, 3), (8, 3), (8, 9), (4, 14), (1, 9)], fill=C["blue"]),
+                               d.line([(4, 4), (4, 12)], fill=C["steel"], width=1)),
+    # Life: a golden hand of light over a cracked heart.
+    "sp_pain_suppression": lambda d: (d.ellipse([2, 5, 8, 11], fill=C["red_d"]), d.ellipse([7, 5, 13, 11], fill=C["red_d"]),
+                                      d.polygon([(2, 9), (13, 9), (8, 15)], fill=C["red_d"]),
+                                      d.arc([0, 0, 15, 15], 200, 340, fill=C["gold"], width=2),
+                                      d.line([(8, 6), (7, 10)], fill=C["bone"], width=1)),
+    # Ranged: a crosshair mark with an arrow through it.
+    "sp_hunters_mark": lambda d: (d.ellipse([2, 2, 13, 13], outline=C["red"], width=2), d.point((7, 7), fill=C["red"]),
+                                  d.line([(1, 14), (13, 2)], fill=C["wood"], width=1), d.polygon([(11, 1), (14, 1), (14, 4)], fill=C["steel"])),
+})
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for name, fn in ICONS.items():
