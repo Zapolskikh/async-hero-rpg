@@ -222,6 +222,15 @@ func test_defensive_spells() -> void:
 	check(sim._find_spell_target(u,"weakness") != foe,"long curse is not refreshed needlessly")
 	sim._cast(u,"mass_dispel",1,u)
 	check(not sim._debuffed(u),"mass dispel cleans allies")
+	var kit: Array = u.spells
+	sim._buff(u,"weakness",.15,15.,u)
+	u.spells = [{"id":"cleanse","lvl":1}]
+	check(sim._try_rotation(u) and not sim._debuffed(u) and u.cooldowns.is_empty(),"cleanse has no cooldown")
+	foe.shield = 100.
+	u.spells = [{"id":"purge","lvl":1}]
+	check(sim._try_rotation(u) and foe.shield <= 0. and u.cooldowns.is_empty(),"purge has no cooldown")
+	check(not sim._try_rotation(u),"dispels wait for something to remove")
+	u.spells = kit
 	var a := foe.hp
 	sim._cast(u,"explosive",1,foe)
 	check(foe.hp == a,"explosive arrow waits for detonation")
