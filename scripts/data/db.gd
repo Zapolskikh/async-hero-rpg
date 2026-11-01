@@ -287,7 +287,7 @@ const HERO_AT_BREAK := 16.0 # hero level a typical player has when clearing SCAL
 ## Expected hero level per campaign level after the break: the hero reaches the cap on the last level,
 ## so enemy growth is spread evenly over the levels instead of stopping halfway.
 const HERO_PER_LEVEL := float(HERO_MAX_LEVEL - HERO_AT_BREAK) / float(30 - SCALE_BREAK)
-const GEAR_GROWTH := 1.006  # extra enemy growth per level after the break: gear and spell levels the party gains
+const GEAR_GROWTH := 1.01  # extra enemy growth per level after the break: gear and spell levels the party gains
 const LATE_TOUGHNESS := 1.07 # extra difficulty multiplier per level after the break (tuning knob)
 const TOUGHNESS_LEVELS := 15 # the extra multiplier stops here, so difficulty does not pile up on the last chapter
 
@@ -377,7 +377,7 @@ static func chapter_of(level: int) -> Dictionary:
 
 ## Hand tuning from tests/player_sim.gd: levels differ in composition, so the same scale gives
 ## walls next to free levels. This evens out the days spent per level.
-const LEVEL_PACE := {15: 1.12, 19: 1.08, 21: 1.15, 22: 1.1, 26: 1.12, 27: 0.88, 28: 0.95, 30: 0.8}
+const LEVEL_PACE := {15: 1.12, 19: 1.08, 21: 1.15, 22: 1.1, 26: 1.12, 27: 0.88, 28: 0.95, 30: 0.75}
 
 ## Enemy stat multiplier. Chapter 1 grows exponentially (fast early power ramp);
 ## later the curve tracks how strong a typical party of the expected hero level
