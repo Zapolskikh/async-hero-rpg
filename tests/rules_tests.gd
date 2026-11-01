@@ -38,6 +38,7 @@ func _init() -> void:
 	test_v2_migration()
 	test_hero_cap()
 	test_mythic()
+	test_play_stats()
 	print("FAILURES: %d" % failures)
 	quit(1 if failures > 0 else 0)
 
@@ -800,3 +801,21 @@ func test_mythic() -> void:
 	g["mythic"]["best"] = 9
 	Rules.migrate(g, T0)
 	check(g["mythic"]["best"] == 0 and g["mythic"]["season"] == Db.MYTHIC_SEASON, "a new season starts the key from +1")
+
+func test_play_stats() -> void:
+	var p := Rules.new_profile(37, T0)
+	check(Rules.level_stat(p, 1, T0)["opened_at"] == T0, "level 1 is open from the start")
+	Rules.apply(p, "start", {"level": 1, "mode": "push"}, T0 + 100.0)
+	var ex: Dictionary = p["expedition"]
+	var won: bool = ex["tl"]["won"]
+	Rules.tick(p, T0 + 100.0 + float(ex["tl"]["t_end"]) + 1.0)
+	var st: Dictionary = p["stats"]
+	var ls: Dictionary = st["levels"]["1"]
+	check(st["pushes"] == 1 and ls["tries"] == 1, "a push counts as a try")
+	if won:
+		check(ls.has("closed_at") and float(ls["closed_at"]) > T0 and st["levels"].has("2") and st["kills"] > 0, "a clear records its time and opens the next level")
+	else:
+		check(st["wipes"] == 1 and ls["wipes"] == 1, "a lost push counts as a wipe")
+	var copy = JSON.parse_string(JSON.stringify(p))
+	Rules.migrate(copy, T0)
+	check(int(copy["stats"]["pushes"]) == 1 and copy["stats"]["levels"]["1"]["tries"] == 1, "statistics survive a save")

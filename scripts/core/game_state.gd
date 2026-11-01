@@ -103,7 +103,10 @@ func _notification(what: int) -> void:
 	elif what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		save_game()
 
-## Game clock. (time_warp: kept for old saves, no longer grows.)
+## Test build only: the «Промотать время» button. Turn off before release.
+const DEV_TIME_SKIP := true
+
+## Game clock. time_warp moves an offline game forward (test time skip).
 func now() -> float:
 	if mode == "online":
 		return Time.get_unix_time_from_system() + time_offset
@@ -401,6 +404,23 @@ func open_box(use: String) -> Dictionary:
 func open_box_pack(use: String) -> Array:
 	var res: Dictionary = await act_authority("open_pack", {"use": use})
 	return res["boxes"] if res.get("ok", false) else []
+
+## Offline test helper: everything that runs on the clock (farm, gathering, crafting,
+## daily limits) behaves as if `sec` seconds passed.
+func skip_time(sec: float) -> Dictionary:
+	if mode == "online":
+		return {"ok": false, "error": "в онлайне время ведёт сервер"}
+	if sec <= 0.0:
+		return {"ok": false, "error": "нечего мотать"}
+	var before := pending()
+	profile["time_warp"] = float(profile.get("time_warp", 0.0)) + sec
+	var st := Rules._stats(profile)
+	st["skipped_sec"] = float(st["skipped_sec"]) + sec
+	_tick()
+	save_game()
+	var after := pending()
+	return {"ok": true, "gold": int(after["gold"]) - int(before["gold"]), "xp": int(after["xp"]) - int(before["xp"]),
+		"items": int(after["items"]) - int(before["items"])}
 
 func mythic() -> Dictionary:
 	return profile.get("mythic", {})

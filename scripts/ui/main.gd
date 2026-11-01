@@ -147,9 +147,8 @@ func _build_top_bar() -> void:
 	h.add_child(UI.spacer())
 	var ex = Game.exp_info()
 	if ex != null:
-		var mode := "Фарм" if ex["mode"] == "farm" else "Штурм"
 		var sp := ("  ×%d" % int(Game.watch_speed)) if Game.watch_speed > 1.0 and not Game.is_online() else ""
-		var ep := UI.pill("loop" if ex["mode"] == "farm" else "swords", "%s · ур. %d%s" % [mode, ex["level"], sp], Style.FONT_SMALL, Style.CARD)
+		var ep := UI.pill("loop" if ex["mode"] == "farm" else "swords", "%s%s" % [_run_name(ex["mode"], int(ex["level"])), sp], Style.FONT_SMALL, Style.CARD)
 		UI.tap_overlay(ep, _go_to_expedition)
 		h.add_child(ep)
 	h.add_child(UI.pill("gold", str(Game.gold)))
@@ -160,6 +159,8 @@ func _build_top_bar() -> void:
 	if Game.is_online():
 		var on := UI.pill("online", "…" if Game.busy else "Онлайн", Style.FONT_SMALL, Color("#1f4a35"))
 		h.add_child(on)
+	if Game.DEV_TIME_SKIP and not Game.is_online():
+		h.add_child(UI.btn("⏩", _skip_popup, "ghost", Style.FONT_BODY, "", 52, 52))
 	var gear := UI.btn("", _settings_popup, "ghost", Style.FONT_BODY, "settings", 52, 52)
 	h.add_child(gear)
 
@@ -691,6 +692,98 @@ func _fill_mythic_board(box: VBoxContainer) -> void:
 		i += 1
 		box.add_child(UI.label("%d. %s — +%d за %s" % [i, row["name"], int(row["level"]), _fight_time(float(row["time"]))], Style.FONT_SMALL, Style.TEXT, i <= 3))
 
+# =====================================================================
+# Test build: time skip and play statistics
+# =====================================================================
+
+const SKIP_STEPS := [300, 900, 1800, 3600, 7200, 14400, 28800, 43200, 86400, 172800, 259200, 604800]
+
+func _skip_popup() -> void:
+	var v := UI.vbox(10)
+	v.add_child(UI.wrap("Тестовая кнопка этой сборки. Время игры идёт вперёд: фарм, сбор, ремёсла, переплавка и дневные лимиты считаются так, будто прошло это время. Фарм копится не дольше 12 ч с последнего сбора добычи.", Style.FONT_SMALL))
+	var val := UI.title("", 26, Style.PRIMARY)
+	var slider := HSlider.new()
+	slider.min_value = 0
+	slider.max_value = SKIP_STEPS.size() - 1
+	slider.step = 1
+	slider.value = 3
+	slider.custom_minimum_size = Vector2(420, 40)
+	var show_val := func(i: float) -> void: val.text = _skip_text(int(SKIP_STEPS[int(i)]))
+	slider.value_changed.connect(show_val)
+	show_val.call(slider.value)
+	v.add_child(val)
+	v.add_child(slider)
+	var ex = Game.exp_info()
+	var hint := "Сейчас идёт: %s." % _run_name(ex["mode"], int(ex["level"])).to_lower() if ex != null else "Сейчас поход не идёт: поставьте фарм, чтобы копилась добыча."
+	v.add_child(UI.wrap(hint, Style.FONT_TINY, Style.WARNING if ex == null else Style.MUTED))
+	v.add_child(UI.wrap("Всего промотано: %s" % _skip_text(float(Game.profile["stats"].get("skipped_sec", 0.0))), Style.FONT_TINY, Style.MUTED))
+	_modal("Промотать время", v, [["Промотать", func(): _do_skip(int(SKIP_STEPS[int(slider.value)])), "primary", true]])
+
+func _skip_text(sec: float) -> String:
+	var s := int(sec)
+	if s >= 86400:
+		return "%d д %d ч" % [s / 86400, (s % 86400) / 3600]
+	return UI.format_time(s)
+
+func _do_skip(sec: int) -> void:
+	var r := Game.skip_time(sec)
+	if not r.get("ok", false):
+		_toast(str(r.get("error", "Не получилось")))
+		return
+	_refresh()
+	_toast("Промотано %s · добыча +%d золота, +%d опыта, +%d предм." % [_skip_text(sec), r["gold"], r["xp"], r["items"]])
+
+## Plain-text report so a tester can paste it into a message.
+func _stats_text() -> String:
+	var p: Dictionary = Game.profile
+	var st := Rules._stats(p)
+	var now := Game.now()
+	var lines := []
+	lines.append("Статистика: %s, герой %d ур., пройдено уровней %d" % [Game.hero["name"], Game.hero["level"], Game.closed_level])
+	if st.has("started_at"):
+		lines.append("В игре: %s (из них промотано %s)" % [_skip_text(now - float(st["started_at"])), _skip_text(float(st["skipped_sec"]))])
+	else:
+		lines.append("Промотано: %s" % _skip_text(float(st["skipped_sec"])))
+	lines.append("Штурмов: %d, вайпов: %d" % [st["pushes"], st["wipes"]])
+	var farm := float(st["farm_sec"])
+	var ex = Game.exp_info()
+	if ex != null and ex["mode"] == "farm":
+		farm += maxf(0.0, float(Game.pending()["t"]) - float(ex["collected"][Expedition.P_T]))
+	lines.append("Фарм: %s" % _skip_text(farm))
+	if Game.has_pending():
+		var pd := Game.pending()
+		lines.append("Ещё не собрано с похода: золото %d, опыт %d, вещей %d (в «Добыто» попадёт после сбора)" % [pd["gold"], pd["xp"], pd["items"]])
+	lines.append("Добыто: золото %d, опыт %d, убийств %d, вещей %d (легендарных %d), открыто коробок %d" % [
+		st["gold"], st["xp"], st["kills"], st["items"], st["legendaries"], st["boxes_opened"]])
+	var m := Game.mythic()
+	if int(st["mythic_runs"]) > 0:
+		lines.append("Мифик+: попыток %d, пройдено %d, рекорд +%d за %s" % [st["mythic_runs"], st["mythic_clears"], int(m.get("best", 0)), _fight_time(float(m.get("best_time", 0.0)))])
+	lines.append("Уровни (время от открытия до закрытия, с учётом перемотки):")
+	var levels: Dictionary = st["levels"]
+	for lvl in range(1, Db.level_count() + 1):
+		var key := str(lvl)
+		if not levels.has(key):
+			continue
+		var ls: Dictionary = levels[key]
+		if ls.has("closed_at"):
+			lines.append("  %d. закрыт за %s · попыток %d, вайпов %d · герой %d" % [lvl, _skip_text(float(ls["closed_at"]) - float(ls["opened_at"])), int(ls["tries"]), int(ls["wipes"]), int(ls.get("hero", 0))])
+		else:
+			lines.append("  %d. открыт %s назад · попыток %d, вайпов %d" % [lvl, _skip_text(now - float(ls["opened_at"])), int(ls["tries"]), int(ls["wipes"])])
+	return "\n".join(lines)
+
+func _stats_popup() -> void:
+	var text := _stats_text()
+	var v := UI.vbox(6)
+	for line in text.split("\n"):
+		v.add_child(UI.wrap(line, Style.FONT_SMALL, Style.TEXT if not line.begins_with("  ") else Style.MUTED))
+	var sc := UI.scroll(v)
+	sc.custom_minimum_size = Vector2(560, 380)
+	_modal("Статистика", sc, [["Скопировать", func(): _copy_stats(text), "primary", true]])
+
+func _copy_stats(text: String) -> void:
+	DisplayServer.clipboard_set(text)
+	_toast("Статистика скопирована: вставьте её в сообщение")
+
 func _start(lvl: int, mode: String) -> void:
 	if Game.exp_info() != null and Game.has_pending():
 		_show_rewards(await Game.stop_expedition(), "Прошлый поход завершён")
@@ -908,6 +1001,7 @@ func _screen_hero() -> Control:
 	trow.add_child(UI.expand(tb))
 	trow.add_child(UI.btn("Манекен", _dummy_popup, "ghost", Style.FONT_SMALL, "swords", 0, 44))
 	sv.add_child(trow)
+	sv.add_child(UI.btn("Статистика", _stats_popup, "ghost", Style.FONT_SMALL, "trophy", 0, 44))
 	sv.add_child(UI.label("Опыт %d / %d" % [hero["xp"], Db.xp_to_next(hero["level"])], Style.FONT_TINY, Style.MUTED))
 	sv.add_child(UI.progress(hero["xp"], Db.xp_to_next(hero["level"]), Style.SECONDARY, 12))
 	h.add_child(sc)

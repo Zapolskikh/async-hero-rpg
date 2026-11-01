@@ -70,6 +70,8 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 		"mythic": _fresh_mythic(),
 		"rng": {"seed": str(seed_value), "state": ""},
 	}
+	p["stats"]["started_at"] = now
+	level_stat(p, 1, now)
 	var r := _rng(p)
 	var sword := Loot.roll_gear(r, 1, "start", "weapon", "sword")
 	sword["name"] = "Учебный меч"
@@ -106,6 +108,9 @@ static func migrate(p: Dictionary, now: float) -> void:
 		p["stats"] = {"hired_total": 0, "assist_gold_total": 0}
 	if not p.has("hired"):
 		p["hired"] = []
+	_stats(p)
+	if int(p.get("closed_level", 0)) < Db.level_count():
+		level_stat(p, int(p.get("closed_level", 0)) + 1, now)
 	_migrate_professions(p)
 	_migrate_spells(p)
 	if int(p.get("v", 0)) < 9:
@@ -169,6 +174,29 @@ static func migrate(p: Dictionary, now: float) -> void:
 	p.erase("time")
 	p.erase("v")
 	p["v"] = VERSION
+
+## Play statistics for testers (hero screen → «Статистика»). Times are game time, so a time skip counts.
+const STAT_TOTALS := ["pushes", "wipes", "farm_sec", "gold", "xp", "kills", "items", "legendaries", "boxes_opened",
+	"mythic_runs", "mythic_clears", "skipped_sec"]
+
+static func _stats(p: Dictionary) -> Dictionary:
+	var st: Dictionary = p["stats"]
+	if typeof(st.get("levels")) != TYPE_DICTIONARY:
+		st["levels"] = {}
+	for k in STAT_TOTALS:
+		st[k] = float(st[k]) if k.ends_with("_sec") and st.has(k) else int(st.get(k, 0))
+	return st
+
+## The record of a campaign level; `opened_at` is when it became available.
+static func level_stat(p: Dictionary, level: int, now: float) -> Dictionary:
+	var levels: Dictionary = _stats(p)["levels"]
+	var key := str(level)
+	if not levels.has(key):
+		levels[key] = {"opened_at": now, "tries": 0, "wipes": 0}
+	var ls: Dictionary = levels[key]
+	for k in ["tries", "wipes"]:
+		ls[k] = int(ls.get(k, 0))
+	return ls
 
 static func _fresh_mythic() -> Dictionary:
 	return {"season": Db.MYTHIC_SEASON, "level": 1, "best": 0, "best_time": 0.0, "runs": 0}
@@ -907,6 +935,7 @@ static func _roll_box(p: Dictionary, r: RandomNumberGenerator) -> Dictionary:
 		if x <= 0.0:
 			pick = sid
 			break
+	_stats(p)["boxes_opened"] += 1
 	var was_new := Roster.spell_best_level(p["collection"], pick) == 0
 	if not p["collection"].has(pick):
 		p["collection"][pick] = {"lvl": 1, "copies": BOX_COPIES - 1}
@@ -935,6 +964,9 @@ static func _start(p: Dictionary, r: RandomNumberGenerator, level: int, mode: St
 	if potion != null:
 		_apply_potion(p, party, Prof.CONSUMABLES[potion["res"]])
 	p["expedition"] = _make_expedition(p, level, mode, party, r.randi(), level > int(p["closed_level"]), now)
+	if mode == "push":
+		level_stat(p, level, now)["tries"] += 1
+		_stats(p)["pushes"] += 1
 	var out := _ok({"expedition": p["expedition"]["id"]})
 	if not prev.is_empty():
 		out["previous"] = prev.get("report", {})
@@ -955,6 +987,7 @@ static func _start_mythic(p: Dictionary, r: RandomNumberGenerator, now: float, c
 	_add_res(p, Db.MYTHIC_KEY, -1)
 	var key: int = p["mythic"]["level"]
 	p["mythic"]["runs"] = int(p["mythic"]["runs"]) + 1
+	_stats(p)["mythic_runs"] += 1
 	var party := party_snapshots(p).duplicate(true)
 	var potion = active_buffs(p, now).get("potion")
 	if potion != null:
@@ -1025,6 +1058,13 @@ static func _collect(p: Dictionary, r: RandomNumberGenerator, now: float, ctx: D
 			rep["gold"] += rep["boost_gold"]
 			rep["xp"] += rep["boost_xp"]
 	ex["collected"] = tot
+	var st := _stats(p)
+	if ex["mode"] == "farm":
+		st["farm_sec"] += maxf(0.0, t - float(c[Expedition.P_T]))
+	elif ex["mode"] == "push" and push_over and not rep["closed"]:
+		st["wipes"] += 1
+		level_stat(p, int(ex["level"]), now)["wipes"] += 1
+	rep["at"] = now
 	_apply_rewards(p, r, rep, ctx)
 	var assists := []
 	if rep["gold"] > 0:
@@ -1036,6 +1076,14 @@ static func _collect(p: Dictionary, r: RandomNumberGenerator, now: float, ctx: D
 	return _ok({"report": rep, "assists": assists})
 
 static func _apply_rewards(p: Dictionary, r: RandomNumberGenerator, rep: Dictionary, ctx: Dictionary) -> void:
+	var st := _stats(p)
+	st["gold"] += int(rep["gold"]) + int(rep["auto_sold_gold"])
+	st["xp"] += int(rep["xp"])
+	st["kills"] += int(rep["kills"])
+	st["items"] += rep["items"].size() + int(rep["auto_sold"])
+	for it in rep["items"]:
+		if int(it["rarity"]) >= Items.LEGENDARY:
+			st["legendaries"] += 1
 	p["gold"] += int(rep["gold"]) + int(rep["auto_sold_gold"])
 	p["boxes"] += int(rep["boxes"])
 	rep["level_ups"] = _add_xp(p, int(rep["xp"]))
@@ -1049,6 +1097,12 @@ static func _apply_rewards(p: Dictionary, r: RandomNumberGenerator, rep: Diction
 		return
 	if rep.get("closed", false) and int(rep["level"]) > int(p["closed_level"]):
 		p["closed_level"] = int(rep["level"])
+		var at := float(rep.get("at", 0.0))
+		var ls := level_stat(p, int(rep["level"]), at)
+		ls["closed_at"] = at
+		ls["hero"] = int(p["hero"]["level"])
+		if int(rep["level"]) < Db.level_count():
+			level_stat(p, int(rep["level"]) + 1, at)
 		if int(rep["level"]) % Shop.CRYSTALS_FIRST_CLEAR_EVERY == 0:
 			p["crystals"] = int(p["crystals"]) + Shop.CRYSTALS_FIRST_CLEAR
 			rep["crystals"] = Shop.CRYSTALS_FIRST_CLEAR
@@ -1069,6 +1123,7 @@ static func _mythic_result(p: Dictionary, rep: Dictionary) -> void:
 		return
 	var key := int(rep["level"])
 	var time := float(rep.get("time", 0.0))
+	_stats(p)["mythic_clears"] += 1
 	if key >= int(m["level"]):
 		m["level"] = key + 1
 	if key > int(m["best"]) or (key == int(m["best"]) and time < float(m["best_time"])):

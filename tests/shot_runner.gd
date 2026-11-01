@@ -16,6 +16,7 @@ var shop_only := false
 var farm_only := false
 var fb_only := false
 var mythic_only := false
+var dev_only := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -45,9 +46,13 @@ func _ready() -> void:
 			fb_only = true
 		if a == "--shots-mythic":
 			mythic_only = true
+		if a == "--shots-dev":
+			dev_only = true
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if mythic_only:
+	if dev_only:
+		_run_dev()
+	elif mythic_only:
 		_run_mythic()
 	elif fb_only:
 		_run_fb()
@@ -560,4 +565,26 @@ func _run_mythic() -> void:
 	main._on_mythic_finished({"mode": "mythic", "closed": true, "level": 3, "time": 241.7, "gold": Db.mythic_gold(3), "boxes": 1, "mythic_next": 4, "mythic_record": true})
 	await _wait(0.4)
 	await _shot("m6_result")
+	get_tree().quit()
+
+## Test build tools: time skip window and the statistics window.
+func _run_dev() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	await _wait(0.3)
+	await Game.start_expedition(1, "push")
+	Game.skip_time(600.0)
+	UI.clear(main.popup_layer)
+	await Game.start_expedition(1, "farm")
+	main._close_watch()
+	main._skip_popup()
+	await _wait(0.4)
+	await _shot("d1_skip")
+	UI.clear(main.popup_layer)
+	main._do_skip(7200)
+	UI.clear(main.popup_layer)
+	main._switch("hero")
+	main._stats_popup()
+	await _wait(0.4)
+	await _shot("d2_stats")
 	get_tree().quit()
