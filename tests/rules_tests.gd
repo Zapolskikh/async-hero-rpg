@@ -816,6 +816,10 @@ func test_play_stats() -> void:
 		check(ls.has("closed_at") and float(ls["closed_at"]) > T0 and st["levels"].has("2") and st["kills"] > 0, "a clear records its time and opens the next level")
 	else:
 		check(st["wipes"] == 1 and ls["wipes"] == 1, "a lost push counts as a wipe")
+	var pack: Dictionary = Shop.PACKS[0]
+	Rules.apply(p, "fake_purchase", {"pack": pack["id"]}, T0)
+	Rules.apply(p, "open_box", {"use": "crystals"}, T0)
+	check(st["crystals_bought"] == int(pack["crystals"]) and st["crystal_packs"] == 1 and st["crystals_boxes"] == Shop.BOX_CRYSTALS, "bought and spent crystals are counted")
 	var copy = JSON.parse_string(JSON.stringify(p))
 	Rules.migrate(copy, T0)
 	check(int(copy["stats"]["pushes"]) == 1 and copy["stats"]["levels"]["1"]["tries"] == 1, "statistics survive a save")

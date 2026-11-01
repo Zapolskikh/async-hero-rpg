@@ -177,7 +177,9 @@ static func migrate(p: Dictionary, now: float) -> void:
 
 ## Play statistics for testers (hero screen → «Статистика»). Times are game time, so a time skip counts.
 const STAT_TOTALS := ["pushes", "wipes", "farm_sec", "gold", "xp", "kills", "items", "legendaries", "boxes_opened",
-	"mythic_runs", "mythic_clears", "skipped_sec"]
+	"mythic_runs", "mythic_clears", "skipped_sec",
+	"crystals_bought", "crystal_packs", "crystals_free",
+	"crystals_boxes", "crystals_rush", "crystals_boost", "crystals_cosmetics"]
 
 static func _stats(p: Dictionary) -> Dictionary:
 	var st: Dictionary = p["stats"]
@@ -704,13 +706,18 @@ static func _fake_purchase(p: Dictionary, pack: String) -> Dictionary:
 	for pk in Shop.PACKS:
 		if pk["id"] == pack:
 			p["crystals"] = int(p["crystals"]) + int(pk["crystals"])
+			var st := _stats(p)
+			st["crystals_bought"] += int(pk["crystals"])
+			st["crystal_packs"] += 1
 			return _ok({"crystals": pk["crystals"]})
 	return _err("no such pack")
 
-static func _spend_crystals(p: Dictionary, n: int) -> bool:
+## `what` names the statistics bucket: boxes, rush, boost or cosmetics.
+static func _spend_crystals(p: Dictionary, n: int, what: String) -> bool:
 	if int(p["crystals"]) < n:
 		return false
 	p["crystals"] = int(p["crystals"]) - n
+	_stats(p)["crystals_" + what] += n
 	return true
 
 static func _buy_cosmetic(p: Dictionary, id: String) -> Dictionary:
@@ -718,7 +725,7 @@ static func _buy_cosmetic(p: Dictionary, id: String) -> Dictionary:
 		return _err("no such cosmetic")
 	if id in p["cosmetics_owned"]:
 		return _err("already owned")
-	if not _spend_crystals(p, int(Shop.COSMETICS[id]["price"])):
+	if not _spend_crystals(p, int(Shop.COSMETICS[id]["price"]), "cosmetics"):
 		return _err("not enough crystals")
 	p["cosmetics_owned"].append(id)
 	p["hero"]["cosmetics"][Shop.COSMETICS[id]["slot"]] = id
@@ -756,13 +763,13 @@ static func _rush(p: Dictionary, what: String, prof: String, now: float) -> Dict
 	var left: float = float(job["ends_at"]) - now
 	if left <= 0.0:
 		return _err("already done")
-	if not _spend_crystals(p, Shop.rush_cost(left)):
+	if not _spend_crystals(p, Shop.rush_cost(left), "rush"):
 		return _err("not enough crystals")
 	job["ends_at"] = now
 	return _ok()
 
 static func _buy_boost(p: Dictionary, now: float) -> Dictionary:
-	if not _spend_crystals(p, Shop.BOOST_PRICE):
+	if not _spend_crystals(p, Shop.BOOST_PRICE, "boost"):
 		return _err("not enough crystals")
 	var b = p["buffs"].get("farm_x2")
 	if b != null and float(b["until"]) > now:
@@ -869,9 +876,8 @@ static func _open_box(p: Dictionary, r: RandomNumberGenerator, use: String, now:
 			p["gold"] -= BOX_PRICE
 			_count_gold_boxes(p, now, 1)
 		"crystals":
-			if int(p["crystals"]) < Shop.BOX_CRYSTALS:
+			if not _spend_crystals(p, Shop.BOX_CRYSTALS, "boxes"):
 				return _err("not enough crystals")
-			p["crystals"] -= Shop.BOX_CRYSTALS
 		_:
 			return _err("bad box source")
 	return _ok({"boxes": [_roll_box(p, r)]})
@@ -898,9 +904,8 @@ static func _open_pack(p: Dictionary, r: RandomNumberGenerator, use: String, now
 			_count_gold_boxes(p, now, BOX_PACK)
 			n = BOX_PACK
 		"crystals":
-			if int(p["crystals"]) < Shop.BOX_PACK_CRYSTALS:
+			if not _spend_crystals(p, Shop.BOX_PACK_CRYSTALS, "boxes"):
 				return _err("not enough crystals")
-			p["crystals"] -= Shop.BOX_PACK_CRYSTALS
 			n = BOX_PACK
 		"token":
 			n = min(int(p["boxes"]), BOX_PACK)
@@ -1106,6 +1111,7 @@ static func _apply_rewards(p: Dictionary, r: RandomNumberGenerator, rep: Diction
 		if int(rep["level"]) % Shop.CRYSTALS_FIRST_CLEAR_EVERY == 0:
 			p["crystals"] = int(p["crystals"]) + Shop.CRYSTALS_FIRST_CLEAR
 			rep["crystals"] = Shop.CRYSTALS_FIRST_CLEAR
+			st["crystals_free"] += Shop.CRYSTALS_FIRST_CLEAR
 		p["board"] = roll_board(p, r, ctx)
 		rep["board_refreshed"] = true
 	elif rep["level_ups"] > 0:
@@ -1157,6 +1163,7 @@ static func _grant_season_reward(p: Dictionary, r: RandomNumberGenerator, season
 	if tier.is_empty():
 		return _err("no reward for this place")
 	p["crystals"] = int(p["crystals"]) + int(tier["crystals"])
+	_stats(p)["crystals_free"] += int(tier["crystals"])
 	var role := Items.role_of(Loot.weapon_types(p["hero"]["equipped"]))
 	var it := Loot.roll_gear(r, Db.HERO_MAX_LEVEL, "drop", "", "", role, int(tier["quality"]))
 	p["inventory"].append(it)

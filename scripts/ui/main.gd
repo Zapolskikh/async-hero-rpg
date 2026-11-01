@@ -755,6 +755,9 @@ func _stats_text() -> String:
 		lines.append("Ещё не собрано с похода: золото %d, опыт %d, вещей %d (в «Добыто» попадёт после сбора)" % [pd["gold"], pd["xp"], pd["items"]])
 	lines.append("Добыто: золото %d, опыт %d, убийств %d, вещей %d (легендарных %d), открыто коробок %d" % [
 		st["gold"], st["xp"], st["kills"], st["items"], st["legendaries"], st["boxes_opened"]])
+	lines.append("Кристаллы: куплено %d (паков %d), получено бесплатно %d, сейчас %d" % [st["crystals_bought"], st["crystal_packs"], st["crystals_free"], Game.crystals])
+	lines.append("Кристаллы потрачены: коробки %d, ускорение таймеров %d, ускорение фарма %d, косметика %d" % [
+		st["crystals_boxes"], st["crystals_rush"], st["crystals_boost"], st["crystals_cosmetics"]])
 	var m := Game.mythic()
 	if int(st["mythic_runs"]) > 0:
 		lines.append("Мифик+: попыток %d, пройдено %d, рекорд +%d за %s" % [st["mythic_runs"], st["mythic_clears"], int(m.get("best", 0)), _fight_time(float(m.get("best_time", 0.0)))])
