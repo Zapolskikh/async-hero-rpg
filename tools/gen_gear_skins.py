@@ -4,7 +4,8 @@
     python tools/gen_gear_skins.py <brief folder> <out folder> [plate ...]
 
 <brief folder> is an unpacked `tools/build_art_brief.py` zip (templates/ and spec/).
-Writes <out>/output/<atype>_<slot>_q<rarity>/<sex>/<part>.png, the layout that
+Writes <out>/output/<atype>_<slot>_q<rarity>/<sex>/<part>.png (and _c<n> for the
+crafted sets), the layout that
 tools/build_gear_atlas.py packs into the game. One look per armour type (plate is
 strength, leather agility, cloth spell power) and rarity 0-5: poor, common,
 uncommon, rare, epic, legendary. The game picks it in Roster.look.
@@ -56,7 +57,54 @@ PLATE = {
             rivet='#fff2c0', glow='#ffb02a', gem='#ffe27a', rays=True, seams=3, helm='sun', outline='#c86a10',
             cloth='#e8e4f0', cloth_trim='#ffb02a'),
 }
-THEMES = {'plate': PLATE}
+# Leather is agility: hunters and rogues. metal = the leather colour.
+LEATHER = {
+    0: dict(name='Потёртая кожа', metal='#8a6a4a', dark='#5a4430', light='#a8865e', trim=None, stitch='#c8b090',
+            rust='#5a4a3a', scratches=True, head='bandana', band='#7a5a3a'),
+    1: dict(name='Кожаная броня', metal='#7a5032', dark='#4e3220', light='#9a6c48', trim='#4e3220', stitch='#d8b888',
+            buckle='#b8b8c0', head='leather_cap'),
+    2: dict(name='Броня следопыта', metal='#5a6a36', dark='#3a4622', light='#7c8c50', trim='#7a5032', stitch='#d8c890',
+            buckle='#c0a060', strap='#7a5032', head='hood', hood='#4a6a2a'),
+    3: dict(name='Броня ловчего', metal='#2f5a5a', dark='#1a3a3c', light='#4a7c7a', trim='#c8ccd4', stitch='#a8d0c8',
+            buckle='#e8ecf4', strap='#3a2a22', fur='#b8a890', gem='#5ae0c8', head='hood_mask', hood='#244a4c'),
+    4: dict(name='Броня теневого клинка', metal='#2e2638', dark='#18141e', light='#4a3e5a', trim='#8a5ad8', stitch='#6a5a8a',
+            buckle='#c8b0ff', strap='#18141e', glow='#b46aff', gem='#d08aff', head='cowl_glow', hood='#221c2a', outline='#5a2a8a'),
+    5: dict(name='Броня кровавой луны', metal='#7a1a24', dark='#46101a', light='#a8343e', trim='#f0c050', stitch='#ffd890',
+            buckle='#ffe08a', strap='#2a0c10', glow='#ff4a3a', gem='#ffd060', fur='#2a1a1e', head='crescent', hood='#5a1018',
+            outline='#c8902a'),
+}
+# Cloth is spell power: mages and priests. metal = the cloth colour.
+CLOTH = {
+    0: dict(name='Ветхая роба', metal='#9a9282', dark='#6a6458', light='#bab2a0', trim=None, stitch='#5a5448',
+            rust='#6a6050', scratches=True, head='rag_hood', hood='#8a8272', sash='#6a5a44'),
+    1: dict(name='Льняная роба', metal='#e2dccc', dark='#aaa290', light='#f6f2e6', trim='#4a6ab0', stitch='#7a8ab8',
+            sash='#4a6ab0', head='skullcap', hood='#d0c8b4'),
+    2: dict(name='Одеяние ученика', metal='#3a5aa8', dark='#243a74', light='#5a7ac8', trim='#d0d8e8', stitch='#a8b8e0',
+            sash='#d0d8e8', head='wizard', hat='#2e4a90'),
+    3: dict(name='Звёздное облачение', metal='#1e2e6a', dark='#121c44', light='#34489a', trim='#f0c860', stitch='#f0c860',
+            sash='#f0c860', stars='#fff4c0', gem='#6ad0ff', head='tall_wizard', hat='#18265a', mantle=True),
+    4: dict(name='Одеяние Пустоты', metal='#3a1e4a', dark='#1e1028', light='#5a3070', trim='#2ad8c0', stitch='#2ad8c0',
+            sash='#1e1028', glow='#3af0d8', gem='#4af0e0', runes=True, head='void_hood', hood='#2a1436', outline='#1a8a7a', mantle=True),
+    5: dict(name='Облачение феникса', metal='#a8281e', dark='#64140e', light='#d8482e', trim='#ffd060', stitch='#ffe08a',
+            sash='#ffd060', glow='#ff9a2a', gem='#ffe27a', flames='#ffb02a', head='circlet', outline='#e07a10', mantle=True),
+}
+# Sets of the crafted items: one per material line of a profession.
+CRAFTED = {
+    'plate': {1: dict(name='Кованое железо', metal='#646a74', dark='#3e424a', light='#8e96a2', trim='#c0703a', rivet='#d88a4a',
+                      seams=3, helm='nasal'),
+              2: dict(name='Рунный мифрил', metal='#a8c4dc', dark='#5a7898', light='#e8f6ff', trim='#3ac0d8', trim2='#e8f6ff',
+                      rivet='#e8f6ff', glow='#5af0ff', gem='#ff4a2a', seams=3, helm='winged', wing='#bfe8f4', outline='#2a7a9a')},
+    'cloth': {1: dict(name='Льняное шитьё', metal='#d8cfb8', dark='#a89a7a', light='#f4eedc', trim='#8a4a2a', stitch='#8a4a2a',
+                      sash='#8a4a2a', head='skullcap', hood='#c8bea4'),
+              2: dict(name='Лунная ткань', metal='#c8d0f0', dark='#7a84b8', light='#f4f6ff', trim='#e8ecff', stitch='#e8ecff',
+                      sash='#7a84b8', stars='#ffffff', glow='#9ad8ff', gem='#bfe8ff', head='tall_wizard', hat='#9aa4d8',
+                      mantle=True, outline='#6a7ac8')},
+    'leather': {1: dict(name='Снаряжение следопыта', metal='#4a6a3a', dark='#2e4426', light='#7a9a5a', trim='#8a5a2a',
+                        stitch='#d8c890', buckle='#c0a060', strap='#6a4428', head='hood', hood='#3e5e2e', feathers=True),
+                2: dict(name='Теневая шкура', metal='#3a3e4a', dark='#1e2028', light='#5e6474', trim='#7a8aa0', stitch='#7a8aa0',
+                        buckle='#c8d0dc', strap='#1e2028', glow='#7ab0ff', head='hood_mask', hood='#2a2e38', outline='#3a5a8a')},
+}
+THEMES = {'plate': PLATE, 'leather': LEATHER, 'cloth': CLOTH}
 
 
 # ---------------------------------------------------------------- masks
@@ -339,6 +387,208 @@ def plate_part(part, p, t, rng):
     scratches(p, t, rng)
 
 
+# ---------------------------------------------------------------- leather and cloth parts
+def stitches(p, t, width=4):
+    """Dashed stitching along the inside of the edge."""
+    if not t.get('stitch'):
+        return
+    ring = erode(p.fill, width) & ~erode(p.fill, width + 1)
+    yy, xx = np.mgrid[0:p.h, 0:p.w]
+    p.put(ring & (((xx + yy) // 5) % 2 == 0), hexc(t['stitch']))
+
+
+def buckle(p, t, cx, cy, size=7):
+    c = hexc(t.get('buckle') or '#b8b8c0')
+    p.put(p.layer(lambda d: d.rectangle([cx - size, cy - size, cx + size, cy + size], fill=255)), INK)
+    p.put(p.layer(lambda d: d.rectangle([cx - size + 2, cy - size + 2, cx + size - 2, cy + size - 2], fill=255)), c)
+    p.put(p.layer(lambda d: d.rectangle([cx - size + 5, cy - size + 5, cx + size - 5, cy + size - 5], fill=255)), shade(c, .55))
+
+
+def strap(p, t, a, b, width=9):
+    c = hexc(t.get('strap') or t['dark'])
+    p.put(p.layer(lambda d: d.line([a, b], fill=255, width=width + 4)), INK)
+    p.put(p.layer(lambda d: d.line([a, b], fill=255, width=width)), c)
+
+
+def runes(p, t, n=3):
+    if not (t.get('runes') or t.get('glow')):
+        return
+    rng = np.random.default_rng(len(t['name']) + p.w)
+    for _ in range(n):
+        x, y = rng.uniform(p.box[0] + 8, p.box[2] - 8), rng.uniform(p.box[1] + 8, p.box[3] - 8)
+        m = p.layer(lambda d: (d.line([x - 4, y - 5, x + 4, y + 5], fill=255, width=2), d.line([x - 4, y + 5, x + 4, y - 5], fill=255, width=2)))
+        glow_line(p, t, m)
+
+
+def star_field(p, t, n=6):
+    if not t.get('stars'):
+        return
+    rng = np.random.default_rng(len(t['name']) * 7 + p.w)
+    c = hexc(t['stars'])
+    for _ in range(n):
+        x, y, r = rng.uniform(p.box[0] + 6, p.box[2] - 6), rng.uniform(p.box[1] + 6, p.box[3] - 6), rng.uniform(2, 4)
+        p.put(p.layer(lambda d: d.polygon([(x, y - r * 2), (x + r * .6, y - r * .6), (x + r * 2, y), (x + r * .6, y + r * .6),
+                                           (x, y + r * 2), (x - r * .6, y + r * .6), (x - r * 2, y), (x - r * .6, y - r * .6)], fill=255)), c)
+
+
+def flame_edge(p, t, bottom=True):
+    """Tongues of flame along the lower edge."""
+    if not t.get('flames'):
+        return
+    x0, y0, x1, y1 = p.box
+    c, c2 = hexc(t['flames']), hexc(t['trim'])
+    n = max(3, int((x1 - x0) / 22))
+    for i in range(n):
+        cx = x0 + (x1 - x0) * (i + .5) / n
+        hgt = (y1 - y0) * (.32 if i % 2 else .22)
+        p.put(p.layer(lambda d: d.polygon([(cx - 12, y1 + 2), (cx + 12, y1 + 2), (cx + 3, y1 - hgt), (cx - 2, y1 - hgt * .6)], fill=255)), c)
+        p.put(p.layer(lambda d: d.polygon([(cx - 6, y1 + 2), (cx + 6, y1 + 2), (cx + 1, y1 - hgt * .55)], fill=255)), c2)
+
+
+def leather_part(part, p, t, rng):
+    base_metal(p, t)
+    trim = t.get('trim')
+    x0, y0, x1, y1 = p.box
+    if part == 'chest':
+        if t.get('fur'):
+            p.put(p.layer(lambda d: d.rectangle([0, 0, p.w, p.frac_y(.2)], fill=255)), hexc(t['fur']))
+            yy, xx = np.mgrid[0:p.h, 0:p.w]
+            p.put(p.layer(lambda d: d.rectangle([0, 0, p.w, p.frac_y(.2)], fill=255)) & ((xx * 3 + yy) % 9 == 0), shade(hexc(t['fur']), .7))
+        # a bandolier across the chest with a buckle
+        strap(p, t, (p.frac_x(.2), p.frac_y(.18)), (p.frac_x(.85), p.frac_y(.95)), 12)
+        buckle(p, t, p.frac_x(.55), p.frac_y(.58), 8)
+        p.put(p.layer(lambda d: d.rectangle([0, p.frac_y(.86), p.w, p.h], fill=255)), hexc(trim) if trim else hexc(t['dark']))
+        stitches(p, t, 5)
+        if t.get('glow'):
+            glow_line(p, t, p.layer(lambda d: d.line([p.frac_x(.3), p.frac_y(.4), p.frac_x(.42), p.frac_y(.72)], fill=255, width=2)))
+            gem(p, t, p.frac_x(.35), p.frac_y(.3), 7)
+        if t.get('feathers'):
+            for i in range(3):
+                fx = p.frac_x(.18 + .06 * i)
+                p.put(p.layer(lambda d: d.ellipse([fx - 4, p.frac_y(.2), fx + 4, p.frac_y(.42)], fill=255)), (230, 230, 220) if i % 2 else (150, 70, 40))
+    elif part == 'hem':
+        p.put(p.layer(lambda d: d.rectangle([0, 0, p.w, p.frac_y(.3)], fill=255)), hexc(t.get('strap') or t['dark']))
+        buckle(p, t, p.frac_x(.62), p.frac_y(.15), 7)
+        pouch = p.layer(lambda d: d.rectangle([p.frac_x(.2), p.frac_y(.32), p.frac_x(.4), p.frac_y(.75)], fill=255))
+        p.put(pouch, hexc(t['light']))
+        p.put(pouch & ~erode(pouch, 2), INK)
+        stitches(p, t, 4)
+        if trim:
+            p.put(p.layer(lambda d: d.rectangle([0, p.frac_y(.88), p.w, p.h], fill=255)), hexc(trim))
+    elif part.startswith('upper'):
+        cap = p.layer(lambda d: d.ellipse([x0 - 6, y0 - 4, x0 + (x1 - x0) * .5, y1 + 4], fill=255))
+        p.put(cap, hexc(t.get('fur') or t['light']))
+        p.put(cap & ~erode(cap, 3), hexc(trim) if trim else hexc(t['dark']))
+        stitches(p, t, 3)
+    elif part.startswith('fore'):
+        # bracer with criss-cross laces
+        end_band(p, trim or t['dark'], 'right', 12)
+        for i in range(4):
+            xa = p.frac_x(.2 + .14 * i)
+            p.put(p.layer(lambda d: (d.line([xa, p.frac_y(.2), xa + 12, p.frac_y(.8)], fill=255, width=2),
+                                     d.line([xa, p.frac_y(.8), xa + 12, p.frac_y(.2)], fill=255, width=2))), hexc(t['stitch']))
+        runes(p, t, 1)
+    elif part.startswith('fist') or part.startswith('palm'):
+        p.put(p.layer(lambda d: d.rectangle([x0, y0, x0 + (x1 - x0) * .3, y1], fill=255)), hexc(trim) if trim else hexc(t['dark']))
+        stitches(p, t, 3)
+    elif part.startswith('thigh'):
+        strap(p, t, (p.frac_x(.55), y0), (p.frac_x(.55), y1), 8)
+        buckle(p, t, p.frac_x(.55), p.frac_y(.5), 6)
+        if t.get('glow'):
+            glow_line(p, t, p.layer(lambda d: d.line([p.frac_x(.2), p.frac_y(.35), p.frac_x(.42), p.frac_y(.35)], fill=255, width=2)))
+        stitches(p, t, 4)
+    elif part.startswith('shin'):
+        # wrapped bindings
+        for i in range(6):
+            xa = p.frac_x(.15 + .13 * i)
+            p.put(p.layer(lambda d: d.line([xa, y0, xa + 14, y1], fill=255, width=3)), shade(hexc(t['dark']), .85))
+        end_band(p, trim or t['dark'], 'left', 10)
+    elif part.startswith('boot'):
+        p.put(p.layer(lambda d: d.rectangle([x0, y0, x1, p.frac_y(.25)], fill=255)), hexc(t.get('fur') or t['light']))
+        strap(p, t, (x0, p.frac_y(.45)), (x1, p.frac_y(.45)), 6)
+        buckle(p, t, p.frac_x(.45), p.frac_y(.45), 5)
+        p.put(p.layer(lambda d: d.rectangle([x0, p.frac_y(.9), x1, y1], fill=255)), shade(hexc(t['dark']), .7))
+        stitches(p, t, 3)
+    scratches(p, t, rng)
+
+
+def cloth_part(part, p, t, rng):
+    base_metal(p, t)
+    trim = t.get('trim')
+    x0, y0, x1, y1 = p.box
+    fold = shade(hexc(t['dark']), .9)
+    if part == 'chest':
+        # robe with a V collar, a central panel and a sash
+        cx = p.frac_x(.62)
+        panel = p.layer(lambda d: d.rectangle([cx - 16, p.frac_y(.2), cx + 16, p.h], fill=255))
+        p.put(panel, hexc(t['light']))
+        if trim:
+            p.put(panel & ~erode(panel, 3), hexc(trim))
+        collar = p.layer(lambda d: d.line([(p.frac_x(.25), y0), (cx, p.frac_y(.42)), (p.frac_x(.95), y0)], fill=255, width=9))
+        p.put(collar, hexc(trim) if trim else fold)
+        p.put(p.layer(lambda d: d.rectangle([0, p.frac_y(.8), p.w, p.frac_y(.9)], fill=255)), hexc(t['sash']))
+        for i in range(3):
+            xa = p.frac_x(.15 + .1 * i)
+            p.put(p.layer(lambda d: d.line([xa, p.frac_y(.45), xa - 4, y1], fill=255, width=2)), fold)
+        star_field(p, t, 7)
+        runes(p, t, 3)
+        gem(p, t, cx, p.frac_y(.85), 7)
+        flame_edge(p, t)
+    elif part == 'hem':
+        cx = p.frac_x(.62)
+        p.put(p.layer(lambda d: d.rectangle([cx - 16, 0, cx + 16, p.h], fill=255)), hexc(t['light']))
+        p.put(p.layer(lambda d: d.rectangle([0, 0, p.w, p.frac_y(.22)], fill=255)), hexc(t['sash']))
+        tail = p.layer(lambda d: d.polygon([(p.frac_x(.35), p.frac_y(.1)), (p.frac_x(.45), p.frac_y(.1)), (p.frac_x(.42), y1), (p.frac_x(.3), y1)], fill=255))
+        p.put(tail, hexc(t['sash']))
+        p.put(tail & ~erode(tail, 2), INK)
+        if trim:
+            p.put(p.layer(lambda d: d.rectangle([0, p.frac_y(.86), p.w, p.h], fill=255)), hexc(trim))
+        star_field(p, t, 3)
+        flame_edge(p, t)
+    elif part.startswith('upper'):
+        if t.get('mantle'):
+            cap = p.layer(lambda d: d.ellipse([x0 - 8, y0 - 6, x0 + (x1 - x0) * .55, y1 + 6], fill=255))
+            p.put(cap, hexc(t['light']))
+            p.put(cap & ~erode(cap, 3), hexc(trim))
+            for i in range(3):
+                tx = x0 + (x1 - x0) * (.12 + .12 * i)
+                p.put(p.layer(lambda d: d.rectangle([tx - 2, y1 - 10, tx + 2, y1], fill=255)), hexc(trim))
+        end_band(p, trim, 'right', 8)
+        star_field(p, t, 2)
+    elif part.startswith('fore'):
+        # wide sleeve with an embroidered cuff
+        end_band(p, trim or t['dark'], 'right', 22)
+        if t.get('stitch'):
+            p.put(p.layer(lambda d: d.line([x1 - 16, p.frac_y(.2), x1 - 16, p.frac_y(.8)], fill=255, width=2)), hexc(t['stitch']))
+        runes(p, t, 1)
+        star_field(p, t, 2)
+    elif part.startswith('fist') or part.startswith('palm'):
+        if t.get('scratches'):
+            for i in range(4):
+                xa = p.frac_x(.2 + .18 * i)
+                p.put(p.layer(lambda d: d.line([xa, y0, xa + 8, y1], fill=255, width=3)), fold)
+        else:
+            p.put(p.layer(lambda d: d.rectangle([x0, y0, x0 + (x1 - x0) * .3, y1], fill=255)), hexc(trim) if trim else fold)
+    elif part.startswith('thigh'):
+        for i in range(3):
+            ya = p.frac_y(.25 + .25 * i)
+            p.put(p.layer(lambda d: d.line([p.frac_x(.3), ya, x1, ya + 3], fill=255, width=2)), fold)
+        star_field(p, t, 3)
+        runes(p, t, 1)
+    elif part.startswith('shin'):
+        end_band(p, trim, 'right', 10)
+        for i in range(2):
+            ya = p.frac_y(.35 + .3 * i)
+            p.put(p.layer(lambda d: d.line([p.frac_x(.3), ya, p.frac_x(.8), ya], fill=255, width=2)), fold)
+        flame_edge(p, t)
+    elif part.startswith('boot'):
+        p.put(p.layer(lambda d: d.rectangle([x0, y0, x1, p.frac_y(.2)], fill=255)), hexc(trim) if trim else fold)
+        p.put(p.layer(lambda d: d.line([p.frac_x(.55), p.frac_y(.6), x1 - 6, p.frac_y(.55)], fill=255, width=3)), hexc(t.get('stitch') or t['dark']))
+        p.put(p.layer(lambda d: d.rectangle([x0, p.frac_y(.9), x1, y1], fill=255)), shade(hexc(t['dark']), .7))
+        gem(p, t, x1 - 14, p.frac_y(.62), 5)
+    scratches(p, t, rng)
+
+
 # ---------------------------------------------------------------- helmets
 def head_box(head_path):
     a = np.array(Image.open(head_path).convert('RGBA'))[..., 3] > 40
@@ -456,28 +706,150 @@ def helmet(shape, box, eye, t):
     return img
 
 
+def headwear(shape, box, eye, t):
+    """Hoods, caps and hats of leather and cloth; the face stays visible."""
+    h, w = shape
+    x0, y0, x1, y1 = box
+    W, H = x1 - x0, y1 - y0
+    ex, ey = eye
+    img = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    style = t['head']
+    hood = hexc(t.get('hood') or t['metal'])
+    light, dark = hexc(t['light']), hexc(t['dark'])
+    trim = hexc(t['trim']) if t.get('trim') else dark
+    brow = ey - H * .1
+    top = y0 - 6
+    back, front = x0 - 8, x1 + 6
+
+    def solid(points, fill):
+        d.polygon(points, fill=(*INK, 255))
+        inner = Image.new('L', (w, h), 0)
+        ImageDraw.Draw(inner).polygon(points, fill=255)
+        inner = inner.filter(ImageFilter.MinFilter(7))
+        img.paste(Image.new('RGBA', (w, h), (*fill, 255)), (0, 0), inner)
+
+    if style in ('hood', 'hood_mask', 'cowl_glow', 'crescent', 'rag_hood', 'void_hood'):
+        pts = [(back - 4, y1 + 6), (back - 10, top + H * .38), (x0 + W * .16, top - 8), (x1 - W * .12, top - 2), (front + 4, top + H * .3),
+               (front, brow - 2), (ex - W * .14, brow - 4), (ex - W * .26, ey + H * .12), (ex - W * .2, y1 - H * .05), (ex - W * .06, y1 + 8)]
+        solid(pts, hood)
+        d.polygon([(x0 + W * .2, top + 4), (x1 - W * .16, top + 8), (x1 - W * .1, top + H * .14), (x0 + W * .12, top + H * .16)], fill=(*shade(hood, 1.25), 255))
+        # shadow inside the face opening
+        d.line([(front - 4, brow - 2), (ex - W * .14, brow - 4), (ex - W * .26, ey + H * .12), (ex - W * .2, y1 - H * .05)], fill=(*shade(hood, .55), 255), width=6)
+        if style == 'rag_hood':
+            for k in range(3):
+                bx = back + 10 + k * 16
+                d.polygon([(bx, y1), (bx + 10, y1), (bx + 4, y1 + 16)], fill=(*hood, 255), outline=(*INK, 255))
+        if style in ('hood_mask', 'cowl_glow', 'crescent'):
+            mask_c = shade(hood, .8) if style != 'crescent' else hexc(t['metal'])
+            m = [(ex - W * .2, ey + H * .1), (front + 6, ey + H * .08), (front + 2, y1 - H * .02), (ex - W * .14, y1 - H * .02)]
+            d.polygon(m, fill=(*INK, 255))
+            d.polygon([(m[0][0] + 4, m[0][1] + 4), (m[1][0] - 4, m[1][1] + 4), (m[2][0] - 4, m[2][1] - 4), (m[3][0] + 4, m[3][1] - 4)], fill=(*mask_c, 255))
+        if style == 'cowl_glow' or style == 'void_hood':
+            g = hexc(t['glow'])
+            d.rectangle([ex - 7, ey - 9, ex + 7, ey + 5], fill=(*g, 255))
+            d.rectangle([ex - 3, ey - 5, ex + 3, ey + 1], fill=(255, 255, 255, 255))
+        if style == 'crescent':
+            c = hexc(t['trim'])
+            cx, cy = x0 + W * .55, top - 6
+            d.ellipse([cx - 26, cy - 22, cx + 26, cy + 22], fill=(*INK, 255))
+            d.ellipse([cx - 22, cy - 18, cx + 22, cy + 18], fill=(*c, 255))
+            d.ellipse([cx - 14, cy - 26, cx + 30, cy + 10], fill=(0, 0, 0, 0))
+            d.rectangle([back, brow - 6, front - 8, brow], fill=(*c, 255))
+        if t.get('feathers'):
+            for k, col in enumerate([(230, 230, 220), (150, 70, 40), (230, 230, 220)]):
+                fx, fy = back + 8 + k * 6, top + H * .3 + k * 8
+                d.ellipse([fx - 26, fy - 5, fx + 4, fy + 5], fill=(*INK, 255))
+                d.ellipse([fx - 23, fy - 3, fx + 1, fy + 3], fill=(*col, 255))
+    elif style in ('bandana', 'skullcap', 'leather_cap'):
+        cap = [(back, brow + H * .12), (back, top + H * .22), (x0 + W * .18, top), (x1 - W * .16, top), (front, top + H * .24), (front, brow - 4), (back, brow)]
+        if style == 'bandana':
+            cap = [(back, brow + 6), (back, top + H * .3), (x0 + W * .2, top + 4), (x1 - W * .2, top + 6), (front, top + H * .3), (front, brow - 2), (back, brow + 2)]
+        solid(cap, hood if style != 'bandana' else hexc(t['band']))
+        d.rectangle([back + 6, brow - 10, front - 6, brow - 3], fill=(*trim, 255))
+        if style == 'bandana':
+            for k in range(2):
+                d.polygon([(back + 4, brow - 4), (back - 22 + k * 8, brow + 26 + k * 10), (back - 10 + k * 8, brow + 30 + k * 10), (back + 12, brow)],
+                          fill=(*hexc(t['band']), 255), outline=(*INK, 255))
+        if style == 'leather_cap':
+            d.polygon([(back, brow - 4), (ex - W * .3, brow - 4), (ex - W * .32, brow + H * .3), (back + 6, brow + H * .3)], fill=(*INK, 255))
+            d.polygon([(back + 4, brow), (ex - W * .34, brow), (ex - W * .35, brow + H * .26), (back + 9, brow + H * .26)], fill=(*hood, 255))
+    elif style in ('wizard', 'tall_wizard'):
+        hat = hexc(t['hat'])
+        tall = style == 'tall_wizard'
+        # the cone leans back so its tip stays on the canvas: a soft wizard's hat with a bent point
+        tip = (max(6, x0 - W * (.48 if tall else .3)), max(4, top - (14 if tall else 2)))
+        knee = (x0 + W * (.32 if tall else .4), max(6, top - (16 if tall else 6)))
+        cone = [(x0 + W * .02, brow - 6), (x1 - W * .02, brow - 6), (x0 + W * .62, knee[1] + 10), knee, tip, (x0 + W * .12, top + H * .1)]
+        d.polygon(cone, fill=(*INK, 255))
+        inner = Image.new('L', (w, h), 0)
+        ImageDraw.Draw(inner).polygon(cone, fill=255)
+        inner = inner.filter(ImageFilter.MinFilter(7))
+        img.paste(Image.new('RGBA', (w, h), (*hat, 255)), (0, 0), inner)
+        d.polygon([(x0 + W * .3, knee[1] + 12), (x0 + W * .55, knee[1] + 14), (x0 + W * .5, brow - 30), (x0 + W * .28, brow - 30)], fill=(*shade(hat, 1.2), 255))
+        d.ellipse([back - 26, brow - 18, front + 24, brow + 8], fill=(*INK, 255))
+        d.ellipse([back - 22, brow - 14, front + 20, brow + 4], fill=(*shade(hat, .85), 255))
+        d.rectangle([x0 + W * .08, brow - 26, x1 - W * .05, brow - 14], fill=(*trim, 255))
+        if t.get('stars'):
+            sc = hexc(t['stars'])
+            for k, (fx, fy) in enumerate([(.45, .2), (.15, .02), (.62, .45), (-.2, .06)][: 4 if tall else 2]):
+                sx, sy = x0 + W * fx, top + H * fy
+                r = 6 - k
+                d.polygon([(sx, sy - r * 2), (sx + r * .6, sy - r * .6), (sx + r * 2, sy), (sx + r * .6, sy + r * .6), (sx, sy + r * 2),
+                           (sx - r * .6, sy + r * .6), (sx - r * 2, sy), (sx - r * .6, sy - r * .6)], fill=(*sc, 255))
+        if t.get('gem'):
+            gx, gy = x1 - W * .3, brow - 20
+            d.polygon([(gx, gy - 9), (gx + 7, gy), (gx, gy + 9), (gx - 7, gy)], fill=(*hexc(t['gem']), 255), outline=(*INK, 255))
+    elif style == 'circlet':
+        c, fl = hexc(t['trim']), hexc(t['flames'])
+        d.rectangle([back + 2, brow - 14, front - 2, brow - 2], fill=(*INK, 255))
+        d.rectangle([back + 6, brow - 11, front - 6, brow - 5], fill=(*c, 255))
+        cx = x1 - W * .3
+        for k, (dx, hh) in enumerate([(-30, 40), (-12, 64), (6, 82), (24, 58), (40, 34)]):
+            fx = cx + dx
+            d.polygon([(fx - 12, brow - 10), (fx + 12, brow - 10), (fx + 3, brow - 10 - hh), (fx - 4, brow - 10 - hh * .6)], fill=(*INK, 255))
+        for k, (dx, hh) in enumerate([(-30, 40), (-12, 64), (6, 82), (24, 58), (40, 34)]):
+            fx = cx + dx
+            d.polygon([(fx - 8, brow - 12), (fx + 8, brow - 12), (fx + 2, brow - 12 - hh * .9), (fx - 3, brow - 12 - hh * .55)], fill=(*fl, 255))
+            d.polygon([(fx - 4, brow - 12), (fx + 4, brow - 12), (fx + 1, brow - 12 - hh * .5)], fill=(*c, 255))
+        gx, gy = cx + 6, brow - 8
+        d.ellipse([gx - 8, gy - 8, gx + 8, gy + 8], fill=(*INK, 255))
+        d.ellipse([gx - 5, gy - 5, gx + 5, gy + 5], fill=(*hexc(t['gem']), 255))
+    if t.get('outline') and style not in ('circlet',):
+        px = np.array(img)
+        a = px[..., 3] > 0
+        px[erode(a, 2) & ~erode(a, 4)] = (*hexc(t['outline']), 255)
+        img = Image.fromarray(px, 'RGBA')
+    return img
+
+
 # ---------------------------------------------------------------- main
 def main():
     brief, out = Path(sys.argv[1]), Path(sys.argv[2])
     atypes = sys.argv[3:] or list(THEMES)
-    n = 0
+    sets = []
     for atype in atypes:
-        for q, t in THEMES[atype].items():
+        sets += [(atype, 'q%d' % q, t) for q, t in THEMES[atype].items()]
+        sets += [(atype, 'c%d' % c, t) for c, t in CRAFTED.get(atype, {}).items()]
+    drawers = {'plate': plate_part, 'leather': leather_part, 'cloth': cloth_part}
+    n = 0
+    for atype, key, t in sets:
+        if True:
             for slot, parts in SLOT_PARTS.items():
-                look = '%s_%s_q%d' % (atype, slot, q)
+                look = '%s_%s_%s' % (atype, slot, key)
                 for sex in ('male', 'female'):
                     folder = out / 'output' / look / sex
                     folder.mkdir(parents=True, exist_ok=True)
-                    rng = np.random.default_rng(hash((atype, q, slot, sex)) & 0xffff)
+                    rng = np.random.default_rng(sum(map(ord, look + sex)))
                     for part in parts:
                         if part == 'head':
                             shape, box, eye = head_box(brief / 'templates' / sex / 'head.png')
-                            helmet(shape, box, eye, t).save(folder / 'head.png')
+                            (helmet if atype == 'plate' else headwear)(shape, box, eye, t).save(folder / 'head.png')
                         else:
                             ink = load_mask(brief / 'templates' / sex / ('%s_ink.png' % part))
                             fill = load_mask(brief / 'templates' / sex / ('%s_fill.png' % part))
                             p = Part(ink, fill, part.endswith('_l'))
-                            plate_part(part, p, t, rng)
+                            drawers[atype](part, p, t, rng)
                             p.finish(t.get('outline')).save(folder / ('%s.png' % part))
                         n += 1
     print('drew %d parts' % n)

@@ -23,16 +23,38 @@ const GEAR_LAYERS := ["head", "armor", "hands", "legs", "feet", "weapon", "offha
 const LOOK_TINTS := ["#8f96a3", "#c9cdd4", "#5fc46a", "#5b9be8", "#b06ef0", "#f0aa40"]
 
 ## Layers drawn over doll_body for this gear, back to front: [[layer, tint or ""], ...].
-## Armour types drawn by rarity (tools/gen_gear_skins.py); the others still use their tier looks.
-const RARITY_SKINS := ["plate"]
+## Armour types drawn by rarity (tools/gen_gear_skins.py): plate is strength, leather agility,
+## cloth spell power. Old mail pieces wear plate on fighters and leather on archers.
+const RARITY_SKINS := ["plate", "leather", "cloth"]
+const BODY_SLOTS := ["head", "armor", "hands", "legs", "feet"]
+## Crafted pieces wear the set of their material line: <type>_<slot>_c<set>.
+const CRAFT_SKINS := {
+	"simple_iron_helmet": 1, "iron_gauntlets": 1, "iron_chestguard": 1, "reinforced_greaves": 1, "copper_boots": 1, "steel_helm": 1,
+	"boss_forged_chestguard": 2, "mithril_helm": 2, "steel_gauntlets": 2, "runed_sabatons": 2, "mithril_greaves": 2,
+	"rough_cloth_hood": 1, "rough_cloth_shoes": 1, "linen_tunic": 1, "linen_trousers": 1, "fine_bracers": 1,
+	"pristine_slippers": 2, "enchanted_robe": 2, "mooncloth_hood": 2, "mooncloth_leggings": 2, "starweave_cowl": 2,
+	"ranger_cowl": 1, "ranger_gloves": 1, "ranger_boots": 1, "ranger_leggings": 1,
+	"shadowhide_hood": 2,
+}
 
-## How a worn item looks: ordinary armour of a drawn type shows its rarity set
-## (<type>_<slot>_q<rarity>); unique crafted and legendary pieces keep their own look.
+## How a worn item looks: ordinary armour shows the set of its type and rarity
+## (<type>_<slot>_q<rarity>), crafted armour the set of its material line;
+## unique legendary pieces keep their own look.
 static func skin_look(it: Dictionary) -> String:
 	var look: String = it["look"]
+	var slot: String = it.get("slot", "")
 	var atype: String = it.get("atype", "")
-	if atype in RARITY_SKINS and look.begins_with(atype + "_") and it.get("slot", "") in ["head", "armor", "hands", "legs", "feet"]:
-		return "%s_%s_q%d" % [atype, it["slot"], clampi(int(it["rarity"]), 0, 5)]
+	if not slot in BODY_SLOTS or atype == "":
+		return look
+	if atype == "mail":
+		atype = "leather" if it.get("role", "") == "ranged" else "plate"
+	if look.begins_with("crafted_"):
+		var recipe := look.trim_prefix("crafted_")
+		if CRAFT_SKINS.has(recipe) and atype in RARITY_SKINS:
+			return "%s_%s_c%d" % [atype, slot, int(CRAFT_SKINS[recipe])]
+		return look
+	if atype in RARITY_SKINS and not look.begins_with("legendary_"):
+		return "%s_%s_q%d" % [atype, slot, clampi(int(it["rarity"]), 0, 5)]
 	return look
 
 static func look(gear: Dictionary) -> Array:

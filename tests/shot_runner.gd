@@ -709,22 +709,28 @@ func _run_boxes() -> void:
 	await _shot("b2_after12")
 	get_tree().quit()
 
-## Worn plate in each rarity on the hero screen.
+## Worn armour of every type in each rarity, and the crafted sets, on the hero screen.
 func _run_skins() -> void:
 	Game.reset_progress()
 	UI.clear(main.popup_layer)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4
-	for q in 6:
+	var looks := []
+	for atype in ["plate", "leather", "cloth"]:
+		for q in 6:
+			looks.append([atype, q, ""])
+	for craft in [["plate", "iron_chestguard"], ["plate", "mithril_helm"], ["cloth", "linen_tunic"], ["cloth", "enchanted_robe"], ["leather", "ranger_cowl"], ["leather", "shadowhide_hood"]]:
+		looks.append([craft[0], 3, craft[1]])
+	for entry in looks:
 		for slot in ["head", "armor", "hands", "legs", "feet"]:
-			var it := Items.roll(rng, 25, q, slot, "", "tank")
-			it["atype"] = "plate"
+			var it := Items.roll(rng, 25, entry[1], slot, "", "tank")
+			it["atype"] = entry[0]
 			it["slot"] = slot
-			it["look"] = "plate_%s_t5" % slot
+			it["look"] = ("crafted_" + entry[2]) if entry[2] != "" else "%s_%s_t5" % [entry[0], slot]
 			Game.profile["hero"]["equipped"][slot] = it
 		Game.changed.emit()
 		main._switch("hero")
 		main._refresh()
-		await _wait(.5)
-		await _shot("s_q%d" % q)
+		await _wait(.4)
+		await _shot("s_%s_%d_%s" % [entry[0], entry[1], entry[2]])
 	get_tree().quit()

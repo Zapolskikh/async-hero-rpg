@@ -37,7 +37,8 @@ const OWN_ROLE_CHANCE := 0.75
 
 const ROLES := ["melee", "tank", "ranged", "caster", "healer"]
 const ROLE_NAMES := {"melee": "Боец", "tank": "Танк", "ranged": "Стрелок", "caster": "Маг", "healer": "Лекарь"}
-const ROLE_ARMOR := {"melee": ["plate", "mail"], "tank": ["plate"], "ranged": ["leather", "mail"], "caster": ["cloth"], "healer": ["cloth", "leather"]}
+## Strength wears plate, agility leather, spell power cloth. Mail no longer drops; old mail pieces keep their stats.
+const ROLE_ARMOR := {"melee": ["plate"], "tank": ["plate"], "ranged": ["leather"], "caster": ["cloth"], "healer": ["cloth"]}
 const ROLE_WEAPONS := {"melee": ["sword", "greatsword"], "tank": ["sword"], "ranged": ["bow"], "caster": ["staff"], "healer": ["staff"]}
 const WEAPON_ROLE := {"sword": "melee", "greatsword": "melee", "shield": "tank", "bow": "ranged", "staff": "caster"}
 const ARMOR_NAMES := {"cloth": "Ткань", "leather": "Кожа", "mail": "Кольчуга", "plate": "Латы"}

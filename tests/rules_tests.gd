@@ -332,7 +332,23 @@ func test_items() -> void:
 	var cap := Items.make("tank_t2_0_plate_head", 12, "h2")
 	cap["atype"] = "leather"
 	cap["look"] = "leather_head_t3"
-	check(["gear:head", "leather_head_t3"] in Roster.look({"head": cap}), "types without rarity sets keep their tier look")
+	check(["gear:head", "leather_head_q%d" % int(cap["rarity"])] in Roster.look({"head": cap}), "leather shows its rarity set")
+	cap["atype"] = "mail"
+	cap["role"] = "ranged"
+	check(Roster.skin_look(cap).begins_with("leather_head_q"), "old mail on an archer wears leather")
+	cap["look"] = "crafted_ranger_cowl"
+	cap["atype"] = "leather"
+	check(Roster.skin_look(cap) == "leather_head_c1", "crafted pieces wear their material set")
+	cap["look"] = "legendary_crown_of_x"
+	check(Roster.skin_look(cap) == "legendary_crown_of_x", "unique legendary looks stay")
+	var mail_rng := RandomNumberGenerator.new()
+	mail_rng.seed = 8
+	var no_mail := true
+	for i in 200:
+		var it := Items.roll(mail_rng, 20, mail_rng.randi_range(0, 3), ["head", "armor", "hands", "legs", "feet"][i % 5], "", ["melee", "ranged", "healer", "tank", "caster"][i % 5])
+		if it.get("atype", "") == "mail":
+			no_mail = false
+	check(no_mail, "mail no longer drops")
 	check(not GearArt.find("plate_head_t3", "female").is_empty() and not GearArt.find("sword_t3", "male").is_empty(), "drawn gear is found for each body")
 	check(GearArt.find("no_such_look", "male").is_empty(), "gear without art falls back to the body")
 	var undrawn := []
