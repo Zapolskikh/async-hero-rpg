@@ -24,6 +24,10 @@ const GEAR_SLOTS := {"head":"head","chest":"armor","hem":"armor","upper_r":"armo
 	"fore_r":"hands","fore_l":"hands","fist_r":"hands","fist_l":"hands","palm_r":"hands","palm_l":"hands",
 	"thigh_r":"legs","thigh_l":"legs","shin_r":"legs","shin_l":"legs","boot_r":"feet","boot_l":"feet"}
 
+## Headwear that sits on top of the hair (circlets); any other headwear hides the
+## hair above its brim and the ponytail (head_<sex>_capped.png, tools/build_capped_heads.py).
+const FULL_HAIR := ["cloth_head_q5"]
+
 static var _profile_cache: Dictionary = {}
 var sex: String = "male"
 var data: Dictionary = {}
@@ -32,6 +36,8 @@ var current_clip: String = "idle_sword"
 var elapsed: float = 0.
 var loadout := "sword"
 var head_texture: Texture2D
+var capped_head: Texture2D
+var full_hair := true
 var atlas: Texture2D
 var pose := PackedFloat32Array()
 var sockets: Dictionary = {}
@@ -75,6 +81,7 @@ func set_profile(value: String) -> void:
 	skeleton = parsed.skeleton
 	data = parsed.clips
 	head_texture = load("res://assets/characters/rig/head_%s.png" % sex) as Texture2D
+	capped_head = load("res://assets/characters/rig/head_%s_capped.png" % sex) as Texture2D
 	atlas = load("res://assets/characters/rig/atlas_%s.png" % sex) as Texture2D
 	_field.clear()
 	_angular.clear()
@@ -292,10 +299,14 @@ func _solve() -> void:
 ## Gear from Roster.look layers. Drawn gear replaces the body part under it.
 func set_gear(layers: Array) -> void:
 	worn.clear()
+	full_hair = true
 	for layer in layers:
 		if str(layer[0]).begins_with("gear:"):
 			var art := GearArt.find(str(layer[1]),sex)
-			if not art.is_empty(): worn[str(layer[0]).substr(5)] = art
+			if not art.is_empty():
+				worn[str(layer[0]).substr(5)] = art
+				if str(layer[0]) == "gear:head" and art["parts"].has("head"):
+					full_hair = str(layer[1]) in FULL_HAIR
 	queue_redraw()
 
 func _art(part: String, slot: String = "") -> Dictionary:
@@ -387,8 +398,8 @@ func _draw() -> void:
 	var res := float(skeleton.res)
 	var neck := Vector2(skeleton.neck_rest[0],skeleton.neck_rest[1])
 	var head_rect := Rect2(Vector2(skeleton.head_box[0],skeleton.head_box[1])-neck,head_texture.get_size()/res)
-	draw_texture_rect(head_texture,head_rect,false)
 	var helm := _art("head")
+	draw_texture_rect(head_texture if helm.is_empty() or full_hair or capped_head == null else capped_head,head_rect,false)
 	if not helm.is_empty(): _wear(helm,"head",head_rect)
 	_group([["upper_r","upper_r"],["fore_r","fore_r"]])
 	if not behind: _draw_main()

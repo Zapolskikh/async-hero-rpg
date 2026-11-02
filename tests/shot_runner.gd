@@ -21,6 +21,7 @@ var fx_level := 0
 var enemy_fx := false
 var boxes_only := false
 var skins_only := false
+var skins_female := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -52,8 +53,9 @@ func _ready() -> void:
 			mythic_only = true
 		if a == "--shots-dev":
 			dev_only = true
-		if a == "--shots-skins":
+		if a == "--shots-skins" or a == "--shots-skins-female":
 			skins_only = true
+			skins_female = a.ends_with("female")
 		if a == "--shots-boxes":
 			boxes_only = true
 		if a == "--shots-enemyfx":
@@ -712,6 +714,8 @@ func _run_boxes() -> void:
 ## Worn armour of every type in each rarity, and the crafted sets, on the hero screen.
 func _run_skins() -> void:
 	Game.reset_progress()
+	if skins_female:
+		Game.profile["hero"]["appearance"] = {"sex": "female", "hair": "f04"}
 	UI.clear(main.popup_layer)
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4
