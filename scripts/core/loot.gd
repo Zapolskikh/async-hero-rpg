@@ -64,10 +64,10 @@ static func _roll_quality(rng: RandomNumberGenerator, table: String) -> int:
 			return q
 	return 0
 
-## Accessories are rare or better, as trinkets are in Classic.
+## Accessories are uncommon or better (Items.ACCESSORIES).
 static func _pick_slot(rng: RandomNumberGenerator, quality: int) -> String:
 	var weights := SLOT_WEIGHTS.duplicate()
-	if quality < Items.RARE:
+	if quality < Items.UNCOMMON:
 		weights.erase("accessory")
 	var total := 0.0
 	for k in weights:

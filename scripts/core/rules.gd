@@ -782,8 +782,8 @@ static func _buy_boost(p: Dictionary, now: float) -> Dictionary:
 	return _ok()
 
 ## Item merge, one at a time: MERGE_COUNT bag items of one rarity -> one random item of the next
-## rarity at the highest item level of the three. The weakest ones are used.
-const MERGE_COUNT := 3
+## rarity at the highest item level of them. The weakest ones are used.
+const MERGE_COUNT := 5
 const MERGE_GOLD := [20, 60, 400, 2000]   # poor, common, uncommon, rare; legendaries cannot be merged
 const MERGE_TIME := [600, 3600, 14400, 43200]   # seconds
 

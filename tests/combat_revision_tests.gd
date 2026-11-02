@@ -34,6 +34,7 @@ func _init() -> void:
 	test_shared_needs()
 	test_spell_lock()
 	test_meter_credit()
+	test_accessories()
 	print("COMBAT V9: %d assertions, %d failures" % [assertions,failures])
 	quit(1 if failures else 0)
 
@@ -406,4 +407,147 @@ func test_meter_credit() -> void:
 	check(is_equal_approx(total,shaman.dealt),"breakdown adds up to the total")
 	sim._credited(shaman,"echo",func(): sim._deal(shaman,sim.foes_of(shaman)[0],100.,false,false,"fireball",true))
 	check(shaman.dealt_by.get("echo",0.) > 0.,"echo copies are listed as the talent")
+	sim.release()
+
+func worn(effect: String, weapons: Array = ["sword","shield"]) -> BattleUnit:
+	return BattleUnit.new(0,0,0,{"name":"QA","stats":{"hp":10000.,"atk":50.,"str":100.,"agi":80.,"power":100.,"armor":0.,"crit":0.},"weapons":weapons,"talents":{},"spells":[],"effects":[effect]})
+
+## Every accessory effect does what its text says.
+func test_accessories() -> void:
+	for a in Items.ACCESSORIES:
+		check(Items.EFFECTS.has(a["effect"]), "%s has a known effect" % a["name"])
+	check(is_equal_approx(worn("acc_gcd_5").spell_interval(), BattleUnit.SPELL_INTERVAL - .5), "hourglass shortens the global cooldown")
+	var glass := worn("acc_glass")
+	check(is_equal_approx(glass.max_hp, 7500.) and glass.hp == glass.max_hp, "glass shard lowers health")
+	check(is_equal_approx(worn("acc_colossus").max_hp, 14000.) and worn("acc_colossus").haste < 0., "colossus: more health, slower")
+	check(worn("acc_regen_m").regen > 0., "regeneration accessory")
+	# basic attacks
+	var u := worn("acc_stun_m")
+	u.gear_fx["attack_stun"] = 1.
+	u.gear_fx["cleave"] = .4
+	u.gear_fx["attack_taunt"] = 1.
+	u.gear_fx["sunder_attack"] = .2
+	var sim := battle([u])
+	var foe: BattleUnit = sim.foes_of(u)[0]
+	foe.is_boss = false
+	sim._autoattack(u,foe)
+	check(foe.stun > 0., "heavy knuckles stun on a basic attack")
+	check(u.dealt_by.get("cleave",0.) > 0., "whirl ring hits a second enemy")
+	check(u.taunt > 0. and sim.pick_target(foe) == u, "avenger chain taunts with basic attacks")
+	check(foe.buff("sunder") > 0., "shatter ring lowers armor")
+	sim.release()
+	# targeting
+	var back := worn("acc_target_back")
+	var weak := worn("acc_target_weak")
+	weak.uid = 1
+	sim = battle([back,weak])
+	var foes := sim.foes_of(back)
+	foes[1].hp = 10.
+	check(sim.pick_target(back) == foes[-1], "compass targets the last enemy")
+	check(sim.pick_target(weak) == foes[1], "monocle targets the most wounded enemy")
+	sim.release()
+	var shade := worn("acc_shadow")
+	var mate := unit(1)
+	sim = battle([shade,mate])
+	var enemy_unit: BattleUnit = sim.foes_of(shade)[0]
+	var hits_shade := false
+	for i in 20:
+		if sim.pick_target(enemy_unit) == shade:
+			hits_shade = true
+	check(not hits_shade, "enemies ignore the shadow wearer while someone else stands")
+	mate.hp = 0.
+	check(sim.pick_target(enemy_unit) == shade, "the shadow wearer is a target when alone")
+	sim.release()
+	# casting
+	var mage := worn("acc_steady",["staff"])
+	mage.gear_fx["stun_immune"] = 1.
+	sim = battle([mage])
+	mage.casting = {"spell":"fireball","lvl":1,"remaining":1.,"total":1.,"target":sim.foes_of(mage)[0]}
+	check(not sim._interruptible(mage), "seal of focus: casts cannot be interrupted")
+	sim._stun(mage,2.)
+	check(mage.stun == 0., "ice blood: no stuns")
+	sim.release()
+	var echo := worn("acc_echo_20",["staff"])
+	echo.gear_fx["spell_echo"] = 1.
+	echo.gear_fx["mirror"] = .35
+	sim = battle([echo])
+	sim._cast(echo,"fireball",1,sim.foes_of(echo)[0])
+	check(echo.dealt_by.get("spell_echo",0.) > 0. and echo.dealt_by.get("mirror",0.) > 0., "echo crystal and twin mirror repeat a spell")
+	sim.release()
+	# survival
+	var bird := worn("acc_phoenix")
+	sim = battle([bird])
+	sim._deal(sim.foes_of(bird)[0],bird,99999.,false,false,"attack")
+	check(bird.alive() and is_equal_approx(bird.hp,5000.), "phoenix feather saves from death once")
+	sim._deal(sim.foes_of(bird)[0],bird,99999.,false,false,"attack")
+	check(not bird.alive(), "phoenix feather works once per run")
+	sim.release()
+	var wind := worn("acc_second_wind")
+	sim = battle([wind])
+	sim._deal(sim.foes_of(wind)[0],wind,7500.,false,false,"attack")
+	check(wind.shield > 0. and wind.spent.has("second_wind"), "second wind shields below 30% health")
+	sim.release()
+	var pact := worn("acc_blood_pact")
+	var plain := unit(1)
+	sim = battle([pact,plain])
+	var hitter: BattleUnit = sim.foes_of(pact)[0]
+	sim._deal(hitter,pact,100.,false,false,"attack")
+	sim._deal(hitter,plain,100.,false,false,"attack")
+	check(pact.max_hp-pact.hp > plain.max_hp-plain.hp, "blood pact: more damage taken")
+	sim.release()
+	# kills
+	var hunter := worn("acc_kill_reset")
+	hunter.gear_fx["kill_frenzy"] = .3
+	hunter.gear_fx["kill_heal"] = .06
+	sim = battle([hunter])
+	hunter.hp = 5000.
+	hunter.cooldowns["fireball"] = 10.
+	var victim: BattleUnit = sim.foes_of(hunter)[0]
+	sim._deal(hunter,victim,999999.,false,false,"attack")
+	check(not hunter.cooldowns.has("fireball"), "storm heart resets cooldowns on a kill")
+	check(hunter.buff("frenzy") > 0. and hunter.attack_interval() < worn("acc_cd_5").attack_interval(), "hunter heart speeds up after a kill")
+	check(hunter.hp > 5000., "trophy tooth heals on a kill")
+	sim.release()
+	# healing
+	var priest := worn("acc_atonement",["staff"])
+	priest.gear_fx["heal_splash"] = .25
+	priest.gear_fx["mercy"] = .4
+	priest.gear_fx["lifesteal"] = .5
+	var hurt := unit(1)
+	var other := unit(2)
+	sim = battle([priest,hurt,other])
+	hurt.hp = 1000.
+	other.hp = 5000.
+	sim._heal(priest,hurt,500.,false,"heal",true)
+	check(is_equal_approx(hurt.hp,1700.), "sapphire of mercy: stronger heals on the wounded")
+	check(other.hp > 5000., "chalice: a direct heal splashes to another ally")
+	check(priest.dealt_by.get("atonement",0.) > 0., "atonement seal turns healing into damage without looping")
+	sim.release()
+	# damage over time spreads
+	var plague := worn("acc_plague",["staff"])
+	sim = battle([plague])
+	var sick: BattleUnit = sim.foes_of(plague)[0]
+	sim._apply_dot(plague,sick,"ignite",10.,8.)
+	sim._deal(plague,sick,999999.,false,false,"attack")
+	var spread := false
+	for f in sim.foes_of(plague):
+		if sim._own_dot(f,plague,"ignite") != null:
+			spread = true
+	check(spread, "plague flask spreads a DoT when its target dies")
+	sim.release()
+	# a war cry at the start of a wave
+	var crier := worn("acc_war_cry")
+	var friend := unit(1)
+	sim = battle([crier,friend])
+	check(friend.buff("war_cry") > 0. and crier.buff("war_cry") > 0., "banner of fury buffs the party at the start of a wave")
+	sim.release()
+	# ambush and mark
+	var sniper := worn("acc_ambush",["bow"])
+	sniper.gear_fx["mark"] = .08
+	sim = battle([sniper])
+	var fresh: BattleUnit = sim.foes_of(sniper)[0]
+	var before := fresh.hp
+	sim._deal(sniper,fresh,100.,true,false,"attack")
+	check(is_equal_approx(before-fresh.hp,200.), "ambush eye: full-health targets take a crit")
+	check(fresh.buff("mark") > 0., "trapper fang marks the target")
 	sim.release()

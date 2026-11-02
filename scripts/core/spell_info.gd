@@ -164,6 +164,7 @@ static func short(sid: String, lvl: int, caster: Dictionary) -> String:
 			return "Щит %d" % a
 	return s.get("desc", "")
 
-## Seconds between rotation steps for a unit with the given haste.
-static func rotation_interval(haste: float) -> float:
-	return BattleUnit.SPELL_INTERVAL / (1.0 + haste)
+## Seconds between rotation steps for a unit with the given haste and worn effects.
+static func rotation_interval(haste: float, effects: Array = []) -> float:
+	var cut := minf(1.0, float(Items.combine(effects).get("gcd_cut", 0.0)))
+	return (BattleUnit.SPELL_INTERVAL - cut) / maxf(0.2, 1.0 + haste)

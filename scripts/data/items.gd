@@ -121,7 +121,111 @@ const EFFECTS := {
 	"mountain": {"text": "Удар грома и Ударная волна сильнее на 50%", "fx": {"spell:thunder_clap": 0.5, "spell:shockwave": 0.5}},
 	"retribution": {"text": "Щит возмездия сильнее на 50%, 15% урона возвращается врагу", "fx": {"spell:vengeance": 0.5, "thorns": 0.15}},
 	"unbending": {"text": "В начале похода щит на 20% здоровья", "fx": {"start_shield": 0.2}},
+	# accessories (ACCESSORIES): no stats, only an effect; "w" is its weight in the hero's power
+	"acc_regen_s": {"text": "Восстанавливает 0.3% здоровья в секунду", "fx": {"regen": 0.003}, "w": 0.5},
+	"acc_regen_m": {"text": "Восстанавливает 0.7% здоровья в секунду", "fx": {"regen": 0.007}, "w": 1.0},
+	"acc_stun_s": {"text": "Автоатака с шансом 4% оглушает цель на 1 с", "fx": {"attack_stun": 0.04}, "w": 0.5},
+	"acc_stun_m": {"text": "Автоатака с шансом 8% оглушает цель на 1 с", "fx": {"attack_stun": 0.08}, "w": 1.0},
+	"acc_double_10": {"text": "10% шанс второй автоатаки", "fx": {"double_attack": 0.1}, "w": 1.0},
+	"acc_target_weak": {"text": "Атакует самого раненого врага", "fx": {"target_weak": 1.0}, "w": 0.5},
+	"acc_target_back": {"text": "Атакует последнего врага в строю, а не первого", "fx": {"target_back": 1.0}, "w": 0.5},
+	"acc_dot_ward": {"text": "Периодический урон по вам ниже на 25%", "fx": {"dot_ward": 0.25}, "w": 0.5},
+	"acc_magic_ward": {"text": "Магический урон по вам ниже на 12%", "fx": {"magic_ward": 0.12}, "w": 0.5},
+	"acc_hot_long": {"text": "Ваши исцеления со временем длятся на 2 с дольше", "fx": {"hot_extend": 2.0}, "w": 0.5},
+	"acc_cd_5": {"text": "5% шанс, что заклинание не уйдёт на перезарядку", "fx": {"cd_refund": 0.05}, "w": 0.5},
+	"acc_kill_heal": {"text": "Убийство врага лечит на 6% здоровья", "fx": {"kill_heal": 0.06}, "w": 0.5},
+	"acc_slow": {"text": "Автоатаки замедляют атаки цели на 20% на 4 с", "fx": {"slow_attack": 0.2}, "w": 0.5},
+	"acc_echo_10": {"text": "10% шанс повторить заклинание урона или лечения с 60% силы", "fx": {"spell_echo": 0.1}, "w": 1.0},
+	"acc_echo_20": {"text": "20% шанс повторить заклинание урона или лечения с 60% силы", "fx": {"spell_echo": 0.2}, "w": 1.5},
+	"acc_gcd_3": {"text": "Глобальный кулдаун короче на 0.3 с", "fx": {"gcd_cut": 0.3}, "w": 1.0},
+	"acc_gcd_5": {"text": "Глобальный кулдаун короче на 0.5 с", "fx": {"gcd_cut": 0.5}, "w": 1.5},
+	"acc_reflect": {"text": "15% шанс отразить вражеское заклинание обратно", "fx": {"spell_reflect": 0.15}, "w": 1.0},
+	"acc_steady": {"text": "Ваши заклинания нельзя прервать", "fx": {"steady_cast": 1.0}, "w": 1.0},
+	"acc_stun_immune": {"text": "Невосприимчивость к оглушению", "fx": {"stun_immune": 1.0}, "w": 1.0},
+	"acc_mark": {"text": "Ваши попадания помечают цель: +8% урона по ней от всех на 6 с", "fx": {"mark": 0.08}, "w": 1.0},
+	"acc_second_wind": {"text": "Раз за забег при здоровье ниже 30% — щит на 40% здоровья", "fx": {"second_wind": 0.4}, "w": 1.0},
+	"acc_mercy": {"text": "Лечение целей ниже 35% здоровья сильнее на 40%", "fx": {"mercy": 0.4}, "w": 1.0},
+	"acc_sunder": {"text": "Автоатаки снижают броню цели на 20% на 6 с", "fx": {"sunder_attack": 0.2}, "w": 1.0},
+	"acc_ambush": {"text": "Удары по врагу с полным здоровьем всегда критические", "fx": {"ambush": 1.0}, "w": 1.0},
+	"acc_shadow": {"text": "Враги выбирают вас целью, только если больше некого (провокация сильнее)", "fx": {"shadow": 1.0}, "w": 1.0},
+	"acc_heal_splash": {"text": "Прямое лечение лечит ещё одного раненого союзника на 25%", "fx": {"heal_splash": 0.25}, "w": 1.0},
+	"acc_berserk": {"text": "Пока здоровье ниже 50% — урон выше на 30%", "fx": {"low_hp_damage": 0.3}, "w": 1.5},
+	"acc_fresh": {"text": "Пока здоровье выше 80% — урон выше на 15%", "fx": {"high_hp_damage": 0.15}, "w": 1.5},
+	"acc_war_cry": {"text": "В начале каждой волны группа наносит на 10% больше урона 10 с", "fx": {"war_cry": 0.1}, "w": 1.5},
+	"acc_attack_taunt": {"text": "Каждая автоатака провоцирует врагов на 2 с", "fx": {"attack_taunt": 1.0}, "w": 1.5},
+	"acc_blood_pact": {"text": "Урон выше на 25%, получаемый урон выше на 15%", "fx": {"fury": 0.25, "pact_taken": 0.15}, "w": 1.5},
+	"acc_plague": {"text": "Ваш периодический урон перескакивает на другого врага, когда цель умирает", "fx": {"plague": 1.0}, "w": 1.5},
+	"acc_frenzy": {"text": "Убийство врага ускоряет атаки и заклинания на 30% на 6 с", "fx": {"kill_frenzy": 0.3}, "w": 1.5},
+	"acc_bastion": {"text": "Пока здоровье ниже 40% — получаемый урон ниже на 25%", "fx": {"last_bastion": 0.25}, "w": 1.5},
+	"acc_atonement": {"text": "30% вашего лечения наносит урон врагу", "fx": {"atonement": 0.3}, "w": 1.5},
+	"acc_cleave": {"text": "Автоатака задевает ещё одного врага на 40% урона", "fx": {"cleave": 0.4}, "w": 1.5},
+	"acc_phoenix": {"text": "Раз за забег смертельный удар вместо гибели возвращает 50% здоровья", "fx": {"phoenix": 0.5}, "w": 2.5},
+	"acc_kill_reset": {"text": "Убийство врага сбрасывает перезарядку всех ваших заклинаний", "fx": {"kill_reset": 1.0}, "w": 2.5},
+	"acc_glass": {"text": "Урон выше на 40%, но здоровье ниже на 25%", "fx": {"fury": 0.4, "frail": 0.25}, "w": 2.5},
+	"acc_colossus": {"text": "Здоровье выше на 40%, но атаки и заклинания медленнее на 15%", "fx": {"bulk": 0.4, "sluggish": 0.15}, "w": 2.5},
+	"acc_chrono": {"text": "Каждое третье заклинание ротации не запускает глобальный кулдаун", "fx": {"chrono": 1.0}, "w": 2.5},
+	"acc_mirror": {"text": "Каждое заклинание урона или лечения повторяется с 35% силы", "fx": {"mirror": 0.35}, "w": 2.5},
 }
+
+## Meter names of item effects that deal damage or heal on their own (shown with "(предмет)").
+const FX_NAMES := {"double_attack": "Вторая автоатака", "thorns": "Шипы", "lifesteal": "Вампиризм",
+	"spell_echo": "Эхо заклинания", "mirror": "Зеркальное эхо", "cleave": "Рассекающий удар", "spell_reflect": "Отражение",
+	"second_wind": "Второе дыхание", "kill_heal": "Трофей", "heal_splash": "Отзвук исцеления", "atonement": "Искупление"}
+
+## Accessories: no stats, one effect that changes how the hero fights. Uncommon to legendary;
+## `roles` limits who finds them (empty = everyone).
+const ACCESSORIES := [
+	# uncommon: small touches
+	{"name": "Оберег живучести", "q": 2, "effect": "acc_regen_s", "roles": []},
+	{"name": "Кольцо проворства", "q": 2, "effect": "double_5", "roles": ["melee", "tank", "ranged"]},
+	{"name": "Кровавый клык", "q": 2, "effect": "life_3", "roles": ["melee", "tank", "ranged"]},
+	{"name": "Тяжёлый кастет", "q": 2, "effect": "acc_stun_s", "roles": ["melee", "tank"]},
+	{"name": "Шипастый браслет", "q": 2, "effect": "thorns_10", "roles": ["tank", "melee"]},
+	{"name": "Монокль добытчика", "q": 2, "effect": "acc_target_weak", "roles": ["melee", "ranged", "caster"]},
+	{"name": "Компас дальнего края", "q": 2, "effect": "acc_target_back", "roles": ["melee", "ranged", "caster"]},
+	{"name": "Тёплый камень", "q": 2, "effect": "acc_dot_ward", "roles": []},
+	{"name": "Рунный браслет", "q": 2, "effect": "acc_magic_ward", "roles": []},
+	{"name": "Знак терпения", "q": 2, "effect": "acc_hot_long", "roles": ["healer"]},
+	{"name": "Песочные часы ученика", "q": 2, "effect": "acc_cd_5", "roles": ["caster", "healer", "melee", "ranged"]},
+	{"name": "Трофейный зуб", "q": 2, "effect": "acc_kill_heal", "roles": ["melee", "tank", "ranged"]},
+	{"name": "Свинцовая гиря", "q": 2, "effect": "acc_slow", "roles": ["tank", "melee"]},
+	# rare: noticeable
+	{"name": "Перстень дуэлянта", "q": 3, "effect": "acc_double_10", "roles": ["melee", "tank", "ranged"]},
+	{"name": "Кристалл эха", "q": 3, "effect": "acc_echo_10", "roles": ["caster", "healer", "ranged"]},
+	{"name": "Песочные часы", "q": 3, "effect": "acc_gcd_3", "roles": []},
+	{"name": "Зеркальный оберег", "q": 3, "effect": "acc_reflect", "roles": ["tank", "caster", "healer"]},
+	{"name": "Печать сосредоточения", "q": 3, "effect": "acc_steady", "roles": ["caster", "healer"]},
+	{"name": "Молот-оглушитель", "q": 3, "effect": "acc_stun_m", "roles": ["melee", "tank"]},
+	{"name": "Клык зверолова", "q": 3, "effect": "acc_mark", "roles": ["ranged", "melee"]},
+	{"name": "Ледяная кровь", "q": 3, "effect": "acc_stun_immune", "roles": []},
+	{"name": "Второе дыхание", "q": 3, "effect": "acc_second_wind", "roles": []},
+	{"name": "Сапфир милосердия", "q": 3, "effect": "acc_mercy", "roles": ["healer"]},
+	{"name": "Кольцо раскола", "q": 3, "effect": "acc_sunder", "roles": ["melee", "tank"]},
+	{"name": "Глаз засады", "q": 3, "effect": "acc_ambush", "roles": ["ranged", "caster", "melee"]},
+	{"name": "Брошь тени", "q": 3, "effect": "acc_shadow", "roles": ["ranged", "caster", "healer"]},
+	{"name": "Чаша отзвука", "q": 3, "effect": "acc_heal_splash", "roles": ["healer"]},
+	{"name": "Сердце тролля", "q": 3, "effect": "acc_regen_m", "roles": ["tank", "melee"]},
+	# epic: build-defining
+	{"name": "Талисман берсерка", "q": 4, "effect": "acc_berserk", "roles": ["melee", "tank"]},
+	{"name": "Венец ясности", "q": 4, "effect": "acc_fresh", "roles": ["ranged", "caster"]},
+	{"name": "Хронометр", "q": 4, "effect": "acc_gcd_5", "roles": []},
+	{"name": "Кристалл двойного эха", "q": 4, "effect": "acc_echo_20", "roles": ["caster", "healer", "ranged"]},
+	{"name": "Знамя ярости", "q": 4, "effect": "acc_war_cry", "roles": []},
+	{"name": "Цепь мстителя", "q": 4, "effect": "acc_attack_taunt", "roles": ["tank"]},
+	{"name": "Кровавый договор", "q": 4, "effect": "acc_blood_pact", "roles": ["melee", "ranged", "caster"]},
+	{"name": "Чумной флакон", "q": 4, "effect": "acc_plague", "roles": ["caster", "ranged"]},
+	{"name": "Сердце охотника", "q": 4, "effect": "acc_frenzy", "roles": ["melee", "ranged", "caster"]},
+	{"name": "Бастион", "q": 4, "effect": "acc_bastion", "roles": ["tank"]},
+	{"name": "Печать искупления", "q": 4, "effect": "acc_atonement", "roles": ["healer"]},
+	{"name": "Кольцо вихря", "q": 4, "effect": "acc_cleave", "roles": ["melee"]},
+	# legendary: game changers
+	{"name": "Перо феникса", "q": 5, "effect": "acc_phoenix", "roles": []},
+	{"name": "Сердце бури", "q": 5, "effect": "acc_kill_reset", "roles": ["melee", "ranged", "caster"]},
+	{"name": "Осколок безумия", "q": 5, "effect": "acc_glass", "roles": ["melee", "ranged", "caster"]},
+	{"name": "Сердце колосса", "q": 5, "effect": "acc_colossus", "roles": ["tank", "melee"]},
+	{"name": "Часы вечности", "q": 5, "effect": "acc_chrono", "roles": []},
+	{"name": "Зеркало двойника", "q": 5, "effect": "acc_mirror", "roles": ["caster", "healer", "ranged"]},
+]
 
 const AOE_KINDS := ["aoe_damage", "channel_aoe", "explosive", "seed"]
 
@@ -156,6 +260,8 @@ static func roll(rng: RandomNumberGenerator, ilvl: int, quality: int, slot: Stri
 		var kinds: Array = ROLE_ARMOR[role]
 		atype = kinds[rng.randi_range(0, kinds.size() - 1)]
 	var tier := tier_of(ilvl)
+	if slot == "accessory":
+		return make_accessory(rng, ilvl, quality, role, id)
 	if quality >= RARE:
 		var key := _pick_named(rng, role, tier, wtype if wtype != "" else slot, quality, atype)
 		if key != "":
@@ -179,6 +285,22 @@ static func _pick_named(rng: RandomNumberGenerator, role: String, tier: int, slo
 			if atype == "" or ItemCatalog.NAMED[key].get("atype", "") == atype:
 				pool.append(key)
 	return "" if pool.is_empty() else pool[rng.randi_range(0, pool.size() - 1)]
+
+## Accessory of this quality (uncommon at least) that suits the role.
+static func make_accessory(rng: RandomNumberGenerator, ilvl: int, quality: int, role: String, id: String) -> Dictionary:
+	quality = clampi(quality, UNCOMMON, LEGENDARY)
+	var pool := []
+	for a in ACCESSORIES:
+		if int(a["q"]) == quality and (a["roles"].is_empty() or role in a["roles"]):
+			pool.append(a)
+	var spec: Dictionary = pool[rng.randi_range(0, pool.size() - 1)]
+	var it := assemble(id, spec["name"], "accessory", "", "", role, quality, ilvl, {}, "accessory")
+	it["effect"] = spec["effect"]
+	return it
+
+## Weight of a worn effect in the hero's power: accessories by quality, older effects 1.
+static func effect_weight(id: String) -> float:
+	return float(EFFECTS.get(id, {}).get("w", 1.0))
 
 ## Named item at an item level.
 static func make(key: String, ilvl: int, id: String) -> Dictionary:

@@ -933,8 +933,9 @@ func _meter_entry(k: String) -> Array:
 		return [UI.spell_icon(k), Db.SPELLS[k]["name"]]
 	if Talents.TALENTS.has(k):
 		return [Talents.TALENTS[k]["icon"], "%s (талант)" % Talents.TALENTS[k]["name"]]
-	var items := {"lifesteal": "Вампиризм (предмет)", "thorns": "Шипы (предмет)", "double_attack": "Вторая автоатака (предмет)", "heal": "Лечение"}
-	return ["item_trinket", items.get(k, k)]
+	if Items.FX_NAMES.has(k):
+		return ["item_accessory", "%s (предмет)" % Items.FX_NAMES[k]]
+	return ["item_trinket", "Лечение" if k == "heal" else k]
 
 func _fill_meter(rows: Array, units: Array, field: String, t: float) -> void:
 	var allies := units.duplicate()
@@ -1010,7 +1011,7 @@ func _screen_hero() -> Control:
 	sv.add_child(UI.stat_row("armor", "Броня", "%d" % st["armor"]))
 	sv.add_child(UI.stat_row("haste", "Скорость", "%d%%" % roundi(st["haste"] * 100)))
 	sv.add_child(UI.stat_row("crit", "Крит", "%d%%" % roundi(st["crit"] * 100)))
-	sv.add_child(UI.stat_row("loop", "Ход ротации", "%.1f с" % SpellInfo.rotation_interval(st["haste"])))
+	sv.add_child(UI.stat_row("loop", "Ход ротации", "%.1f с" % SpellInfo.rotation_interval(st["haste"], snap.get("effects", []))))
 	sv.add_child(UI.spacer())
 	var free := Talents.points_free(hero)
 	var tb := UI.btn("Таланты" + (" (+%d)" % free if free > 0 else ""), _talents_popup, "primary" if free > 0 else "secondary", Style.FONT_SMALL, "star", 0, 44)
@@ -2089,11 +2090,11 @@ func _merge_popup() -> void:
 		var h := UI.hbox(8)
 		c.add_child(h)
 		var tv := UI.vbox(2)
-		tv.add_child(UI.label("%s ×3 → %s · %s" % [Items.QUALITY_NAMES[r], Items.QUALITY_NAMES[r + 1], UI.format_time(float(Rules.MERGE_TIME[r]))], Style.FONT_SMALL, Style.QUALITY[r + 1], true))
+		tv.add_child(UI.label("%s ×%d → %s · %s" % [Items.QUALITY_NAMES[r], Rules.MERGE_COUNT, Items.QUALITY_NAMES[r + 1], UI.format_time(float(Rules.MERGE_TIME[r]))], Style.FONT_SMALL, Style.QUALITY[r + 1], true))
 		var names := []
 		for it in used:
 			names.append("%s ур.%d" % [UI.item_title(it), it["ilvl"]])
-		tv.add_child(UI.wrap(", ".join(names) if not names.is_empty() else "нужно 3 вещи этой редкости в сумке", Style.FONT_TINY, Style.MUTED))
+		tv.add_child(UI.wrap(", ".join(names) if not names.is_empty() else "нужно %d вещей этой редкости в сумке" % Rules.MERGE_COUNT, Style.FONT_TINY, Style.MUTED))
 		h.add_child(UI.expand(tv))
 		var b := UI.btn("%d" % Rules.MERGE_GOLD[r], _merge.bind(r), "primary", Style.FONT_SMALL, "gold", 0, 44)
 		b.disabled = used.is_empty() or Game.gold < Rules.MERGE_GOLD[r] or job != null

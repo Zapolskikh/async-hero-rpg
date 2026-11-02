@@ -116,6 +116,12 @@ func _init(p_uid: int, p_side: int, p_slot: int, snap: Dictionary) -> void:
 		shield_time = 9999.0
 	heal_mult = st.get("heal_mult", 1.0)
 	gear_fx = Items.combine(snap.get("effects", []))
+	if not gear_fx.is_empty():
+		# accessories that reshape the hero: health, speed, regeneration
+		max_hp *= (1.0 - minf(0.9, float(gear_fx.get("frail", 0.0)))) * (1.0 + float(gear_fx.get("bulk", 0.0)))
+		hp = max_hp
+		haste -= float(gear_fx.get("sluggish", 0.0))
+		regen += float(gear_fx.get("regen", 0.0))
 	if gear_fx.has("start_shield"):
 		shield = max_hp * float(gear_fx["start_shield"])
 		shield_time = 9999.0
@@ -146,7 +152,8 @@ func is_debuffed() -> bool:
 	return dots.size() > 0 or stun > 0.0
 
 func attack_interval() -> float:
-	return atk_speed * (1.0 - 0.03 * rank("quick_hands")) / (1.0 + haste) / maxf(0.1, 1.0 - buff("slow"))
+	return atk_speed * (1.0 - 0.03 * rank("quick_hands")) / maxf(0.2, 1.0 + haste + buff("frenzy")) / maxf(0.1, 1.0 - buff("slow"))
 
+## Global cooldown: 3.2 s, minus accessories (at most 1 s), divided by haste.
 func spell_interval() -> float:
-	return SPELL_INTERVAL / (1.0 + haste + buff("bloodlust"))
+	return (SPELL_INTERVAL - minf(1.0, float(gear_fx.get("gcd_cut", 0.0)))) / maxf(0.2, 1.0 + haste + buff("bloodlust") + buff("frenzy"))

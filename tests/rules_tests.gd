@@ -216,14 +216,14 @@ func test_feedback_fixes() -> void:
 	q["inventory"].clear()
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 4
-	for i in 3:
+	for i in Rules.MERGE_COUNT:
 		q["inventory"].append(Loot.roll_gear(rng, 4 + i, "drop", "", "", "", 0))
 	var r := Rules.apply(q, "merge_items", {"rarity": 0}, T0)
 	check(r["ok"] and q["inventory"].is_empty(), "merge takes the items at once")
 	check(Rules.apply(q, "merge_claim", {}, T0 + 10.0)["error"] == "not finished", "merge takes time")
 	check(Rules.apply(q, "merge_claim", {}, T0 + float(Rules.MERGE_TIME[0]))["ok"], "merge finishes on time")
-	check(r["ok"] and q["inventory"].size() == 1 and int(q["inventory"][0]["rarity"]) == 1 and int(q["inventory"][0]["ilvl"]) == 6, "3 common -> 1 rare at the highest level")
-	check(not Rules.apply(q, "merge_items", {"rarity": 1}, T0)["ok"], "merge needs 3 items")
+	check(r["ok"] and q["inventory"].size() == 1 and int(q["inventory"][0]["rarity"]) == 1 and int(q["inventory"][0]["ilvl"]) == 3 + Rules.MERGE_COUNT, "5 poor -> 1 common at the highest level")
+	check(not Rules.apply(q, "merge_items", {"rarity": 1}, T0)["ok"], "merge needs 5 items")
 	# level toughness is evened out
 	var lo := 10.0
 	var hi := 0.0
@@ -349,6 +349,29 @@ func test_items() -> void:
 		if it.get("atype", "") == "mail":
 			no_mail = false
 	check(no_mail, "mail no longer drops")
+	var acc_rng := RandomNumberGenerator.new()
+	acc_rng.seed = 21
+	var acc_ok := true
+	var acc_names := {}
+	for q in range(Items.UNCOMMON, Items.LEGENDARY + 1):
+		for role in Items.ROLES:
+			for i in 6:
+				var acc := Items.roll(acc_rng, 20, q, "accessory", "", role)
+				acc_names[acc["name"]] = true
+				if acc["slot"] != "accessory" or not acc["affixes"].is_empty() or not Items.EFFECTS.has(acc.get("effect", "")) or int(acc["rarity"]) != q:
+					acc_ok = false
+	check(acc_ok, "accessories of every quality and role: no stats, one effect")
+	check(acc_names.size() >= 30, "many different accessories drop (%d seen)" % acc_names.size())
+	var low := Items.roll(acc_rng, 20, Items.COMMON, "accessory", "", "melee")
+	check(int(low["rarity"]) == Items.UNCOMMON, "accessories start at uncommon")
+	var found_acc := false
+	for i in 400:
+		var d := Loot.roll_gear(acc_rng, 15, "drop")
+		if d["slot"] == "accessory":
+			found_acc = int(d["rarity"]) >= Items.UNCOMMON
+			if not found_acc:
+				break
+	check(found_acc, "accessories are in the normal drop list")
 	check(not GearArt.find("plate_head_t3", "female").is_empty() and not GearArt.find("sword_t3", "male").is_empty(), "drawn gear is found for each body")
 	check(GearArt.find("no_such_look", "male").is_empty(), "gear without art falls back to the body")
 	var undrawn := []

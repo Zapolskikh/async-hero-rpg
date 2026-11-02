@@ -228,10 +228,13 @@ static func power_score(snap: Dictionary) -> int:
 			scaled += 1
 	var spell_stat: float = stat_sum / scaled if scaled > 0 else float(st["power"])
 	var weight: float = POWER_SPELL_WEIGHT * 2.0 if "staff" in weapons else (POWER_SPELL_WEIGHT if scaled > 0 else 0.0)
-	return _power_value(st, spell_stat, weight, spell_levels, snap.get("effects", []).size())
+	var effects := 0.0
+	for id in snap.get("effects", []):
+		effects += Items.effect_weight(str(id))
+	return _power_value(st, spell_stat, weight, spell_levels, effects)
 
 ## spell_stat: what the spells scale from, weight: what it is worth for this build.
-static func _power_value(st: Dictionary, spell_stat: float, weight: float, spell_levels: int, effects: int) -> int:
+static func _power_value(st: Dictionary, spell_stat: float, weight: float, spell_levels: int, effects: float) -> int:
 	var attack: float = float(st.get("atk", 0.0)) * 1.6 / max(0.5, float(st.get("atk_speed", 1.6)))
 	var damage: float = attack * 2.0 + spell_stat * weight
 	var offense: float = damage * (1.0 + float(st.get("crit", 0.0))) * (1.0 + float(st.get("haste", 0.0)))

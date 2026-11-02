@@ -8,7 +8,7 @@ extends RefCounted
 ## HP carries over between waves, so sustain matters over a whole level.
 
 const WAVE_PAUSE := 1.5
-const FARM_DROP_CHANCE := 0.15  # per farm run won; first clears always drop
+const FARM_DROP_CHANCE := 0.08  # per farm run won (~3 items an hour); first clears always drop
 
 var level := 1
 var mode := "push"

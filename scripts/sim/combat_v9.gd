@@ -18,6 +18,7 @@ var event_seq := 0
 var _acc := 0.0
 var taunt_seq := 0
 var _redirecting := false  # guards Intervene from redirecting its own share again
+var _atoning := false      # guards Atonement: its damage heals nobody into more damage
 ## Meter credit: while a talent or item proc runs, its damage and healing by `_credit_src`
 ## are listed under `_credit` in the breakdown (totals do not change).
 var _credit := ""
@@ -25,7 +26,7 @@ var _credit_src: BattleUnit = null
 
 ## Breakdown key of a hit or heal: an active proc credit, the spell, the talent, or the fallback.
 func _meter_key(src: BattleUnit, sid: String, fallback: String) -> String:
-	if Talents.TALENTS.has(sid) or sid == "lifesteal" or sid == "thorns":
+	if Talents.TALENTS.has(sid) or Items.FX_NAMES.has(sid):
 		return sid
 	if _credit != "" and src == _credit_src:
 		return _credit
@@ -76,6 +77,10 @@ func setup(allies: Array, enemy_snaps: Array, seed_value: int) -> void:
 		if u.alive() and u.rank("opening_silence"):
 			for f in foes_of(u):
 				_silence(f,5.)
+		if u.alive() and u.gear_fx.has("war_cry"):
+			for f in friends_of(u):
+				_buff(f,"war_cry",u.gear_fx["war_cry"],10.,u)
+			_status(u,"Боевой клич")
 
 func advance(dt: float) -> void:
 	_acc += dt
@@ -125,8 +130,20 @@ func pick_target(u: BattleUnit, rule: String = "") -> BattleUnit:
 			latest = f
 	if latest.taunt > 0.:
 		return latest
+	if u.side == 1:
+		# Shadow accessory: enemies pick someone else while they can.
+		var seen := []
+		for f in foes:
+			if not f.gear_fx.has("shadow"):
+				seen.append(f)
+		if not seen.is_empty() and seen.size() < foes.size():
+			foes = seen
 	if rule == "":
 		rule = "weak" if u.equipped("bow") and u.rank("weak_hunt") else u.target_rule
+		if u.gear_fx.has("target_weak"):
+			rule = "weak"
+		elif u.gear_fx.has("target_back"):
+			rule = "back"
 	if rule == "random":
 		return foes[rng.randi_range(0,foes.size()-1)]
 	var best: BattleUnit = foes[0]
@@ -301,6 +318,11 @@ func _act(u: BattleUnit) -> void:
 	if u.spell_cd <= 0. and u.silence <= 0. and not u.spells.is_empty():
 		if _try_rotation(u):
 			u.spell_cd = u.spell_interval()
+			if u.gear_fx.has("chrono"):
+				u.counters["chrono"] = int(u.counters.get("chrono",0))+1
+				if int(u.counters["chrono"])%3 == 0:
+					u.spell_cd = BattleUnit.RETRY_DELAY
+					_status(u,"Вне времени")
 			return
 		u.spell_cd = BattleUnit.RETRY_DELAY
 	if u.atk <= 0.:
@@ -339,6 +361,29 @@ func _autoattack(u: BattleUnit,t: BattleUnit) -> void:
 	if u.equipped("dual") and rng.randf() < .2*u.rank("paired_blades"):
 		_credited(u,"paired_blades",func(): _deal(u,t,a*.5,true,false,"attack",true))
 		_poison(u,t)
+	if not u.gear_fx.is_empty():
+		_attack_fx(u,t,a)
+
+## Accessory effects of a basic attack.
+func _attack_fx(u: BattleUnit,t: BattleUnit,a: float) -> void:
+	var fx: Dictionary = u.gear_fx
+	if fx.has("cleave"):
+		for other in foes_of(u):
+			if other != t:
+				_credited(u,"cleave",func(): _deal(u,other,a*fx["cleave"],true,false,"attack",true))
+				break
+	if not t.alive():
+		return
+	if fx.has("attack_stun") and rng.randf() < fx["attack_stun"]:
+		_stun(t,1.)
+	if fx.has("slow_attack"):
+		_buff(t,"slow",fx["slow_attack"],4.,u)
+	if fx.has("sunder_attack"):
+		_buff(t,"sunder",fx["sunder_attack"],6.,u)
+	if fx.has("attack_taunt") and u.taunt < 1.:
+		taunt_seq += 1
+		u.taunt = 2.
+		u.taunt_order = taunt_seq
 
 func _usable(u: BattleUnit,sid: String) -> bool:
 	return Db.spell_usable(sid,u.weapons) or (sid == "execute" and u.equipped("bow") and u.rank("kill_shot") > 0) or (Db.SPELLS[sid].get("req",[]).has("bow") and u.equipped("sword") and u.rank("throwing") > 0)
@@ -364,7 +409,7 @@ func _try_rotation(u: BattleUnit) -> bool:
 			if duration > 0. and u.counters.get("instant",false):
 				u.counters.erase("instant")
 				duration = 0.
-		duration /= 1.+u.haste+u.buff("bloodlust")
+		duration /= maxf(.2,1.+u.haste+u.buff("bloodlust")+u.buff("frenzy"))
 		if duration > 0.:
 			u.casting = {"spell":sid,"lvl":e.get("lvl",1),"remaining":duration,"total":duration,"target":t,"interruptible":s.get("interruptible",true),"threshold":e.get("threshold",-1.)}
 			_emit({"t":"cast","uid":u.uid,"text":s["name"],"sid":sid})
@@ -533,9 +578,9 @@ func _cast(u: BattleUnit,sid: String,lvl: int,target,scale: float = 1.,copy: boo
 				target = protector
 				_status(target,"Перехват")
 				break
-		if rng.randf() < .1*target.rank("reflection"):
+		if rng.randf() < .1*target.rank("reflection")+float(target.gear_fx.get("spell_reflect",0.)):
 			_status(target,"Отражено")
-			_credited(target,"reflection",func(): _cast(target,sid,lvl,u,scale,true,a))
+			_credited(target,"reflection" if target.rank("reflection") else "spell_reflect",func(): _cast(target,sid,lvl,u,scale,true,a))
 			return
 	_emit({"t":"spell","uid":u.uid,"text":s["name"],"sid":sid,"kind":s["kind"],"tgt":target.uid})
 	if s.has("channel") and not copy:
@@ -696,6 +741,11 @@ func _cast(u: BattleUnit,sid: String,lvl: int,target,scale: float = 1.,copy: boo
 			_shield(u,u,u.power*.15*u.rank("residual"),6.,"residual",false)
 		if _offensive(s) and rng.randf() < .1*u.rank("echo"):
 			_credited(u,"echo",func(): _cast(u,sid,lvl,target,.5,true))
+	if not copy and not u.gear_fx.is_empty() and s["kind"] in ECHO_KINDS and target.alive():
+		if u.gear_fx.has("spell_echo") and rng.randf() < u.gear_fx["spell_echo"]:
+			_credited(u,"spell_echo",func(): _cast(u,sid,lvl,target,ECHO_SCALE,true))
+		if u.gear_fx.has("mirror") and target.alive():
+			_credited(u,"mirror",func(): _cast(u,sid,lvl,target,u.gear_fx["mirror"],true))
 
 func _channel_pulse(u: BattleUnit,c: Dictionary) -> void:
 	var sid: String = c["spell"]
@@ -715,6 +765,10 @@ func _channel_pulse(u: BattleUnit,c: Dictionary) -> void:
 		var ranged_bonus: float = Db.SPELLS[sid].get("ranged_bonus",0.)
 		for f in foes_of(u):
 			_deal(u,f,c["amount"]*(1.+ranged_bonus if f.ranged else 1.),true,false,sid)
+
+## Spells an echo accessory can repeat, and the strength of its copy.
+const ECHO_KINDS := ["damage","execute","aoe_damage","drain","heal","chain_heal"]
+const ECHO_SCALE := .6
 
 func _offensive(s: Dictionary) -> bool:
 	return s["kind"] in ["damage","execute","dot","aoe_dot","aoe_damage","seed","explosive","prism","drain"]
@@ -753,7 +807,7 @@ func _purge(t: BattleUnit) -> void:
 	_status(t,"Рассеяно")
 
 func _interruptible(t: BattleUnit) -> bool:
-	return t.is_casting() and (t.casting.get("interruptible",true) if not t.casting.is_empty() else t.channel.get("interruptible",true))
+	return t.is_casting() and not t.gear_fx.has("steady_cast") and (t.casting.get("interruptible",true) if not t.casting.is_empty() else t.channel.get("interruptible",true))
 
 func _interrupt(src: BattleUnit,t: BattleUnit) -> bool:
 	if not _interruptible(t):
@@ -775,7 +829,7 @@ func _silence(t: BattleUnit,dur: float) -> void:
 	_status(t,"Безмолвие")
 
 func _stun(t: BattleUnit,dur: float) -> void:
-	if t.is_boss or (t.equipped("shield") and rng.randf() < .2*t.rank("unshaken")):
+	if t.is_boss or t.gear_fx.has("stun_immune") or (t.equipped("shield") and rng.randf() < .2*t.rank("unshaken")):
 		return
 	t.stun = maxf(t.stun,dur)
 	t.casting.clear()
@@ -812,7 +866,7 @@ func _apply_dot(src: BattleUnit,t: BattleUnit,sid: String,amount: float,dur: flo
 func _hot(src: BattleUnit,t: BattleUnit,sid: String,amount: float,dur: float,decay: bool = false) -> void:
 	if not t.alive():
 		return
-	dur += src.rank("care")
+	dur += src.rank("care")+float(src.gear_fx.get("hot_extend",0.))
 	for h in t.hots:
 		if h["id"] == sid and h["src"] == src:
 			h.merge({"remaining":dur,"duration":dur,"per_tick":amount},true)
@@ -903,7 +957,11 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 		return 0.
 	var dmg: float = amount*src.dmg_mult*(1.-src.buff("weakness"))*(1.-t.buff("wall"))*(1.-t.buff("suppress"))*(1.+t.buff("mark"))
 	if not src.gear_fx.is_empty():
-		dmg *= 1.+Items.damage_bonus(src.gear_fx,sid,s.get("kind",""),is_dot,school,t.is_boss,t.hp_frac())
+		dmg *= 1.+Items.damage_bonus(src.gear_fx,sid,s.get("kind",""),is_dot,school,t.is_boss,t.hp_frac())+_fury(src)
+	if src.buffs.has("war_cry"):
+		dmg *= 1.+src.buff("war_cry")
+	if not t.gear_fx.is_empty():
+		dmg *= _guard(t,school,is_dot)
 	if school == "physical":
 		dmg *= 1.+src.buff("physical")
 		if not is_dot:
@@ -930,6 +988,8 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 	var chance: float = src.crit+(.01*src.rank("accuracy") if weapon else .02*src.rank("spell_crit"))
 	if is_dot:
 		chance = .1*src.rank("hot_flame") if school == "magic" else 0.
+	if can_crit and src.gear_fx.has("ambush") and t.hp >= t.max_hp:
+		chance = 1.
 	var crit: bool = (can_crit or is_dot and school == "magic") and rng.randf() < chance
 	if crit:
 		dmg *= 2.+src.gear_fx.get("crit_power",0.)
@@ -953,6 +1013,12 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 		_emit({"t":"absorb","uid":t.uid,"v":absorbed,"src":src.uid})
 	if t.shield <= 0. and t.shield_sid != "":
 		_break_shield(t)
+	if dmg >= t.hp and t.gear_fx.has("phoenix") and not t.spent.has("phoenix"):
+		t.spent["phoenix"] = true
+		dmg = 0.
+		t.hp = t.max_hp*float(t.gear_fx["phoenix"])
+		_status(t,"Возрождение")
+		_fx(t,t,"resurrect","#ffb347")
 	if dmg >= t.hp and t.rank("undying") and not t.spent.has("undying"):
 		t.spent["undying"] = true
 		dmg = maxf(0.,t.hp-1.)
@@ -965,6 +1031,12 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 		t.damage_history.append([time,lost])
 		while not t.damage_history.is_empty() and t.damage_history[0][0] < time-5.:
 			t.damage_history.pop_front()
+	if t.alive() and t.hp_frac() < .3 and t.gear_fx.has("second_wind") and not t.spent.has("second_wind"):
+		t.spent["second_wind"] = true
+		_shield(t,t,t.max_hp*float(t.gear_fx["second_wind"]),8.,"second_wind")
+		_status(t,"Второе дыхание")
+	if lost > 0. and not proc and not is_dot and src.gear_fx.has("mark") and t.alive() and not t.buffs.has("mark"):
+		_buff(t,"mark",src.gear_fx["mark"],6.,src)
 	src.dealt += lost+absorbed
 	var meter_id := _meter_key(src,sid,"attack")
 	src.dealt_by[meter_id] = src.dealt_by.get(meter_id,0.)+lost+absorbed
@@ -1002,8 +1074,47 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 	if not t.alive():
 		if t.counters.has("explosive"):
 			_detonate(t,"explosive")
+		var first_death: bool = not t.counters.get("death_done",false)
 		_on_death(t)
+		if first_death and src.side != t.side and src.alive() and not src.gear_fx.is_empty():
+			_kill_fx(src)
 	return lost
+
+## Accessory bonus to damage dealt: low or high health, pacts.
+func _fury(src: BattleUnit) -> float:
+	var fx: Dictionary = src.gear_fx
+	var bonus: float = fx.get("fury",0.)
+	if fx.has("low_hp_damage") and src.hp_frac() < .5:
+		bonus += fx["low_hp_damage"]
+	if fx.has("high_hp_damage") and src.hp_frac() > .8:
+		bonus += fx["high_hp_damage"]
+	return bonus
+
+## Accessory factor on damage taken.
+func _guard(t: BattleUnit,school: String,is_dot: bool) -> float:
+	var fx: Dictionary = t.gear_fx
+	var f: float = 1.+float(fx.get("pact_taken",0.))
+	if school == "magic":
+		f *= 1.-float(fx.get("magic_ward",0.))
+	if is_dot:
+		f *= 1.-float(fx.get("dot_ward",0.))
+	if fx.has("last_bastion") and t.hp_frac() < .4:
+		f *= 1.-fx["last_bastion"]
+	return maxf(.1,f)
+
+## Accessory effects of killing an enemy.
+func _kill_fx(src: BattleUnit) -> void:
+	var fx: Dictionary = src.gear_fx
+	if fx.has("kill_heal"):
+		_heal(src,src,src.max_hp*fx["kill_heal"],false,"kill_heal")
+	if fx.has("kill_frenzy"):
+		src.buffs["frenzy"] = {"value":fx["kill_frenzy"],"remaining":6.,"src":src}
+		_status(src,"Азарт")
+	if fx.has("kill_reset"):
+		for id in src.cooldowns.keys():
+			if Db.SPELLS.has(id):
+				src.cooldowns.erase(id)
+		_status(src,"Перезарядка сброшена")
 
 func _charge_vengeance(t: BattleUnit,absorbed: float) -> void:
 	if t.buffs.has("vengeance_charge"):
@@ -1059,7 +1170,7 @@ func _heal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,sid: Strin
 		return
 	var h: float = amount*src.heal_mult*(1.+.03*src.rank("life_gift"))*(1.-t.buff("mortal_wounds"))
 	if not src.gear_fx.is_empty():
-		h *= 1.+src.gear_fx.get("heal_bonus",0.)+src.gear_fx.get("spell:"+sid,0.)
+		h *= 1.+src.gear_fx.get("heal_bonus",0.)+src.gear_fx.get("spell:"+sid,0.)+(src.gear_fx.get("mercy",0.) if t.hp_frac() < .35 else 0.)
 	var crit: bool = can_crit and rng.randf() < src.crit
 	if crit:
 		h *= 2.
@@ -1071,8 +1182,19 @@ func _heal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,sid: Strin
 	src.healed_by[meter_id] = src.healed_by.get(meter_id,0.)+actual
 	if actual > 0.:
 		_emit({"t":"heal","uid":t.uid,"v":round(actual),"crit":crit})
+	if actual > 0. and src.gear_fx.has("atonement") and not _atoning and src.alive():
+		# Healing turns partly into damage; the hit itself starts no new atonement.
+		var foe := pick_target(src)
+		if foe != null:
+			_atoning = true
+			_credited(src,"atonement",func(): _deal(src,foe,actual*src.gear_fx["atonement"],false,false,"",true,"magic",false))
+			_atoning = false
 	if not direct:
 		return
+	if src.gear_fx.has("heal_splash") and actual > 0.:
+		var other := _injured(src,1.,t)
+		if other != null:
+			_credited(src,"heal_splash",func(): _heal(src,other,h*src.gear_fx["heal_splash"],false,sid))
 	if src.rank("reserve") and excess > 0.:
 		var shield := minf(excess*.1*src.rank("reserve"),maxf(0.,t.max_hp*.1-t.shield))
 		if shield > 0.:
@@ -1108,12 +1230,13 @@ func _on_death(t: BattleUnit) -> void:
 	for d in t.dots.duplicate():
 		_explode_dot(d,t)
 		var src: BattleUnit = d["src"]
-		if src.rank("carry_fire") and d["spell_dot"]:
+		var plague: bool = src.gear_fx.has("plague")
+		if (src.rank("carry_fire") or plague) and d["spell_dot"]:
 			for f in foes_of(src):
 				if _own_dot(f,src,d["id"]) == null:
 					# Transfer a fraction of the remainder without adding talent duration again.
 					var duration: float = maxf(1.,d["remaining"])
-					_apply_dot(src,f,d["id"],d["per_tick"]*[0.,.3,.6,1.][src.rank("carry_fire")],duration,false,d["school"])
+					_apply_dot(src,f,d["id"],d["per_tick"]*(1. if plague else [0.,.3,.6,1.][src.rank("carry_fire")]),duration,false,d["school"])
 					var transferred = _own_dot(f,src,d["id"])
 					if transferred != null:
 						transferred["remaining"] = duration

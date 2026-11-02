@@ -86,10 +86,8 @@ static func make(rng: RandomNumberGenerator, level: int, forced_weapons: Array =
 		if level >= int(extra[0]):
 			var slot: String = extra[1]
 			if slot.begins_with("accessory"):
-				# accessories are rare or better, as everywhere in the game
+				# accessories are uncommon or better, as everywhere in the game (Items.make_accessory)
 				var it := Loot.roll_gear(rng,level,"merc","accessory","",role)
-				if int(it["rarity"]) < Items.RARE:
-					it = Loot.roll_gear(rng,level,"merc","accessory","",role,Items.RARE)
 				gear[slot] = it
 			else:
 				gear[slot] = Loot.roll_gear(rng,level,"merc",slot,"",role)
