@@ -416,6 +416,9 @@ func merge_items(rarity: int, ids: Array = []) -> Dictionary:
 func merge_claim() -> Dictionary:
 	return await act_authority("merge_claim")
 
+func tutorial(args: Dictionary) -> void:
+	act("tutorial", args)
+
 func talent_reset() -> void:
 	act("talent_reset")
 

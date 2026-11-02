@@ -22,6 +22,7 @@ var enemy_fx := false
 var boxes_only := false
 var skins_only := false
 var wskins_only := false
+var tutorial_only := false
 var skins_female := false
 
 func _ready() -> void:
@@ -54,6 +55,8 @@ func _ready() -> void:
 			mythic_only = true
 		if a == "--shots-dev":
 			dev_only = true
+		if a == "--shots-tutorial":
+			tutorial_only = true
 		if a == "--shots-wskins":
 			wskins_only = true
 		if a == "--shots-skins" or a == "--shots-skins-female":
@@ -67,7 +70,9 @@ func _ready() -> void:
 			fx_level = a.trim_prefix("--shots-fx=").to_int()
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if wskins_only:
+	if tutorial_only:
+		_run_tutorial()
+	elif wskins_only:
 		_run_wskins()
 	elif skins_only:
 		_run_skins()
@@ -755,6 +760,46 @@ func _run_boxes() -> void:
 	get_tree().quit()
 
 ## Worn armour of every type in each rarity, and the crafted sets, on the hero screen.
+## The first-session guide, step by step, and an unlock hint.
+func _run_tutorial() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	main._switch("expedition")
+	main._refresh()
+	await _wait(.8)
+	await _shot("t0_welcome")
+	main.tutorial._advance(0)
+	await _wait(.8)
+	await _shot("t1_push")
+	await main._start(1, "push")
+	await _wait(2.5)
+	await _shot("t2_watch")
+	main.tutorial._advance(2)
+	await _wait(1.0)
+	await _shot("t3_box")
+	main._open_box("token")
+	await _wait(1.5)
+	await _shot("t3b_box_opened")
+	UI.clear(main.popup_layer)
+	await _wait(1.0)
+	await _shot("t4_rotation")
+	main.tutorial._advance(4)
+	await _wait(.8)
+	await _shot("t5_bag")
+	main.tutorial._advance(5)
+	await _wait(.8)
+	await _shot("t6_mercs")
+	main.tutorial._advance(6)
+	await _wait(.8)
+	await _shot("t7_farm")
+	main.tutorial._advance(7)
+	Game.profile["hero"]["level"] = 5
+	Game.changed.emit()
+	await _wait(1.2)
+	await _shot("t8_hint_talents")
+	print("shots done")
+	get_tree().quit()
+
 ## Every weapon skin in the hero's hands: <type>_q<rarity>.png
 func _run_wskins() -> void:
 	Game.reset_progress()

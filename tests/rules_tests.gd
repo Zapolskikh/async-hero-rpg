@@ -836,7 +836,18 @@ func test_hero_cap() -> void:
 	for id in Talents.TALENTS:
 		heavy["talents"][id] = Talents.TALENTS[id]["ranks"]
 	v10["hired"] = [heavy]
+	v10.erase("tutorial")
 	Rules.migrate(v10, T0)
+	check(v10["tutorial"]["done"] and v10["tutorial"]["hints"].size() == Rules.TUTORIAL_HINTS.size(), "players from before the tutorial skip it")
+	var fresh_t := Rules.new_profile(34, T0)
+	check(not fresh_t["tutorial"]["done"] and int(fresh_t["tutorial"]["step"]) == 0, "a new player starts the tutorial")
+	check(Rules.apply(fresh_t, "tutorial", {"step": 3}, T0)["ok"] and int(fresh_t["tutorial"]["step"]) == 3, "tutorial step is saved")
+	check(Rules.apply(fresh_t, "tutorial", {"hint": "talents"}, T0)["ok"] and "talents" in fresh_t["tutorial"]["hints"], "hint shown once is saved")
+	check(not Rules.apply(fresh_t, "tutorial", {"hint": "cheat"}, T0)["ok"], "unknown hints are refused")
+	Rules.apply(fresh_t, "tutorial", {"step": Rules.TUTORIAL_STEPS}, T0)
+	check(fresh_t["tutorial"]["done"], "last step finishes the tutorial")
+	Rules.apply(fresh_t, "tutorial", {"done": false}, T0)
+	check(not fresh_t["tutorial"]["done"] and int(fresh_t["tutorial"]["step"]) == 0, "the tutorial can be replayed")
 	check(v10["hero"]["talents"].is_empty() and Talents.points_free(v10["hero"]) == 16, "v11: hero talents are refunded for the new point rules")
 	check(Talents.points_spent(v10["hired"][0]["talents"]) <= Talents.points_total(30), "v11: mercenary talents fit the new budget")
 	check(Db.enemy_scale(30) < Db.enemy_scale(29) * 1.2, "campaign enemies stop tracking hero growth past the cap")

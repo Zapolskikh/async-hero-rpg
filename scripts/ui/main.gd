@@ -21,6 +21,8 @@ const MYTHIC_HINT := "Ключи выпадают на уровнях кампа
 var _built_tab := ""         # tab whose content is on screen (scroll is kept when rebuilding the same tab)
 var bag_sort := "level"     # bag order: level / rarity / type
 var selected_item := ""
+var tut_targets := {}         # tutorial: key -> control to highlight (rebuilt with the screens)
+var tutorial: Tutorial
 var merge_sel: Array = []     # ids picked for the next merge
 var merge_sel_rarity := -1
 var spell_group := "all"
@@ -71,6 +73,10 @@ func _ready() -> void:
 	toast_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	toast_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(toast_layer)
+	tutorial = Tutorial.new()
+	tutorial.main = self
+	add_child(tutorial)
+	move_child(tutorial, toast_layer.get_index())
 	gate_layer = Control.new()
 	gate_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	gate_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
@@ -89,6 +95,7 @@ func _ready() -> void:
 	t.wait_time = 0.5
 	t.autostart = true
 	t.timeout.connect(_tick_status)
+	t.timeout.connect(tutorial.update)
 	add_child(t)
 	_refresh()
 	if not Game.offline_report.is_empty():
@@ -182,6 +189,8 @@ func _refresh() -> void:
 			content.add_child(cs)
 		"bag": content.add_child(_screen_bag())
 	UI.restore_scrolls(content, keep)
+	if tutorial != null:
+		tutorial.update.call_deferred()
 
 func _build_top_bar() -> void:
 	UI.clear(top_bar)
@@ -587,7 +596,9 @@ func _level_actions(lvl: int, closed: bool) -> Control:
 	elif closed:
 		h.add_child(UI.expand(UI.btn("Фарм", _start.bind(lvl, "farm"), "success", 24, "loop", 0, 62)))
 	else:
-		h.add_child(UI.expand(UI.btn("Штурм", _start.bind(lvl, "push"), "primary", 24, "swords", 0, 62)))
+		var push := UI.btn("Штурм", _start.bind(lvl, "push"), "primary", 24, "swords", 0, 62)
+		tut_targets["push"] = push
+		h.add_child(UI.expand(push))
 	return h
 
 func _collect_farm() -> void:
@@ -1123,6 +1134,7 @@ func _screen_hero() -> Control:
 			rot.add_child(UI.label("→", 26, Style.MUTED, true))
 		rot.add_child(_rotation_slot(i, rotation[i] if i < rotation.size() else ""))
 	mv.add_child(rot)
+	tut_targets["rotation"] = rot
 	h.add_child(mid)
 
 	var lc := UI.card()
@@ -1565,7 +1577,9 @@ func _item_popup(it: Dictionary) -> void:
 
 func _screen_mercs() -> Control:
 	var v := UI.vbox(12)
-	v.add_child(_party_editor())
+	var party := _party_editor()
+	tut_targets["party"] = party
+	v.add_child(party)
 	var head := UI.hbox(10)
 	var hv := UI.vbox(0)
 	hv.add_child(UI.title("Доска гильдии", 22))
@@ -1831,6 +1845,7 @@ func _screen_spells() -> Control:
 	cb10.disabled = Game.crystals < Shop.BOX_PACK_CRYSTALS
 	h.add_child(free)
 	h.add_child(tok)
+	tut_targets["box_token"] = tok if Game.boxes > 0 else free
 	if Game.boxes > 1:
 		h.add_child(UI.btn("Открыть все" if Game.boxes <= Game.BOX_PACK else "Открыть %d" % Game.BOX_PACK, _open_pack.bind("token"), "secondary", Style.FONT_SMALL, "box", 0, 52))
 	v.add_child(bar)
@@ -2041,6 +2056,7 @@ func _screen_bag() -> Control:
 		sel = items[0]
 	selected_item = sel["id"] if sel != null else ""
 	var g := UI.grid(6, 10)
+	tut_targets["bag"] = g
 	for it in items:
 		g.add_child(_item_tile(it))
 	lv.add_child(UI.scroll(g))
@@ -2360,7 +2376,7 @@ func _settings_popup() -> void:
 		_fill_leaderboard(lb_box)
 	else:
 		v.add_child(UI.wrap("Офлайн-прогресс хранится на этом устройстве. В онлайне у вас отдельный аккаунт на сервере: ваш герой появляется в найме у других игроков, а за каждый найм вы получаете золото.", Style.FONT_TINY))
-	var buttons := [["Сохранить имя", _rename.bind(name_edit), "ghost", true]]
+	var buttons := [["Сохранить имя", _rename.bind(name_edit), "ghost", true], ["Обучение заново", _replay_tutorial, "ghost", true]]
 	if Game.online_only:
 		pass
 	elif online:
@@ -2368,6 +2384,11 @@ func _settings_popup() -> void:
 	else:
 		buttons.append(["Подключиться", _connect.bind(url_edit, name_edit), "primary", true])
 	_modal("Настройки", v, buttons)
+
+func _replay_tutorial() -> void:
+	Game.tutorial({"done": false})
+	tutorial._entered = -1
+	_refresh()
 
 func _rename(edit: LineEdit) -> void:
 	if Game.rename_hero(edit.text):

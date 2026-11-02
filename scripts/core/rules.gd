@@ -40,7 +40,7 @@ const REAL_SLOTS := 3            # up to 3 of 6 board places go to real players
 
 ## Actions without randomness: the client may apply them locally right away.
 const LOCAL_ACTIONS := ["set_rotation", "move_party", "equip", "unequip", "sell", "hire", "fire", "replace", "fuse", "set_name",
-	"talent_up", "talent_reset", "set_threshold", "set_cosmetic", "set_appearance"]
+	"talent_up", "talent_reset", "set_threshold", "set_cosmetic", "set_appearance", "tutorial"]
 ## Actions with randomness or rewards: only the authority (server or offline client) runs them.
 const AUTHORITY_ACTIONS := ["reroll", "open_box", "open_pack", "start", "collect", "stop",
 	"gather_start", "gather_claim", "gather_cancel", "prof_choose", "craft_start", "craft_claim", "use_item",
@@ -71,6 +71,7 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 		"expedition": null, "reports": [], "stats": {"hired_total": 0, "assist_gold_total": 0},
 		"resources": {}, "recipes_known": [], "crystals": 0, "cosmetics_owned": [], "gold_box_day": "", "gold_boxes_today": 0, "professions": _fresh_professions(), "craft_prof": "", "gathering": null, "crafting": {}, "merging": null, "buffs": {},
 		"mythic": _fresh_mythic(),
+		"tutorial": {"step": 0, "done": false, "hints": []},
 		"rng": {"seed": str(seed_value), "state": ""},
 	}
 	p["stats"]["started_at"] = now
@@ -140,6 +141,7 @@ static func migrate(p: Dictionary, now: float) -> void:
 		hero["talents"][k] = int(hero["talents"][k])
 	hero["xp"] = int(hero["xp"])
 	_migrate_mythic(p)
+	_migrate_tutorial(p)
 	if int(p.get("v", 0)) < 11:
 		# v11: half the talent points, rows open every 5 points: talents are refunded
 		hero["talents"] = {}
@@ -206,6 +208,42 @@ static func level_stat(p: Dictionary, level: int, now: float) -> Dictionary:
 	for k in ["tries", "wipes"]:
 		ls[k] = int(ls.get(k, 0))
 	return ls
+
+## Onboarding progress (UI in scripts/ui/tutorial.gd): the step of the first-session guide,
+## whether it is over, and the unlock hints already shown. Kept on the server, so a new device
+## does not repeat it.
+const TUTORIAL_STEPS := 8
+const TUTORIAL_HINTS := ["talents", "crafts", "merge", "modifiers", "accessory", "mythic", "chapter6"]
+
+static func _migrate_tutorial(p: Dictionary) -> void:
+	var t = p.get("tutorial")
+	if typeof(t) != TYPE_DICTIONARY:
+		# players from before the tutorial know the game: no guide, no hints for what they already met
+		var veteran: bool = int(p.get("closed_level", 0)) > 0 or int(p["hero"]["level"]) > 1
+		p["tutorial"] = {"step": TUTORIAL_STEPS if veteran else 0, "done": veteran, "hints": TUTORIAL_HINTS.duplicate() if veteran else []}
+		return
+	t["step"] = clampi(int(t.get("step", 0)), 0, TUTORIAL_STEPS)
+	t["done"] = bool(t.get("done", false))
+	if typeof(t.get("hints")) != TYPE_ARRAY:
+		t["hints"] = []
+
+static func _tutorial(p: Dictionary, args: Dictionary) -> Dictionary:
+	var t: Dictionary = p["tutorial"]
+	if args.has("step"):
+		t["step"] = clampi(int(args["step"]), 0, TUTORIAL_STEPS)
+		t["done"] = int(t["step"]) >= TUTORIAL_STEPS
+	if args.has("done"):
+		t["done"] = bool(args["done"])
+		if not t["done"]:
+			t["step"] = 0
+			t["hints"] = []
+	if args.has("hint"):
+		var h := str(args["hint"])
+		if not h in TUTORIAL_HINTS:
+			return _err("unknown hint")
+		if not h in t["hints"]:
+			t["hints"].append(h)
+	return _ok()
 
 static func _fresh_mythic() -> Dictionary:
 	return {"season": Db.MYTHIC_SEASON, "level": 1, "best": 0, "best_time": 0.0, "runs": 0}
@@ -513,6 +551,7 @@ static func apply(p: Dictionary, action: String, args: Dictionary, now: float, c
 		"set_threshold": res = _set_threshold(p, str(args.get("sid", "")), float(args.get("value", 0.0)))
 		"set_cosmetic": res = _set_cosmetic(p, str(args.get("slot", "")), str(args.get("id", "")))
 		"set_appearance": res = _set_appearance(p, args)
+		"tutorial": res = _tutorial(p, args)
 		"fake_purchase": res = _fake_purchase(p, str(args.get("pack", "")))
 		"buy_cosmetic": res = _buy_cosmetic(p, str(args.get("id", "")))
 		"rush": res = _rush(p, str(args.get("what", "")), str(args.get("prof", "")), now)
