@@ -27,6 +27,8 @@ const LOOK_TINTS := ["#8f96a3", "#c9cdd4", "#5fc46a", "#5b9be8", "#b06ef0", "#f0
 ## cloth spell power. Old mail pieces wear plate on fighters and leather on archers.
 const RARITY_SKINS := ["plate", "leather", "cloth"]
 const BODY_SLOTS := ["head", "armor", "hands", "legs", "feet"]
+## Weapons and shields drawn by rarity (tools/gen_weapon_skins.py): <wtype>_q<rarity>.
+const WEAPON_SKINS := ["sword", "greatsword", "shield", "staff", "bow"]
 ## Crafted pieces wear the set of their material line: <type>_<slot>_c<set>.
 const CRAFT_SKINS := {
 	"simple_iron_helmet": 1, "iron_gauntlets": 1, "iron_chestguard": 1, "reinforced_greaves": 1, "copper_boots": 1, "steel_helm": 1,
@@ -44,6 +46,11 @@ static func skin_look(it: Dictionary) -> String:
 	var look: String = it["look"]
 	var slot: String = it.get("slot", "")
 	var atype: String = it.get("atype", "")
+	if slot in ["weapon", "offhand"]:
+		# crafted and named legendary weapons keep their own art
+		if it.get("wtype", "") in WEAPON_SKINS and not look.begins_with("crafted_") and not look.begins_with("legendary_"):
+			return "%s_q%d" % [it["wtype"], clampi(int(it["rarity"]), 0, 5)]
+		return look
 	if not slot in BODY_SLOTS or atype == "":
 		return look
 	if atype == "mail":

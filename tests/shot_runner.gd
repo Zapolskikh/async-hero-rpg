@@ -21,6 +21,7 @@ var fx_level := 0
 var enemy_fx := false
 var boxes_only := false
 var skins_only := false
+var wskins_only := false
 var skins_female := false
 
 func _ready() -> void:
@@ -53,6 +54,8 @@ func _ready() -> void:
 			mythic_only = true
 		if a == "--shots-dev":
 			dev_only = true
+		if a == "--shots-wskins":
+			wskins_only = true
 		if a == "--shots-skins" or a == "--shots-skins-female":
 			skins_only = true
 			skins_female = a.ends_with("female")
@@ -64,7 +67,9 @@ func _ready() -> void:
 			fx_level = a.trim_prefix("--shots-fx=").to_int()
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if skins_only:
+	if wskins_only:
+		_run_wskins()
+	elif skins_only:
 		_run_skins()
 	elif boxes_only:
 		_run_boxes()
@@ -750,6 +755,32 @@ func _run_boxes() -> void:
 	get_tree().quit()
 
 ## Worn armour of every type in each rarity, and the crafted sets, on the hero screen.
+## Every weapon skin in the hero's hands: <type>_q<rarity>.png
+func _run_wskins() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 5
+	main._switch("hero")
+	await _wait(.6)
+	for wt in ["sword", "greatsword", "staff", "bow", "shield"]:
+		for q in 6:
+			var eq: Dictionary = Game.profile["hero"]["equipped"]
+			eq["offhand"] = null
+			var it := Items.roll(rng, 25, q, "", "sword" if wt == "shield" else wt, "")
+			it["rarity"] = q
+			eq["weapon"] = it
+			if wt == "shield":
+				var sh := Items.roll(rng, 25, q, "", "shield", "")
+				sh["rarity"] = q
+				eq["offhand"] = sh
+			Game.changed.emit()
+			main._switch("hero")
+			main._refresh()
+			await _wait(.4)
+			await _shot("w_%s_%d" % [wt, q])
+	get_tree().quit()
+
 func _run_skins() -> void:
 	Game.reset_progress()
 	if skins_female:

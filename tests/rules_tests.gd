@@ -354,6 +354,13 @@ func test_items() -> void:
 	check(Roster.skin_look(cap) == "leather_head_c1", "crafted pieces wear their material set")
 	cap["look"] = "legendary_crown_of_x"
 	check(Roster.skin_look(cap) == "legendary_crown_of_x", "unique legendary looks stay")
+	var blade := Items.make("melee_t2_0_sword", 12, "w1")
+	check(Roster.skin_look(blade) == "sword_q%d" % int(blade["rarity"]), "weapons show their rarity skin")
+	for wt in Roster.WEAPON_SKINS:
+		for q in 6:
+			check(not GearArt.find("%s_q%d" % [wt, q], "male").is_empty(), "%s q%d is drawn" % [wt, q])
+	blade["look"] = "crafted_iron_sword"
+	check(Roster.skin_look(blade) == "crafted_iron_sword", "crafted weapons keep their own art")
 	var mail_rng := RandomNumberGenerator.new()
 	mail_rng.seed = 8
 	var no_mail := true
