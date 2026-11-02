@@ -62,6 +62,8 @@ static func effects(sid: String, lvl: int, caster: Dictionary) -> Array:
 		"execute":
 			return [["swords", "Урон %d" % a], ["star", "Только по врагу ниже %d%% HP" % roundi(s.get("threshold", 0.3) * 100)]]
 		"interrupt":
+			if s.get("silence", 0.0) > 0.0:
+				return [["sp_kick", "Прерывает каст и накладывает безмолвие на %.0f с" % s["silence"]], ["swords", "Урон %d" % a]]
 			return [["sp_kick", "Прерывает каст"], ["swords", "Урон %d" % a]]
 		"stun":
 			return [["sp_bash", "Оглушение %.0f с, прерывает каст" % dur], ["swords", "Урон %d" % a]]

@@ -145,6 +145,7 @@ def spell(ident,name,group,kind,mult,cd=0,cast=0,rarity=0,desc='',**kwargs):
         desc=desc,fx=kwargs.pop('fx','orb'),color=kwargs.pop('color',{'melee':'#ece4cc','ranged':'#e5c994','bulwark':'#80bcf0','arcane':'#b58dff','life':'#84e4ab','universal':'#ffe7a1'}[group]),tags=kwargs.pop('tags',['dps']),**kwargs)
 
 spell('kick','Пинок','universal','interrupt',0.4,8.0,0.0,0,desc='Реактивно сбивает доступный каст вне очереди. Любое оружие.',fx='slash',color='#ffe7a1',tags=['interrupt'],stat='str')
+spell('spell_lock','Запрет чар','universal','interrupt',0.3,18.0,0.0,1,desc='Реактивно сбивает доступный каст и накладывает безмолвие на 5 с: цель не может применять заклинания. Любое оружие.',fx='curse',color='#3ac0a8',tags=['interrupt'],stat='best',silence=5.0)
 spell('cleanse','Очищение','universal','cleanse',0.6,0.0,0.0,0,desc='Снимает отрицательные эффекты и немного лечит союзника.',fx='cleanse',color='#a5ffb6',tags=['cleanse','heal'])
 spell('purge','Развеивание','universal','purge',0,0.0,0.0,1,desc='Снимает один положительный эффект противника, включая щит.',fx='cleanse',color='#ffe7a1',tags=['dps'])
 spell('bash','Оглушение','universal','stun',0.5,12.0,0.0,1,desc='Оглушение на 2 с и сбой каста. Боссы не оглушаются.',fx='stun',color='#ffe7a1',tags=['control'],dur=2.0,stat='str')
@@ -197,7 +198,7 @@ spell('tranq','Усмиряющий выстрел','ranged','damage',1.2,8.0,0.
 spell('arrow_rain','Град стрел','ranged','channel_aoe',0.65,10.0,0.0,1,desc='Три залпа по всем врагам за 2 с, по дальним врагам урон +50%. Работает против одного.',fx='arrow_rain',color='#e5c994',tags=['dps'],channel=2.0,pulses=3,stat='agi',req=['bow'],school='physical',weapon=True,ranged_bonus=0.5)
 spell('beast','Призыв зверя','ranged','summon',1.0,20.0,0.0,3,desc='Призывает зверя на 10 с: атакует каждые 2 с. Любое оружие, не занимает место в группе.',fx='beast',color='#e5c994',tags=['dps'],dur=10.0,stat='best')
 spell('hunters_mark','Метка охотника','ranged','mark',0,10.0,0.0,1,desc='Цель получает на 10% больше урона от всей группы 10 с.',fx='arrow',color='#e5c994',tags=['dps'],dur=10.0,value=0.1,req=['bow'])
-assert len(spells)==53
+assert len(spells)==54
 db=ROOT/'scripts/data/db.gd'
 text=db.read_text(encoding='utf-8')
 start=text.index('\t# --- Player spells')

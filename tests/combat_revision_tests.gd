@@ -32,6 +32,7 @@ func _init() -> void:
 	test_specialist_enemies()
 	test_new_mechanics()
 	test_shared_needs()
+	test_spell_lock()
 	print("COMBAT V9: %d assertions, %d failures" % [assertions,failures])
 	quit(1 if failures else 0)
 
@@ -94,7 +95,7 @@ func test_catalog() -> void:
 		if not Db.SPELLS[id].get("enemy",false) and not Db.SPELLS[id].get("hidden",false):
 			count += 1
 			check(ResourceLoader.exists("res://assets/icons/sp_%s.png"%id),"icon: "+id)
-	check(count == 53,"53 collectible spells")
+	check(count == 54,"54 collectible spells")
 
 func test_every_spell() -> void:
 	for id in Db.SPELLS:
@@ -370,4 +371,15 @@ func test_shared_needs() -> void:
 	foe.casting = {"spell":"e_bolt","lvl":1,"remaining":2.,"total":2.4,"target":a,"interruptible":true,"threshold":-1.}
 	a.casting = {"spell":"kick","lvl":1,"remaining":.5,"total":.5,"target":foe,"interruptible":true,"threshold":-1.}
 	check(sim._find_spell_target(b,"kick") == null,"an interrupt already on its way is not doubled")
+	sim.release()
+
+func test_spell_lock() -> void:
+	var u := unit(0,["staff"])
+	var sim := battle([u])
+	var foe: BattleUnit = sim.foes_of(u)[0]
+	foe.casting = {"spell":"e_doom","lvl":1,"remaining":2.,"total":3.,"target":foe,"interruptible":true,"threshold":-1.}
+	u.spells = [{"id":"spell_lock","lvl":1}]
+	u.spell_cd = 99.
+	sim._act(u)
+	check(foe.casting.is_empty() and foe.silence >= 4.9 and u.cooldowns.has("spell_lock"),"spell lock interrupts out of rotation and silences for 5 s")
 	sim.release()

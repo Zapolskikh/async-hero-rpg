@@ -16,7 +16,7 @@ func _run() -> void:
 	var snapshot := {"name":"Trainer", "stats":{"hp":1000.,"atk":30.,"power":100.,"str":100.,"agi":100.,"armor":10.}, "weapons":["sword","shield"], "spells":[{"id":"fireball","lvl":2}], "talents":{}}
 	var original := snapshot.duplicate(true)
 	var session := TrainingSession.new(snapshot)
-	check(session.catalog().size() == 53, "All 53 available spells")
+	check(session.catalog().size() == 54, "All 54 available spells")
 	check(session.sim.units.size() == 5, "Hero, three healing targets and dummy")
 	check(session.sim.units[0].atk == snapshot["stats"]["atk"], "Original weapon damage preserved")
 	for i in 100:

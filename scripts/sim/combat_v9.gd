@@ -522,6 +522,8 @@ func _cast(u: BattleUnit,sid: String,lvl: int,target,scale: float = 1.,copy: boo
 		"damage","execute","interrupt","stun","drain":
 			if s["kind"] in ["interrupt","stun"]:
 				var interrupted := _interrupt(u,target)
+				if interrupted and s.get("silence",0.) > 0.:
+					_silence(target,s["silence"])
 				if interrupted and sid == "shield_slam" and u.rank("caster_punish"):
 					a += float(u.stats.get("str",u.atk))*(1.+u.rank("caster_punish"))
 			if s["kind"] == "stun":

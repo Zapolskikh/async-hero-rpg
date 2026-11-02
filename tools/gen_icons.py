@@ -353,6 +353,14 @@ ICONS.update({
 })
 
 
+ICONS.update({
+    # Spell Lock: a mouth sealed by a teal rune bar.
+    "sp_spell_lock": lambda d: (d.ellipse([2, 2, 13, 13], fill=(40, 60, 70)), d.ellipse([4, 7, 11, 10], fill=C["red_d"]),
+                                d.rectangle([1, 7, 14, 9], fill=(58, 192, 168)), d.point((4, 8), fill=C["white"]),
+                                d.point((11, 8), fill=C["white"]), d.line([(7, 3), (7, 5)], fill=(58, 192, 168), width=1)),
+})
+
+
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
     for name, fn in ICONS.items():
