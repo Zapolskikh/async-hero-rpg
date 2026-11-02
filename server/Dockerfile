@@ -24,7 +24,9 @@ RUN godot --headless --import --path /srv/game >/dev/null 2>&1 || true \
  && test -f .godot/global_script_class_cache.cfg
 
 COPY server/app server/app
-ENV GODOT_BIN=godot PROJECT_DIR=/srv/game PYTHONUNBUFFERED=1
+# Commit of the rules; clients of another build are asked to update (CI passes the SHA).
+ARG GAME_BUILD=""
+ENV GODOT_BIN=godot PROJECT_DIR=/srv/game PYTHONUNBUFFERED=1 GAME_BUILD=${GAME_BUILD}
 WORKDIR /srv/game/server
 EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s CMD python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health')"

@@ -46,6 +46,19 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(title="Async Hero RPG", version="0.1", lifespan=lifespan)
+
+
+@app.middleware("http")
+async def client_build(request: Request, call_next):
+    """A client of another build would show battles and optimistic results the rules no longer
+    agree with: it gets 426 and reloads (web) or asks for an update (apps). Clients without a
+    build header (local builds, tests) pass."""
+    client = request.headers.get("x-client-build", "")
+    if settings.game_build and client and client != settings.game_build and request.url.path.startswith("/v1/"):
+        return JSONResponse(status_code=426, content={"ok": False, "error": "update required", "build": settings.game_build})
+    return await call_next(request)
+
+
 app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_methods=["*"], allow_headers=["*"])
 
 
@@ -96,7 +109,7 @@ def _rate_limit(request: Request, account_id: str) -> None:
 
 @app.get("/health")
 async def health():
-    return {"ok": True, "time": time.time()}
+    return {"ok": True, "time": time.time(), "build": settings.game_build}
 
 
 @app.post("/v1/auth/guest")

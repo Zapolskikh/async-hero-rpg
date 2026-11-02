@@ -37,6 +37,7 @@ var meter_rows: Array = []   # [{root, bar, name, value}] damage meter in the wa
 var heal_rows: Array = []    # same for the healing meter
 var popup_layer: Control
 var toast_layer: Control
+var gate_layer: Control   # online_only builds: blocks the game until the server answers
 var speed_buttons: Array = []
 
 func _ready() -> void:
@@ -70,6 +71,12 @@ func _ready() -> void:
 	toast_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
 	toast_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	add_child(toast_layer)
+	gate_layer = Control.new()
+	gate_layer.set_anchors_preset(Control.PRESET_FULL_RECT)
+	gate_layer.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	add_child(gate_layer)
+	Game.online_changed.connect(_update_gate)
+	_update_gate()
 
 	selected_level = min(Game.closed_level + 1, Db.level_count())
 	if Game.exp_info() != null:
@@ -112,6 +119,48 @@ func _switch(tab: String) -> void:
 	_refresh()
 	content.modulate.a = 0.0
 	create_tween().tween_property(content, "modulate:a", 1.0, 0.15)
+
+## Release builds: the game is played on the server only. Until it answers, a screen covers
+## everything (connecting / no connection with a retry button / a newer version is out).
+func _update_gate() -> void:
+	UI.clear(gate_layer)
+	if not Game.online_only:
+		return
+	var offline: bool = not Game.is_online() or Game.online_status == "Нет связи с сервером"
+	if not Game.update_required and not offline:
+		return
+	var dim := ColorRect.new()
+	dim.color = Color(Style.BG, 0.97)
+	dim.set_anchors_preset(Control.PRESET_FULL_RECT)
+	gate_layer.add_child(dim)
+	var cc := CenterContainer.new()
+	cc.set_anchors_preset(Control.PRESET_FULL_RECT)
+	dim.add_child(cc)
+	var v := UI.vbox(16)
+	v.alignment = BoxContainer.ALIGNMENT_CENTER
+	v.custom_minimum_size.x = 560
+	cc.add_child(v)
+	v.add_child(UI.title("Async Hero RPG", Style.FONT_TITLE))
+	if Game.update_required:
+		v.add_child(UI.wrap("Вышла новая версия игры. Обновите её, чтобы продолжить.", Style.FONT_BODY, Style.TEXT))
+		v.add_child(UI.btn("Обновить", _reload_game, "primary", Style.FONT_BODY, "", 220, 56))
+		return
+	var connecting: bool = Game.online_status == "Подключение…"
+	v.add_child(UI.wrap("Подключение к серверу…" if connecting else "Нет связи с сервером. Прогресс хранится на сервере, игра продолжится, как только связь вернётся.", Style.FONT_BODY, Style.TEXT))
+	if not connecting:
+		v.add_child(UI.btn("Повторить", _retry_connect, "primary", Style.FONT_BODY, "", 220, 56))
+
+func _retry_connect() -> void:
+	Game.online_status = "Подключение…"
+	_update_gate()
+	await Game.connect_online(Game.server_url)
+	_update_gate()
+
+func _reload_game() -> void:
+	if OS.has_feature("web"):
+		JavaScriptBridge.eval("window.location.reload()")
+	else:
+		OS.shell_open("https://games.imbapewpew.com/async-hero/")
 
 func _refresh() -> void:
 	if not Game.level_unlocked(selected_level):
@@ -161,7 +210,7 @@ func _build_top_bar() -> void:
 	if Game.is_online():
 		var on := UI.pill("online", "…" if Game.busy else "Онлайн", Style.FONT_SMALL, Color("#1f4a35"))
 		h.add_child(on)
-	if Game.DEV_TIME_SKIP and not Game.is_online():
+	if Game.DEV_TIME_SKIP and not Game.is_online() and not Game.online_only:
 		h.add_child(UI.btn("⏩", _skip_popup, "ghost", Style.FONT_BODY, "", 52, 52))
 	var gear := UI.btn("", _settings_popup, "ghost", Style.FONT_BODY, "settings", 52, 52)
 	h.add_child(gear)
@@ -2298,10 +2347,11 @@ func _settings_popup() -> void:
 	var name_edit := _line_edit(str(Game.hero.get("name", "Герой")), "2–16 символов")
 	name_edit.max_length = 16
 	v.add_child(name_edit)
-	v.add_child(UI.label("Адрес сервера", Style.FONT_TINY, Style.MUTED, true))
 	var url_edit := _line_edit(Game.server_url, "https://api.example.com")
 	url_edit.editable = not online
-	v.add_child(url_edit)
+	if not Game.online_only:
+		v.add_child(UI.label("Адрес сервера", Style.FONT_TINY, Style.MUTED, true))
+		v.add_child(url_edit)
 	if online:
 		v.add_child(UI.label("Аккаунт: " + Game.account_id, Style.FONT_TINY, Style.MUTED))
 		var lb_box := UI.vbox(4)
@@ -2311,7 +2361,9 @@ func _settings_popup() -> void:
 	else:
 		v.add_child(UI.wrap("Офлайн-прогресс хранится на этом устройстве. В онлайне у вас отдельный аккаунт на сервере: ваш герой появляется в найме у других игроков, а за каждый найм вы получаете золото.", Style.FONT_TINY))
 	var buttons := [["Сохранить имя", _rename.bind(name_edit), "ghost", true]]
-	if online:
+	if Game.online_only:
+		pass
+	elif online:
 		buttons.append(["Играть офлайн", Game.go_offline, "danger", true])
 	else:
 		buttons.append(["Подключиться", _connect.bind(url_edit, name_edit), "primary", true])

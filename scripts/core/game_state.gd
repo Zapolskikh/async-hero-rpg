@@ -50,6 +50,12 @@ var _queue: Array = []            # local actions waiting to be confirmed by the
 var _queue_running := false
 var _refreshing := false
 var _refresh_timer := 0.0
+## Release builds (export feature "online_only", or --online-only[=url]) play only on the server:
+## no local save, no offline mode, no time skip. The page/app shows a blocking screen until connected.
+var online_only := false
+var update_required := false       # the server runs a newer build than this client
+## Build of this client (build.json, written by CI before export; empty in local builds).
+var build_id := ""
 
 # ---------------- profile getters (UI convenience) ----------------
 
@@ -82,8 +88,26 @@ func _ready() -> void:
 	rng.randomize()
 	net = Net.new()
 	add_child(net)
+	build_id = _read_build()
+	net.build = build_id
 	if "--qa" in OS.get_cmdline_user_args():
 		profile = Rules.new_profile(20261028, now())
+		return
+	var forced := _arg("--online-only")
+	online_only = OS.has_feature("online_only") or forced != ""
+	if online_only:
+		# Placeholder profile under the connecting screen; nothing is saved on the device.
+		profile = Rules.new_profile(rng.randi(), now())
+		get_tree().set_auto_accept_quit(false)
+		_load_account()
+		var url := forced if forced.begins_with("http") else _default_server()
+		if url == "":
+			url = _page_api()
+		if url != "":
+			server_url = url
+		mode = "offline"
+		online_status = "Подключение…"
+		_resume_online.call_deferred()
 		return
 	if not load_game():
 		new_game()
@@ -102,7 +126,7 @@ func _notification(what: int) -> void:
 	elif what == NOTIFICATION_APPLICATION_PAUSED or what == NOTIFICATION_APPLICATION_FOCUS_OUT:
 		save_game()
 
-## Test build only: the «Промотать время» button. Turn off before release.
+## Test builds only: the «Промотать время» button (never online, never in online_only builds).
 const DEV_TIME_SKIP := true
 
 ## Game clock. time_warp moves an offline game forward (test time skip).
@@ -295,6 +319,8 @@ func act_authority(action: String, args: Dictionary = {}) -> Dictionary:
 	if r["status"] == 0:
 		online_status = "Нет связи с сервером"
 		online_changed.emit()
+	elif r["status"] == 426:
+		_need_update()
 	if d.has("result") and typeof(d["result"]) == TYPE_DICTIONARY and not d["result"].is_empty():
 		return d["result"]
 	return {"ok": false, "error": str(d.get("error", "ошибка сервера"))}
@@ -413,7 +439,7 @@ func open_box_pack(use: String) -> Array:
 ## Offline test helper: everything that runs on the clock (farm, gathering, crafting,
 ## daily limits) behaves as if `sec` seconds passed.
 func skip_time(sec: float) -> Dictionary:
-	if mode == "online":
+	if mode == "online" or online_only:
 		return {"ok": false, "error": "в онлайне время ведёт сервер"}
 	if sec <= 0.0:
 		return {"ok": false, "error": "нечего мотать"}
@@ -494,6 +520,36 @@ func _default_server() -> String:
 func is_online() -> bool:
 	return mode == "online"
 
+## API next to the web page: https://host/async-hero/ -> https://host/async-hero/api.
+func _page_api() -> String:
+	if not OS.has_feature("web"):
+		return ""
+	var v = JavaScriptBridge.eval("window.location.origin + window.location.pathname.replace(/[^/]*$/, '') + 'api'", true)
+	return str(v) if typeof(v) == TYPE_STRING else ""
+
+## Value of a "--name=value" command line argument ("" if absent, "1" for a bare flag).
+func _arg(name: String) -> String:
+	for a in OS.get_cmdline_user_args():
+		if a == name:
+			return "1"
+		if a.begins_with(name + "="):
+			return a.substr(name.length() + 1)
+	return ""
+
+static func _read_build() -> String:
+	if not FileAccess.file_exists("res://build.json"):
+		return ""
+	var d = JSON.parse_string(FileAccess.get_file_as_string("res://build.json"))
+	return str(d.get("build", "")) if typeof(d) == TYPE_DICTIONARY else ""
+
+## The server answered 426: it runs another build. Web reloads the page, apps ask for an update.
+func _need_update() -> void:
+	if update_required:
+		return
+	update_required = true
+	online_status = "Доступна новая версия игры"
+	online_changed.emit()
+
 ## Connects to a server: resumes the saved account or creates a guest one.
 func connect_online(url: String, name: String = "") -> Dictionary:
 	url = url.strip_edges().rstrip("/")
@@ -519,8 +575,13 @@ func connect_online(url: String, name: String = "") -> Dictionary:
 			token = r["data"]["token"]
 			account_id = r["data"]["account_id"]
 			net.token = token
+	if r["status"] == 426:
+		_need_update()
+		return {"ok": false, "error": online_status}
 	if r["status"] != 200:
 		online_status = "Ошибка: " + str(r["data"].get("error", r["data"].get("detail", "сервер недоступен")))
+		if r["status"] == 0:
+			online_status = "Нет связи с сервером"
 		online_changed.emit()
 		return {"ok": false, "error": online_status}
 	save_game()  # keep the offline progress safe before switching
@@ -536,6 +597,8 @@ func _resume_online() -> void:
 	await connect_online(server_url)
 
 func go_offline() -> void:
+	if online_only:
+		return
 	mode = "offline"
 	online_status = ""
 	_queue.clear()
@@ -559,6 +622,8 @@ func refresh() -> void:
 		if online_status != "Онлайн":
 			online_status = "Онлайн"
 			online_changed.emit()
+	elif r["status"] == 426:
+		_need_update()
 	elif r["status"] == 0:
 		online_status = "Нет связи с сервером"
 		online_changed.emit()
@@ -571,6 +636,9 @@ func _run_queue() -> void:
 		if r["status"] == 200 and r["data"].has("profile"):
 			if _queue.is_empty():
 				_apply_view(r["data"])
+		elif r["status"] == 426:
+			_queue.clear()
+			_need_update()
 		elif r["status"] == 0:
 			online_status = "Нет связи с сервером"
 			online_changed.emit()

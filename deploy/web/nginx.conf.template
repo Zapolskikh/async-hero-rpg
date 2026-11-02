@@ -1,0 +1,52 @@
+# Rendered by the nginx image at start: ${BASE_PATH} and ${API_UPSTREAM} come from the
+# environment, everything else with a dollar sign is an nginx variable.
+#   https://games.imbapewpew.com/async-hero/       -> the game (Godot web export)
+#   https://games.imbapewpew.com/async-hero/api/   -> the game server (FastAPI), prefix stripped
+
+map $uri $game_cache {
+    ~*(index\.html|\.service\.worker\.js|version\.json|update\.js|\.manifest\.json)$ "no-cache";
+    ~*\.(wasm|pck|js|png|ico)$ "public, max-age=604800";
+    default "no-cache";
+}
+
+server {
+    listen 80;
+    server_name _;
+    absolute_redirect off;
+    gzip on;
+    gzip_types application/wasm application/octet-stream application/javascript application/json text/css;
+    gzip_min_length 1024;
+
+    location = /healthz {
+        access_log off;
+        return 200 "ok\n";
+    }
+
+    location = ${BASE_PATH} {
+        return 301 ${BASE_PATH}/;
+    }
+
+    location ${BASE_PATH}/api/ {
+        # Godot's HTTPRequest on the web sees Content-Encoding after the browser already
+        # decompressed the body and fails: API answers go uncompressed.
+        gzip off;
+        proxy_pass http://${API_UPSTREAM}/;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $http_x_forwarded_proto;
+        proxy_set_header X-Real-IP $http_cf_connecting_ip;
+        proxy_read_timeout 60s;
+        client_max_body_size 256k;
+    }
+
+    location ${BASE_PATH}/ {
+        alias /usr/share/nginx/html/;
+        index index.html;
+        add_header Cache-Control $game_cache always;
+    }
+
+    location / {
+        return 404;
+    }
+}

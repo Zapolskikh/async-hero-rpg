@@ -33,6 +33,35 @@ def test_guest_and_auth(client):
     assert client.get("/v1/me", headers=h).json()["profile"]["name"] == "Олег"
 
 
+def test_client_build_check(client):
+    from app.config import settings
+    set_clock(client, 0)
+    d, h = guest(client, "Сборка")
+    old = settings.game_build
+    settings.game_build = "abc1234"
+    try:
+        assert client.get("/v1/me", headers={**h, "X-Client-Build": "abc1234"}).status_code == 200
+        r = client.get("/v1/me", headers={**h, "X-Client-Build": "0000000"})
+        assert r.status_code == 426 and r.json()["build"] == "abc1234", "a client of another build must update"
+        assert client.get("/v1/me", headers=h).status_code == 200, "clients without a build header pass"
+        assert client.get("/health").json()["build"] == "abc1234"
+    finally:
+        settings.game_build = old
+
+
+def test_fake_purchases_can_be_disabled(client):
+    from app.config import settings
+    set_clock(client, 0)
+    d, h = guest(client, "Магазин")
+    old = settings.allow_fake_purchases
+    settings.allow_fake_purchases = False
+    try:
+        r = client.post("/v1/action", json={"action": "fake_purchase", "args": {"pack": "small"}}, headers=h)
+        assert r.status_code == 403
+    finally:
+        settings.allow_fake_purchases = old
+
+
 def test_validation(client):
     set_clock(client, 0)
     d, h = guest(client, "Валидатор")

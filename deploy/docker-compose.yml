@@ -1,0 +1,78 @@
+# Release stack for Portainer (Stacks → Add stack → Repository, compose path deploy/docker-compose.yml,
+# or paste this file into the web editor). Environment variables: see deploy/.env.example.
+#
+#   Cloudflare Tunnel ──► host:${HTTP_PORT} ──► web (nginx)
+#                                                 ├─ ${BASE_PATH}/       game (Godot web, online only)
+#                                                 └─ ${BASE_PATH}/api/   ──► api (FastAPI + Godot rules workers)
+#                                                                              └─► db (PostgreSQL)
+#   backup: daily pg_dump of db, kept 7 days / 4 weeks / 6 months.
+#
+# Images are built by GitHub Actions on every green push to main (.github/workflows/docker.yml).
+# To build on the server instead, replace each `image:` with the `build:` block next to it.
+name: async-hero
+
+services:
+  db:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: hero
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+      POSTGRES_DB: hero
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U hero -d hero"]
+      interval: 5s
+      retries: 10
+
+  api:
+    image: ghcr.io/zapolskikh/async-hero-api:${TAG:-latest}
+    # build: {context: .., dockerfile: server/Dockerfile}
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: postgresql+asyncpg://hero:${POSTGRES_PASSWORD}@db:5432/hero
+      WORKERS: ${WORKERS:-2}
+      CORS_ORIGINS: ${CORS_ORIGINS:-https://games.imbapewpew.com}
+      ALLOW_FAKE_PURCHASES: ${ALLOW_FAKE_PURCHASES:-0}
+      ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      ASSIST_DAILY_GOLD_CAP: ${ASSIST_DAILY_GOLD_CAP:-3000}
+    expose:
+      - "8000"
+
+  web:
+    image: ghcr.io/zapolskikh/async-hero-web:${TAG:-latest}
+    # build: {context: .., dockerfile: deploy/web/Dockerfile}
+    restart: unless-stopped
+    depends_on:
+      - api
+    environment:
+      BASE_PATH: ${BASE_PATH:-/async-hero}
+      API_UPSTREAM: api:8000
+    ports:
+      - "${HTTP_PORT:-8088}:80"
+
+  backup:
+    image: prodrigestivill/postgres-backup-local:16
+    restart: unless-stopped
+    depends_on:
+      db:
+        condition: service_healthy
+    environment:
+      POSTGRES_HOST: db
+      POSTGRES_DB: hero
+      POSTGRES_USER: hero
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      SCHEDULE: "@daily"
+      BACKUP_KEEP_DAYS: 7
+      BACKUP_KEEP_WEEKS: 4
+      BACKUP_KEEP_MONTHS: 6
+    volumes:
+      - backups:/backups
+
+volumes:
+  pgdata:
+  backups:

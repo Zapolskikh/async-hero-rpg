@@ -5,15 +5,19 @@ extends Node
 
 var base_url := ""
 var token := ""
+var build := ""     # client build id, the server answers 426 when it runs another one
 var timeout := 15.0
 
 func request(method: int, path: String, body = null) -> Dictionary:
 	var http := HTTPRequest.new()
 	http.timeout = timeout
+	http.accept_gzip = false  # web: the browser already inflates; a proxy that gzips would break parsing
 	add_child(http)
 	var headers := PackedStringArray(["Content-Type: application/json", "Accept: application/json"])
 	if token != "":
 		headers.append("Authorization: Bearer " + token)
+	if build != "":
+		headers.append("X-Client-Build: " + build)
 	var payload := "" if body == null else JSON.stringify(body)
 	var err := http.request(base_url.rstrip("/") + path, headers, method, payload)
 	if err != OK:

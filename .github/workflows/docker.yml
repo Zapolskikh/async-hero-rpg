@@ -1,0 +1,67 @@
+name: Docker images
+
+# After the tests pass on main: builds the release images (game server + web client of the
+# same commit) and pushes them to GitHub Container Registry. Portainer pulls them; with the
+# PORTAINER_WEBHOOK secret set, the stack is redeployed automatically.
+on:
+  workflow_run:
+    workflows: [tests]
+    types: [completed]
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  images:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-24.04
+    env:
+      SHA: ${{ github.event.workflow_run.head_sha || github.sha }}
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          ref: ${{ env.SHA }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Game server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: server/Dockerfile
+          build-args: GAME_BUILD=${{ env.SHA }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          tags: |
+            ghcr.io/zapolskikh/async-hero-api:latest
+            ghcr.io/zapolskikh/async-hero-api:${{ env.SHA }}
+          push: true
+          cache-from: type=gha,scope=api
+          cache-to: type=gha,mode=max,scope=api
+
+      - name: Web client image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: deploy/web/Dockerfile
+          build-args: GAME_BUILD=${{ env.SHA }}
+          labels: org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          tags: |
+            ghcr.io/zapolskikh/async-hero-web:latest
+            ghcr.io/zapolskikh/async-hero-web:${{ env.SHA }}
+          push: true
+          cache-from: type=gha,scope=web
+          cache-to: type=gha,mode=max,scope=web
+
+      - name: Redeploy the Portainer stack (if the PORTAINER_WEBHOOK secret is set)
+        env:
+          HOOK: ${{ secrets.PORTAINER_WEBHOOK }}
+        run: '[ -z "$HOOK" ] || curl -fsS -X POST "$HOOK"'
