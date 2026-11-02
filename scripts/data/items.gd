@@ -32,8 +32,6 @@ const TABLES := {
 	"start": [0.0, 1.0, 0.0, 0.0, 0.0, 0.0],
 }
 ## Blue, purple and orange gear is meant to be crafted, merged or traded, not found.
-## Share of drops made for the hero's own role, so a build finds usable gear.
-const OWN_ROLE_CHANCE := 0.75
 
 const ROLES := ["melee", "tank", "ranged", "caster", "healer"]
 const ROLE_NAMES := {"melee": "Боец", "tank": "Танк", "ranged": "Стрелок", "caster": "Маг", "healer": "Лекарь"}
@@ -172,8 +170,8 @@ const FX_NAMES := {"double_attack": "Вторая автоатака", "thorns":
 	"spell_echo": "Эхо заклинания", "mirror": "Зеркальное эхо", "cleave": "Рассекающий удар", "spell_reflect": "Отражение",
 	"second_wind": "Второе дыхание", "kill_heal": "Трофей", "heal_splash": "Отзвук исцеления", "atonement": "Искупление"}
 
-## Accessories: no stats, one effect that changes how the hero fights. Uncommon to legendary;
-## `roles` limits who finds them (empty = everyone).
+## Accessories: no stats, one effect that changes how the hero fights. Uncommon to legendary.
+## Player loot can be any of them; `roles` only picks fitting ones for mercenaries (empty = all).
 const ACCESSORIES := [
 	# uncommon: small touches
 	{"name": "Оберег живучести", "q": 2, "effect": "acc_regen_s", "roles": []},
@@ -243,6 +241,7 @@ static func role_of(weapons: Array) -> String:
 
 ## Random item of this quality. Empty slot, weapon type and role are picked here.
 static func roll(rng: RandomNumberGenerator, ilvl: int, quality: int, slot: String, wtype: String, role: String) -> Dictionary:
+	var any_role := role == ""
 	if wtype != "":
 		slot = "offhand" if wtype == "shield" else "weapon"
 		if role == "" or (wtype == "shield") != (role == "tank") and not wtype in ROLE_WEAPONS.get(role, []):
@@ -261,7 +260,7 @@ static func roll(rng: RandomNumberGenerator, ilvl: int, quality: int, slot: Stri
 		atype = kinds[rng.randi_range(0, kinds.size() - 1)]
 	var tier := tier_of(ilvl)
 	if slot == "accessory":
-		return make_accessory(rng, ilvl, quality, role, id)
+		return make_accessory(rng, ilvl, quality, "" if any_role else role, id)
 	if quality >= RARE:
 		var key := _pick_named(rng, role, tier, wtype if wtype != "" else slot, quality, atype)
 		if key != "":
@@ -286,12 +285,13 @@ static func _pick_named(rng: RandomNumberGenerator, role: String, tier: int, slo
 				pool.append(key)
 	return "" if pool.is_empty() else pool[rng.randi_range(0, pool.size() - 1)]
 
-## Accessory of this quality (uncommon at least) that suits the role.
+## Accessory of this quality (uncommon at least). With a role (mercenaries) it suits that
+## role; player loot passes no role and may be any accessory.
 static func make_accessory(rng: RandomNumberGenerator, ilvl: int, quality: int, role: String, id: String) -> Dictionary:
 	quality = clampi(quality, UNCOMMON, LEGENDARY)
 	var pool := []
 	for a in ACCESSORIES:
-		if int(a["q"]) == quality and (a["roles"].is_empty() or role in a["roles"]):
+		if int(a["q"]) == quality and (role == "" or a["roles"].is_empty() or role in a["roles"]):
 			pool.append(a)
 	var spec: Dictionary = pool[rng.randi_range(0, pool.size() - 1)]
 	var it := assemble(id, spec["name"], "accessory", "", "", role, quality, ilvl, {}, "accessory")

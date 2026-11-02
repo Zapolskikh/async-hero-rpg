@@ -21,6 +21,8 @@ const MYTHIC_HINT := "Ключи выпадают на уровнях кампа
 var _built_tab := ""         # tab whose content is on screen (scroll is kept when rebuilding the same tab)
 var bag_sort := "level"     # bag order: level / rarity / type
 var selected_item := ""
+var merge_sel: Array = []     # ids picked for the next merge
+var merge_sel_rarity := -1
 var spell_group := "all"
 
 var top_bar: PanelContainer
@@ -2067,7 +2069,7 @@ func _drink(res: String) -> void:
 func _merge_popup() -> void:
 	UI.clear(popup_layer)
 	var v := UI.vbox(10)
-	v.add_child(UI.wrap("3 вещи одной редкости → 1 случайная вещь следующей редкости, уровня самой высокой из трёх. Берутся самые слабые вещи из сумки, надетые не трогаются. Переплавка идёт одна за раз и занимает время.", Style.FONT_SMALL, Style.MUTED))
+	v.add_child(UI.wrap("%d вещей одной редкости → 1 случайная вещь следующей редкости, уровня самой высокой из них. Вещи выбираете вы, надетые не трогаются. Переплавка идёт одна за раз и занимает время." % Rules.MERGE_COUNT, Style.FONT_SMALL, Style.MUTED))
 	var job = Game.profile["merging"]
 	if job != null:
 		var done: bool = Game.now() >= float(job["ends_at"])
@@ -2085,25 +2087,97 @@ func _merge_popup() -> void:
 			h.add_child(rush)
 		v.add_child(c)
 	for r in Rules.MERGE_GOLD.size():
-		var used := Rules.merge_candidates(Game.profile, r)
+		var have := _merge_bag(r).size()
 		var c := UI.card(Style.BG_DEEP, 8)
 		var h := UI.hbox(8)
 		c.add_child(h)
 		var tv := UI.vbox(2)
-		tv.add_child(UI.label("%s ×%d → %s · %s" % [Items.QUALITY_NAMES[r], Rules.MERGE_COUNT, Items.QUALITY_NAMES[r + 1], UI.format_time(float(Rules.MERGE_TIME[r]))], Style.FONT_SMALL, Style.QUALITY[r + 1], true))
-		var names := []
-		for it in used:
-			names.append("%s ур.%d" % [UI.item_title(it), it["ilvl"]])
-		tv.add_child(UI.wrap(", ".join(names) if not names.is_empty() else "нужно %d вещей этой редкости в сумке" % Rules.MERGE_COUNT, Style.FONT_TINY, Style.MUTED))
+		tv.add_child(UI.label("%s ×%d → %s · %s · %d з." % [Items.QUALITY_NAMES[r], Rules.MERGE_COUNT, Items.QUALITY_NAMES[r + 1], UI.format_time(float(Rules.MERGE_TIME[r])), Rules.MERGE_GOLD[r]], Style.FONT_SMALL, Style.QUALITY[r + 1], true))
+		tv.add_child(UI.wrap("В сумке: %d" % have if have >= Rules.MERGE_COUNT else "В сумке %d, нужно %d" % [have, Rules.MERGE_COUNT], Style.FONT_TINY, Style.MUTED))
 		h.add_child(UI.expand(tv))
-		var b := UI.btn("%d" % Rules.MERGE_GOLD[r], _merge.bind(r), "primary", Style.FONT_SMALL, "gold", 0, 44)
-		b.disabled = used.is_empty() or Game.gold < Rules.MERGE_GOLD[r] or job != null
+		var b := UI.btn("Выбрать", _merge_pick_popup.bind(r), "primary", Style.FONT_SMALL, "", 0, 44)
+		b.disabled = have < Rules.MERGE_COUNT or job != null
 		h.add_child(b)
 		v.add_child(c)
 	_modal("Переплавка вещей", v)
 
-func _merge(rarity: int) -> void:
-	var r: Dictionary = await Game.merge_items(rarity)
+## Bag items of this rarity, weakest first.
+func _merge_bag(rarity: int) -> Array:
+	var items: Array = Game.profile["inventory"].filter(func(it): return int(it["rarity"]) == rarity)
+	items.sort_custom(func(a, b): return Loot.item_score(a) < Loot.item_score(b))
+	return items
+
+## The player picks exactly MERGE_COUNT items of one rarity; the weakest are offered first.
+func _merge_pick_popup(rarity: int) -> void:
+	UI.clear(popup_layer)
+	var items := _merge_bag(rarity)
+	var ids := items.map(func(it): return str(it["id"]))
+	if merge_sel_rarity != rarity:
+		merge_sel = ids.slice(0, Rules.MERGE_COUNT)
+		merge_sel_rarity = rarity
+	merge_sel = merge_sel.filter(func(id): return id in ids)
+	var v := UI.vbox(10)
+	v.add_child(UI.wrap("Отметьте %d вещей: %s → %s. Сначала предложены самые слабые." % [Rules.MERGE_COUNT, Items.QUALITY_NAMES[rarity], Items.QUALITY_NAMES[rarity + 1]], Style.FONT_SMALL, Style.MUTED))
+	var list := UI.vbox(6)
+	var counter := UI.label("", Style.FONT_SMALL, Style.TEXT, true)
+	var go := UI.btn("Переплавить  %d" % Rules.MERGE_GOLD[rarity], _merge_go.bind(rarity), "primary", Style.FONT_BODY, "gold", 0, 52)
+	for it in items:
+		var row := UI.flat(Style.BG_DEEP, 6)
+		var h := UI.hbox(10)
+		row.add_child(h)
+		var slot := Control.new()
+		slot.custom_minimum_size = Vector2(56, 56)
+		slot.mouse_filter = Control.MOUSE_FILTER_IGNORE
+		h.add_child(slot)
+		var tv := UI.vbox(2)
+		tv.add_child(UI.label("%s · ур. %d" % [UI.item_title(it), int(it["ilvl"])], Style.FONT_SMALL, Style.QUALITY[int(it["rarity"])], true))
+		tv.add_child(UI.wrap(UI.item_line(it), Style.FONT_TINY, Style.MUTED))
+		h.add_child(UI.expand(tv))
+		_merge_mark(slot, it)
+		UI.tap_overlay(row, _merge_toggle.bind(str(it["id"]), slot, it, counter, go, rarity))
+		list.add_child(row)
+	var sc := UI.scroll(list)
+	sc.custom_minimum_size.y = 340
+	v.add_child(sc)
+	var bottom := UI.hbox(10)
+	bottom.add_child(UI.expand(counter))
+	bottom.add_child(UI.btn("Назад", _merge_popup, "ghost", Style.FONT_BODY, "", 120, 52))
+	bottom.add_child(go)
+	v.add_child(bottom)
+	_merge_pick_status(counter, go, rarity)
+	_modal("Переплавка: выбор вещей", v, [], "")
+
+func _merge_mark(slot: Control, it: Dictionary) -> void:
+	for c in slot.get_children():
+		c.queue_free()
+	var on: bool = str(it["id"]) in merge_sel
+	var t := UI.tile(UI.item_icon(it), Style.QUALITY[int(it["rarity"])], 56, not on, on)
+	slot.add_child(t)
+	if on:
+		var ch := UI.chip("✓", Style.SUCCESS, 12, Color("#062b16"))
+		ch.position = Vector2(-6, -6)
+		t.add_child(ch)
+
+func _merge_toggle(id: String, slot: Control, it: Dictionary, counter: Label, go: Button, rarity: int) -> void:
+	if id in merge_sel:
+		merge_sel.erase(id)
+	elif merge_sel.size() < Rules.MERGE_COUNT:
+		merge_sel.append(id)
+	else:
+		_toast("Уже выбрано %d — снимите отметку с другой вещи" % Rules.MERGE_COUNT)
+		return
+	_merge_mark(slot, it)
+	_merge_pick_status(counter, go, rarity)
+
+func _merge_pick_status(counter: Label, go: Button, rarity: int) -> void:
+	counter.text = "Выбрано %d из %d" % [merge_sel.size(), Rules.MERGE_COUNT]
+	go.disabled = merge_sel.size() != Rules.MERGE_COUNT or Game.gold < Rules.MERGE_GOLD[rarity] or Game.profile["merging"] != null
+
+func _merge_go(rarity: int) -> void:
+	var r: Dictionary = await Game.merge_items(rarity, merge_sel.duplicate())
+	if r.get("ok", false):
+		merge_sel = []
+		merge_sel_rarity = -1
 	_toast("Переплавка началась" if r.get("ok", false) else "Не хватает вещей или золота")
 	_merge_popup()
 

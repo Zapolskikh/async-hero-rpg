@@ -224,6 +224,19 @@ func test_feedback_fixes() -> void:
 	check(Rules.apply(q, "merge_claim", {}, T0 + float(Rules.MERGE_TIME[0]))["ok"], "merge finishes on time")
 	check(r["ok"] and q["inventory"].size() == 1 and int(q["inventory"][0]["rarity"]) == 1 and int(q["inventory"][0]["ilvl"]) == 3 + Rules.MERGE_COUNT, "5 poor -> 1 common at the highest level")
 	check(not Rules.apply(q, "merge_items", {"rarity": 1}, T0)["ok"], "merge needs 5 items")
+	var pick := fresh(93)
+	pick["gold"] = 1000
+	pick["inventory"].clear()
+	for i in 7:
+		pick["inventory"].append(Loot.roll_gear(rng, 10 + i, "drop", "", "", "", 1))
+	var chosen := []
+	for i in [1, 2, 4, 5, 6]:
+		chosen.append(pick["inventory"][i]["id"])
+	var kept: Array = [pick["inventory"][0]["id"], pick["inventory"][3]["id"]]
+	check(not Rules.apply(pick, "merge_items", {"rarity": 1, "ids": chosen.slice(0, 4)}, T0)["ok"], "a pick needs exactly 5 items")
+	check(not Rules.apply(pick, "merge_items", {"rarity": 2, "ids": chosen}, T0)["ok"], "picked items must be of that rarity")
+	check(Rules.apply(pick, "merge_items", {"rarity": 1, "ids": chosen}, T0)["ok"], "the player picks what to merge")
+	check(pick["inventory"].map(func(it): return it["id"]) == kept, "only the picked items are used")
 	# level toughness is evened out
 	var lo := 10.0
 	var hi := 0.0
@@ -372,6 +385,17 @@ func test_items() -> void:
 			if not found_acc:
 				break
 	check(found_acc, "accessories are in the normal drop list")
+	var role_rng := RandomNumberGenerator.new()
+	role_rng.seed = 5
+	var roles_seen := {}
+	for i in 300:
+		var d := Expedition.drop_item(role_rng, 15, "drop")
+		roles_seen[d["role"]] = roles_seen.get(d["role"], 0) + 1
+	var even := true
+	for role in Items.ROLES:
+		if roles_seen.get(role, 0) < 30:
+			even = false
+	check(even, "loot is not tied to the hero's role: every role drops about as often %s" % str(roles_seen))
 	check(not GearArt.find("plate_head_t3", "female").is_empty() and not GearArt.find("sword_t3", "male").is_empty(), "drawn gear is found for each body")
 	check(GearArt.find("no_such_look", "male").is_empty(), "gear without art falls back to the body")
 	var undrawn := []

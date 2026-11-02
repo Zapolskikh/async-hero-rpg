@@ -369,6 +369,16 @@ func _run_gear() -> void:
 	await _wait(0.3)
 	await _shot("40b_accessory_rare")
 	UI.clear(main.popup_layer)
+	Game.profile["gold"] = 5000
+	for i in 8:
+		Game.profile["inventory"].append(Loot.roll_gear(acc_rng, 8 + i, "drop", "", "", "", 1))
+	main._merge_popup()
+	await _wait(0.3)
+	await _shot("40c_merge")
+	main._merge_pick_popup(1)
+	await _wait(0.3)
+	await _shot("40d_merge_pick")
+	UI.clear(main.popup_layer)
 	await Game.start_expedition(1, "push")
 	main._open_watch()
 	await _wait(3.0)

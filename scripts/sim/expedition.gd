@@ -37,7 +37,6 @@ var best_wave := 0
 var level_closed_now := false  # set when a push clears the level for the first time
 var mats := {}                 # crafting materials (cloth, boss materials) earned so far
 var recipe_pool: Array = Prof.drop_recipes()  # drop-only recipes this hero can find
-var loot_role := ""            # role of the hero: most drops fit it
 var last_reason := ""
 
 var rng := RandomNumberGenerator.new()
@@ -208,13 +207,13 @@ func _on_run_end(cleared: bool, reason: String) -> void:
 			first_clear_pending = false
 			gold += Db.first_clear_gold(level)
 			level_closed_now = true
-			items.append(drop_item(rng, level, "first", loot_role))
+			items.append(drop_item(rng, level, "first"))
 			for rid in recipe_pool:
 				if int(Prof.RECIPES[rid].get("clear", 0)) == level:
 					_add_mat("rcp_" + rid, 1)
 			boxes += 1
 		elif rng.randf() < FARM_DROP_CHANCE:
-			items.append(drop_item(rng, level, "drop", loot_role))
+			items.append(drop_item(rng, level, "drop"))
 	else:
 		runs_lost += 1
 	if is_attempt(mode):
@@ -268,7 +267,7 @@ func fast_forward(seconds: float, sim_budget: float = 1200.0) -> Dictionary:
 		kills += int((kills - start["kills"]) * k)
 		var new_items := int(round((items.size() - start["items"]) * k))
 		for i in min(new_items, 30):
-			items.append(drop_item(rng, level, "drop", loot_role))
+			items.append(drop_item(rng, level, "drop"))
 		runs_won += int((runs_won - start["won"]) * k)
 		runs_lost += int((runs_lost - start["lost"]) * k)
 	record_events = true
@@ -321,10 +320,9 @@ const P_MATS := 9   # Dictionary resource -> cumulative count
 func _point() -> Array:
 	return [snappedf(elapsed, 0.01), gold, xp, kills, items.size(), boxes, runs_won, runs_lost, best_wave, mats.duplicate()]
 
-static func build_timeline(p_level: int, p_mode: String, p_party: Array, p_seed: int, p_first: bool, p_recipes: Array = [], p_role: String = "") -> Dictionary:
+static func build_timeline(p_level: int, p_mode: String, p_party: Array, p_seed: int, p_first: bool, p_recipes: Array = []) -> Dictionary:
 	var ex := Expedition.new()
 	ex.record_events = false
-	ex.loot_role = p_role
 	if not p_recipes.is_empty():
 		ex.recipe_pool = p_recipes
 	ex.start(p_level, p_mode, p_party, p_seed, p_first)
@@ -402,10 +400,12 @@ static func item_at(tl: Dictionary, i: int) -> Dictionary:
 		return stored[i]
 	var r := RandomNumberGenerator.new()
 	r.seed = hash([int(tl["seed"]), i])
-	return drop_item(r, int(tl["level"]), "drop", str(tl.get("role", "")))
+	return drop_item(r, int(tl["level"]), "drop")
 
-static func drop_item(r: RandomNumberGenerator, lvl: int, table: String, role: String) -> Dictionary:
-	return Loot.roll_gear(r, lvl, table, "", "", role if r.randf() < Items.OWN_ROLE_CHANCE else "")
+## Loot is not tied to the hero's role or class: any slot, any role, any accessory,
+## so a player can switch roles at any time and the bag already has something for it.
+static func drop_item(r: RandomNumberGenerator, lvl: int, table: String) -> Dictionary:
+	return Loot.roll_gear(r, lvl, table)
 
 ## Seconds of the expedition after which waves up to index k are done (for the live view).
 static func waves_done_at(tl: Dictionary, t: float) -> int:

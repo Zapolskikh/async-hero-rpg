@@ -513,7 +513,7 @@ static func apply(p: Dictionary, action: String, args: Dictionary, now: float, c
 		"buy_cosmetic": res = _buy_cosmetic(p, str(args.get("id", "")))
 		"rush": res = _rush(p, str(args.get("what", "")), str(args.get("prof", "")), now)
 		"buy_boost": res = _buy_boost(p, now)
-		"merge_items": res = _merge_start(p, int(args.get("rarity", -1)), now)
+		"merge_items": res = _merge_start(p, int(args.get("rarity", -1)), now, args.get("ids", []))
 		"merge_claim": res = _merge_claim(p, r, now)
 		"set_name": res = _set_name(p, str(args.get("name", "")))
 		"reroll": res = _reroll(p, r, now, ctx)
@@ -782,7 +782,8 @@ static func _buy_boost(p: Dictionary, now: float) -> Dictionary:
 	return _ok()
 
 ## Item merge, one at a time: MERGE_COUNT bag items of one rarity -> one random item of the next
-## rarity at the highest item level of them. The weakest ones are used.
+## rarity at the highest item level of them. The player picks the items; without a pick the
+## weakest ones are used.
 const MERGE_COUNT := 5
 const MERGE_GOLD := [20, 60, 400, 2000]   # poor, common, uncommon, rare; legendaries cannot be merged
 const MERGE_TIME := [600, 3600, 14400, 43200]   # seconds
@@ -795,13 +796,21 @@ static func merge_candidates(p: Dictionary, rarity: int) -> Array:
 	list.sort_custom(func(a, b): return Loot.item_score(a) < Loot.item_score(b))
 	return list.slice(0, MERGE_COUNT) if list.size() >= MERGE_COUNT else []
 
+## Bag items with these ids, if they are exactly MERGE_COUNT different items of this rarity.
+static func merge_pick(p: Dictionary, rarity: int, ids: Array) -> Array:
+	var picked := []
+	for it in p["inventory"]:
+		if str(it["id"]) in ids and int(it["rarity"]) == rarity and not picked.has(it):
+			picked.append(it)
+	return picked if picked.size() == MERGE_COUNT and ids.size() == MERGE_COUNT else []
+
 ## Merge is a job with a timer: the items and gold go at the start, the result comes at the end.
-static func _merge_start(p: Dictionary, rarity: int, now: float) -> Dictionary:
+static func _merge_start(p: Dictionary, rarity: int, now: float, ids = []) -> Dictionary:
 	if rarity < 0 or rarity >= MERGE_GOLD.size():
 		return _err("bad rarity")
 	if p["merging"] != null:
 		return _err("already merging")
-	var used := merge_candidates(p, rarity)
+	var used := merge_candidates(p, rarity) if not ids is Array or ids.is_empty() else merge_pick(p, rarity, ids.map(func(i): return str(i)))
 	if used.is_empty():
 		return _err("not enough items")
 	if int(p["gold"]) < int(MERGE_GOLD[rarity]):
@@ -820,7 +829,7 @@ static func _merge_claim(p: Dictionary, r: RandomNumberGenerator, now: float) ->
 		return _err("nothing to claim")
 	if now < float(job["ends_at"]):
 		return _err("not finished")
-	var out := Loot.roll_gear(r, int(job["ilvl"]), "drop", "", "", Items.role_of(Loot.weapon_types(p["hero"]["equipped"])), int(job["rarity"]))
+	var out := Loot.roll_gear(r, int(job["ilvl"]), "drop", "", "", "", int(job["rarity"]))
 	p["inventory"].append(out)
 	p["merging"] = null
 	return _ok({"item": out})
@@ -1030,9 +1039,7 @@ static func _apply_potion(p: Dictionary, party: Array, c: Dictionary) -> void:
 					m["stats"] = Roster.hero_stats(p["hero"], c)
 
 static func _make_expedition(p: Dictionary, level: int, mode: String, party: Array, seed_value: int, first: bool, now: float) -> Dictionary:
-	var role := Items.role_of(Loot.weapon_types(p["hero"]["equipped"]))
-	var tl := Expedition.build_timeline(level, mode, party, seed_value, first, Prof.drop_recipes(p["craft_prof"]), role)
-	tl["role"] = role
+	var tl := Expedition.build_timeline(level, mode, party, seed_value, first, Prof.drop_recipes(p["craft_prof"]))
 	tl["combat_version"] = 9
 	return {"id": "%d_%d" % [seed_value, int(now)], "level": level, "mode": mode, "seed": seed_value, "first": first,
 		"party": party, "started_at": now, "tl": tl, "collected": Expedition.zero_point()}
@@ -1178,8 +1185,7 @@ static func _grant_season_reward(p: Dictionary, r: RandomNumberGenerator, season
 		return _err("no reward for this place")
 	p["crystals"] = int(p["crystals"]) + int(tier["crystals"])
 	_stats(p)["crystals_free"] += int(tier["crystals"])
-	var role := Items.role_of(Loot.weapon_types(p["hero"]["equipped"]))
-	var it := Loot.roll_gear(r, Db.HERO_MAX_LEVEL, "drop", "", "", role, int(tier["quality"]))
+	var it := Loot.roll_gear(r, Db.HERO_MAX_LEVEL, "drop", "", "", "", int(tier["quality"]))
 	p["inventory"].append(it)
 	var rep := {"type": "season_reward", "season": season, "rank": rank, "crystals": int(tier["crystals"]), "items": [it]}
 	p["reports"].append(rep)

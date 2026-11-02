@@ -384,8 +384,8 @@ func rush(what: String, prof: String = "") -> Dictionary:
 func buy_boost() -> Dictionary:
 	return await act_authority("buy_boost", {})
 
-func merge_items(rarity: int) -> Dictionary:
-	return await act_authority("merge_items", {"rarity": rarity})
+func merge_items(rarity: int, ids: Array = []) -> Dictionary:
+	return await act_authority("merge_items", {"rarity": rarity, "ids": ids})
 
 func merge_claim() -> Dictionary:
 	return await act_authority("merge_claim")
