@@ -121,6 +121,7 @@ func _switch(tab: String) -> void:
 	if tab == current_tab:
 		return
 	current_tab = tab
+	Game.track({"e": "screen", "tab": tab})
 	if tab == "expedition" and Game.exp_info() != null:
 		selected_level = int(Game.exp_info()["level"])   # show the running expedition
 	_refresh()
@@ -1023,6 +1024,7 @@ func _set_speed(s: float) -> void:
 	Game.watch_speed = s
 
 func _open_watch() -> void:
+	Game.track({"e": "watch"})
 	for b in speed_buttons:
 		b.visible = not Game.is_online()  # online the server keeps real time
 	watch_layer.visible = true
@@ -1398,6 +1400,7 @@ func _dummy_popup() -> void:
 	panel.tree_exited.connect(backdrop.queue_free)
 
 func _talents_popup() -> void:
+	Game.track({"e": "popup", "name": "talents"})
 	UI.clear(popup_layer)
 	var panel := TalentPanel.new()
 	panel.configure(Game.hero, Game.hero_snapshot(), func(id): Game.talent_up(id))
@@ -2132,6 +2135,7 @@ func _drink(res: String) -> void:
 	_refresh()
 
 func _merge_popup() -> void:
+	Game.track({"e": "popup", "name": "merge"})
 	UI.clear(popup_layer)
 	var v := UI.vbox(10)
 	v.add_child(UI.wrap("%d вещей одной редкости → 1 случайная вещь следующей редкости, уровня самой высокой из них. Вещи выбираете вы, надетые не трогаются. Переплавка идёт одна за раз и занимает время." % Rules.MERGE_COUNT, Style.FONT_SMALL, Style.MUTED))

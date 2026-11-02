@@ -76,7 +76,12 @@ func _run() -> void:
 	await _wait(1.5)
 	await _shot("online_settings")
 	await _account_checks()
+	Game.track({"e": "screen", "tab": "hero"})
+	var sent := Game._telemetry.size()
+	await Game.flush_telemetry()
+	check(sent >= 1 and Game._telemetry.is_empty(), "client analytics sent (%d events)" % sent)
 	print("ONLINE TEST DONE ", failures)
+	get_tree().quit()
 
 ## Account linking: e-mail, transfer code, logout and coming back with the code.
 func _account_checks() -> void:
@@ -110,4 +115,3 @@ func _account_checks() -> void:
 	check(not r["ok"] and r["error"] == "Неверная почта или пароль", "wrong password refused")
 	r = await Game.login_email(email, "correct horse")
 	check(r["ok"] and Game.account_id == me, "e-mail login opens the same account")
-	get_tree().quit()

@@ -11,6 +11,7 @@ Tables
   sessions   - extra device tokens of an account (login by e-mail, transfer code, Google)
   credentials - ways to log in: e-mail + password hash, Google / Apple subject
   transfer_codes - one-time codes to move an account to another device
+  events     - analytics: what players do, builds of every push and Mythic+ run (app/analytics.py)
 """
 from __future__ import annotations
 
@@ -143,6 +144,15 @@ class TransferCode(Base):
     account_id: Mapped[str] = mapped_column(String(32), index=True)
     expires_at: Mapped[float] = mapped_column(Float)
     used: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Event(Base):
+    __tablename__ = "events"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[str] = mapped_column(String(32), index=True)
+    at: Mapped[float] = mapped_column(Float, index=True)      # game clock (unix seconds)
+    kind: Mapped[str] = mapped_column(String(24), index=True)
+    data: Mapped[dict] = mapped_column(JsonType, default=dict)
 
 
 engine: AsyncEngine | None = None

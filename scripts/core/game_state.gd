@@ -50,6 +50,7 @@ var _queue: Array = []            # local actions waiting to be confirmed by the
 var _queue_running := false
 var _refreshing := false
 var _refresh_timer := 0.0
+var _telemetry: Array = []        # client events for analytics, sent with the next refresh
 ## Release builds (export feature "online_only", or --online-only[=url]) play only on the server:
 ## no local save, no offline mode, no time skip. The page/app shows a blocking screen until connected.
 var online_only := false
@@ -153,6 +154,7 @@ func _process(delta: float) -> void:
 		if _refresh_timer >= REFRESH_EVERY:
 			_refresh_timer = 0.0
 			refresh()
+			flush_telemetry()
 	_autosave += delta
 	if _autosave >= AUTOSAVE_EVERY:
 		_autosave = 0.0
@@ -589,12 +591,27 @@ func connect_online(url: String, name: String = "") -> Dictionary:
 		return {"ok": false, "error": online_status}
 	save_game()  # keep the offline progress safe before switching
 	mode = "online"
+	var size := DisplayServer.window_get_size()
+	track({"e": "session", "platform": OS.get_name(), "online_only": online_only, "w": size.x, "h": size.y, "build": build_id.substr(0, 12)})
 	_view_id = ""
 	_apply_view(r["data"])
 	online_status = "Онлайн"
 	_save_account()
 	online_changed.emit()
 	return {"ok": true}
+
+## Analytics: a client event (screen opened, popup, session start). Online only, batched.
+func track(event: Dictionary) -> void:
+	if mode != "online" or _telemetry.size() >= 50:
+		return
+	_telemetry.append(event)
+
+func flush_telemetry() -> void:
+	if mode != "online" or _telemetry.is_empty():
+		return
+	var batch := _telemetry.duplicate()
+	_telemetry.clear()
+	await net.post_json("/v1/telemetry", {"events": batch})
 
 func _resume_online() -> void:
 	await connect_online(server_url)

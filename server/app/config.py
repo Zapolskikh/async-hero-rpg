@@ -40,6 +40,8 @@ class Settings:
     # Sign-in providers (account linking). Empty = the buttons stay disabled in the game.
     google_client_id: str = os.getenv("GOOGLE_CLIENT_ID", "")
     apple_client_id: str = os.getenv("APPLE_CLIENT_ID", "")
+    # Analytics events are kept this many days (app/analytics.py).
+    analytics_keep_days: int = int(os.getenv("ANALYTICS_KEEP_DAYS", "400"))
     # Build of the rules this server runs (CI: commit SHA). Clients of another build get 426.
     game_build: str = os.getenv("GAME_BUILD", _build_file())
     # Mythic+ seasons: closing a season pays the places (POST /v1/admin/season/close, header X-Admin-Token).

@@ -31,11 +31,12 @@ from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import HTMLResponse, JSONResponse
 from pydantic import BaseModel, Field
 
 from . import db
 from .config import settings
+from . import analytics
 from .accounts import AccountError, Accounts
 from .game import GameError, GameService
 from .worker import WorkerError, WorkerPool
@@ -51,6 +52,7 @@ async def lifespan(app: FastAPI):
     await pool.start()
     app.state.game = GameService(pool, settings)
     app.state.accounts = Accounts(settings)
+    await analytics.prune(settings.analytics_keep_days)
     app.state.buckets = {}
     log.info("server ready: %d rules workers, db=%s", settings.workers, settings.database_url.split("@")[-1])
     yield
@@ -231,6 +233,30 @@ async def login_provider(body: ProviderIn, request: Request):
 async def logout(request: Request, account_id: str = Depends(current_account), token: str = Depends(bearer)):
     await accounts(request).logout(token)
     return {"ok": True}
+
+
+class TelemetryIn(BaseModel):
+    events: list = Field(default_factory=list, max_length=analytics.MAX_CLIENT_BATCH)
+
+
+@app.post("/v1/telemetry")
+async def telemetry(body: TelemetryIn, request: Request, account_id: str = Depends(current_account)):
+    return {"ok": True, "stored": await game(request).telemetry(account_id, body.events)}
+
+
+def _admin(token: str) -> None:
+    if not settings.admin_token or not secrets.compare_digest(token or "", settings.admin_token):
+        raise HTTPException(403, "admin only")
+
+
+@app.get("/v1/admin/report")
+async def admin_report(request: Request, days: float = 90, format: str = "html", token: str = "",
+                       x_admin_token: str = Header(default="")):
+    """Season report (players, retention, levels, spells, talents, accessories, Mythic+, economy).
+    Open in a browser: .../api/v1/admin/report?token=<ADMIN_TOKEN>  (format=json for raw data)."""
+    _admin(x_admin_token or token)
+    r = await analytics.report(days)
+    return JSONResponse(r) if format == "json" else HTMLResponse(analytics.render_html(r))
 
 
 class SeasonIn(BaseModel):

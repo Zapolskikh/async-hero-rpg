@@ -14,7 +14,7 @@ import weakref
 
 from sqlalchemy import case, func, select, update
 
-from . import db
+from . import analytics, db
 from .config import Settings
 from .worker import WorkerPool
 
@@ -72,6 +72,16 @@ class GameService:
             await self._upsert_snapshot(s, account_id, res)
         return account_id, token, self._view(res, {}, [], now)
 
+    async def telemetry(self, account_id: str, batch: list) -> int:
+        """Client events (screens, session start): whitelisted kinds only, stamped with server time."""
+        now = self.clock()
+        evs = analytics.client_events(batch, now)
+        if evs:
+            async with db.Session() as s, s.begin():
+                for ev in evs:
+                    s.add(db.Event(account_id=account_id, at=now, kind=ev["kind"], data=ev["data"]))
+        return len(evs)
+
     async def account_by_token(self, token: str) -> db.Account | None:
         """The guest token of the account, or a device session from a login (e-mail, code, Google)."""
         async with db.Session() as s, s.begin():
@@ -105,6 +115,7 @@ class GameService:
                 if row is None:
                     raise GameError(404, "no profile")
                 p = row.data
+                before = {"gold": p.get("gold", 0), "crystals": p.get("crystals", 0), "hero": {"level": p["hero"]["level"]}}
                 gold_before = int(p.get("gold", 0))
                 level = int(p["hero"]["level"])
                 need_pool = action is None or action in AUTHORITY_ACTIONS
@@ -135,6 +146,8 @@ class GameService:
                 await self._record_mythic(s, account_id, res)
                 if action == "set_name" and result.get("ok"):
                     await s.execute(update(db.Account).where(db.Account.id == account_id).values(name=p["name"]))
+                for ev in analytics.events_for(action, args, before, p, result, reports, now):
+                    s.add(db.Event(account_id=account_id, at=now, kind=ev["kind"], data=ev["data"]))
                 if action in AUTHORITY_ACTIONS or reports:
                     s.add(db.ActionLog(account_id=account_id, action=action or "tick", ok=bool(result.get("ok", True)),
                                        gold_before=gold_before, gold_after=int(p.get("gold", 0)),

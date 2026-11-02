@@ -91,6 +91,7 @@ func _advance(step: int) -> void:
 	update()
 
 func _skip() -> void:
+	Game.track({"e": "tutorial_skip", "step": int(_state().get("step", 0))})
 	Game.tutorial({"step": STEPS.size()})
 	_clear()
 

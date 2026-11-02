@@ -301,3 +301,29 @@ def test_mythic_season(client):
     rewards = [x for x in me["reports"] if x["type"] == "season_reward"]
     assert rewards and rewards[0]["rank"] >= 1 and me["profile"]["crystals"] > crystals, me["reports"]
     assert not any(x["type"] == "season_reward" for x in client.get("/v1/me", headers=h).json()["reports"])
+
+
+def test_analytics_report(client):
+    from app.config import settings
+    set_clock(client, 86400 * 60)
+    d, h = guest(client, "Аналитик")
+    act(client, h, "tutorial", step=1)
+    act(client, h, "open_box", use="free")
+    st = act(client, h, "start", level=1, mode="push")
+    assert st["ok"], st
+    r = client.post("/v1/telemetry", json={"events": [{"e": "session", "platform": "web"}, {"e": "screen", "tab": "hero"},
+                                                      {"e": "hack", "gold": 999}]}, headers=h)
+    assert r.json()["stored"] == 2, "only whitelisted client events are kept"
+    assert client.get("/v1/admin/report").status_code == 403, "the report is for the admin"
+    old = settings.admin_token
+    settings.admin_token = "secret-admin"
+    try:
+        rep = client.get("/v1/admin/report?format=json&days=3650", headers={"X-Admin-Token": "secret-admin"}).json()
+        assert rep["players"]["accounts"] >= 1
+        assert any(l["level"] == 1 and l["attempts"] >= 1 for l in rep["levels"]), rep["levels"]
+        assert rep["spells"] and rep["spells"][0]["uses"] >= 1, "spells of pushes are counted"
+        assert rep["tutorial"]["funnel"][1]["players"] >= 1
+        page = client.get("/v1/admin/report?token=secret-admin&days=3650")
+        assert page.status_code == 200 and "Заклинания героев" in page.text
+    finally:
+        settings.admin_token = old
