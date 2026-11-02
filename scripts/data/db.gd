@@ -184,6 +184,29 @@ const ENEMIES := {
 	"boss_archlich": {"name": "Архилич", "hp": 3000, "atk": 15, "power": 19, "armor": 25, "haste": 0.0, "target": "random", "enrage": 200.0, "need": "interrupt",
 				 "hint": "Архилич: прерывания, очищение и успеть за 3 минуты",
 				 "spells": ["e_cataclysm", "e_doom", "e_curse", "e_ward"], "color": "#0f3a3a", "sprite": "boss_archlich", "ranged": true, "role": "boss", "boss": true},
+	# --- Chapter 6: the Ash Order, renegade heroes in black and crimson. They wear weapons
+	# and cast the heroes' own spells: taunts, heals, interrupts and silences, marks.
+	"ash_knight": {"name": "Рыцарь пепла", "hp": 300, "atk": 13, "power": 14, "armor": 22, "haste": 0.0, "target": "front",
+				 "weapons": ["sword", "shield"], "spells": ["taunt", "shield_slam", "shield_wall"], "color": "#2a2226", "sprite": "ash_knight", "ranged": false, "role": "tank",
+				 "hint": "Рыцари пепла: провокация и сбивание кастов"},
+	"ash_cleric": {"name": "Жрица пепла", "hp": 200, "atk": 7, "power": 17, "armor": 6, "haste": 0.0, "target": "front",
+				 "weapons": ["staff"], "spells": ["pain_suppression", "heal", "renew"], "color": "#3a2a2e", "sprite": "ash_cleric", "ranged": true, "role": "healer", "need": "interrupt",
+				 "hint": "Жрицы пепла лечат и спасают раненых: сбивайте лечение"},
+	"ash_magus": {"name": "Маг пепла", "hp": 180, "atk": 6, "power": 19, "armor": 4, "haste": 0.0, "target": "random",
+				 "weapons": ["staff"], "spells": ["spell_lock", "fireball", "ignite"], "color": "#241a2a", "sprite": "ash_magus", "ranged": true, "role": "caster",
+				 "hint": "Маги пепла сбивают касты и накладывают безмолвие"},
+	"ash_ranger": {"name": "Стрелок пепла", "hp": 200, "atk": 14, "power": 13, "armor": 8, "haste": 0.0, "target": "weak",
+				 "weapons": ["bow"], "spells": ["hunters_mark", "aimed_shot", "serpent_sting"], "color": "#2f2a26", "sprite": "ash_ranger", "ranged": true, "role": "ranged",
+				 "hint": "Стрелки пепла метят и добивают самого слабого"},
+	"ash_blade": {"name": "Клинок пепла", "hp": 230, "atk": 16, "power": 12, "armor": 10, "haste": 0.2, "target": "back",
+				 "weapons": ["sword", "sword"], "spells": ["kick", "mortal_strike", "rend"], "color": "#1c1a20", "sprite": "ash_blade", "ranged": false, "role": "assassin",
+				 "hint": "Клинки пепла режут тыл и пинают касты"},
+	"boss_ash_commander": {"name": "Командор пепла", "hp": 2100, "atk": 18, "power": 18, "armor": 30, "haste": 0.0, "target": "front", "enrage": 150.0, "need": "purge",
+				 "hint": "Командор: щит возмездия взрывается — снимайте его развеиванием",
+				 "weapons": ["sword", "shield"], "spells": ["vengeance", "shockwave", "shield_slam"], "color": "#2a1a1a", "sprite": "boss_ash_commander", "ranged": false, "role": "boss", "boss": true},
+	"boss_ash_archon": {"name": "Архонт пепла", "hp": 2600, "atk": 14, "power": 22, "armor": 15, "haste": 0.0, "target": "random", "enrage": 180.0, "magic_resist": 0.2, "need": "interrupt",
+				 "hint": "Архонт: Зов гибели, безмолвие и снятие ваших щитов",
+				 "weapons": ["staff"], "spells": ["spell_lock", "e_doom", "mass_dispel", "prism"], "color": "#1a1418", "sprite": "boss_ash_archon", "ranged": true, "role": "boss", "boss": true},
 }
 
 # Campaign: each level is a list of waves; each wave is 1-4 enemy ids.
@@ -223,6 +246,17 @@ const LEVELS := [
 	{"name": "Река душ",          "waves": [["plaguebearer", "plaguebearer", "warlock", "siren"], ["warden", "golem", "priest", "priest"], ["phantom", "assassin", "berserker", "doomcaller"], ["boss_shadow", "plaguebearer", "priest"]]},
 	{"name": "Последний рубеж",   "waves": [["ironclad", "ironclad", "golem"], ["executioner", "assassin", "warlock", "priest"], ["warden", "priest", "doomcaller", "caster"], ["boss_drake", "boss_warlord"]]},
 	{"name": "Цитадель архилича", "waves": [["warlock", "siren", "priest", "priest"], ["golem", "phantom", "assassin", "plaguebearer"], ["warden", "caster", "doomcaller", "priest"], ["boss_archlich", "warden"]]},
+	# --- Chapter 6: the Ash Order (after the hero cap: progress comes from gear, spells and the party) ---
+	{"name": "Пепельные врата",       "waves": [["ash_knight", "ash_blade"], ["ash_magus", "ash_ranger", "warden"], ["ash_knight", "ash_cleric", "berserker"], ["ash_blade", "ash_blade", "ash_magus", "priest"]]},
+	{"name": "Казармы Ордена",        "waves": [["ash_knight", "ash_knight", "ash_cleric"], ["ash_blade", "assassin", "ash_ranger"], ["golem", "ash_magus", "ash_cleric"], ["ash_knight", "executioner", "ash_ranger", "siren"]]},
+	{"name": "Зал клятв",             "waves": [["ash_magus", "ash_magus", "warden"], ["ash_cleric", "ash_cleric", "ash_knight", "ash_blade"], ["doomcaller", "ash_magus", "priest"], ["phantom", "ash_blade", "ash_ranger", "ash_cleric"]]},
+	{"name": "Кузня отступников",     "waves": [["ironclad", "ash_knight", "ash_cleric"], ["ash_ranger", "ash_ranger", "ash_magus"], ["golem", "golem", "ash_cleric", "siren"], ["ash_blade", "ash_blade", "executioner", "priest"]]},
+	{"name": "Плац командора",        "waves": [["ash_knight", "ash_blade", "ash_cleric"], ["ash_magus", "ash_ranger", "warden", "priest"], ["berserker", "berserker", "ash_cleric", "doomcaller"], ["boss_ash_commander", "ash_cleric"]]},
+	{"name": "Сожжённая библиотека",  "waves": [["ash_magus", "siren", "ash_cleric"], ["plaguebearer", "warlock", "ash_magus", "ash_knight"], ["ash_ranger", "ash_blade", "phantom", "ash_cleric"], ["doomcaller", "ash_magus", "ash_magus", "priest"]]},
+	{"name": "Пепельные топи",        "waves": [["plaguebearer", "plaguebearer", "ash_cleric", "ash_knight"], ["ash_blade", "assassin", "poisoner", "ash_ranger"], ["warden", "ash_magus", "ash_cleric", "siren"], ["executioner", "ash_knight", "ash_blade", "ash_cleric"]]},
+	{"name": "Мост последней клятвы", "waves": [["ash_knight", "ash_knight", "ash_cleric", "ash_ranger"], ["ash_ranger", "ash_blade", "ash_magus", "warden"], ["ironclad", "ash_magus", "ash_cleric", "doomcaller"], ["ash_blade", "ash_blade", "phantom", "siren"]]},
+	{"name": "Преддверие Архонта",    "waves": [["ash_knight", "ash_blade", "ash_ranger", "ash_cleric"], ["doomcaller", "siren", "ash_magus", "priest"], ["warden", "ash_knight", "ash_cleric", "ash_magus"], ["ash_knight", "ash_cleric", "ash_magus", "ash_blade"]]},
+	{"name": "Цитадель Архонта",      "waves": [["ash_knight", "ash_cleric", "ash_magus", "ash_blade"], ["doomcaller", "siren", "warden", "priest"], ["ash_ranger", "ash_ranger", "ash_cleric", "executioner"], ["boss_ash_archon", "ash_knight", "ash_cleric"]]},
 ]
 
 # --- Mythic+ (season 1 endgame): one long dungeon, the same for every player ---
@@ -277,6 +311,7 @@ const CHAPTERS := [
 	{"from": 16, "name": "Тени и проклятия"},
 	{"from": 21, "name": "Драконьи горы"},
 	{"from": 26, "name": "Царство архилича"},
+	{"from": 31, "name": "Орден Пепла"},
 ]
 
 ## All gold income (kills, push clears, selling items) is multiplied by this.
@@ -291,6 +326,10 @@ const HERO_PER_LEVEL := float(HERO_MAX_LEVEL - HERO_AT_BREAK) / float(30 - SCALE
 const GEAR_GROWTH := 1.01  # extra enemy growth per level after the break: gear and spell levels the party gains
 const LATE_TOUGHNESS := 1.07 # extra difficulty multiplier per level after the break (tuning knob)
 const TOUGHNESS_LEVELS := 15 # the extra multiplier stops here, so difficulty does not pile up on the last chapter
+
+## Levels 1-30 were tuned before chapter 6 and keep their numbers; 31-40 are the post-cap chapter.
+const CAMPAIGN_CORE := 30
+const ENDGAME_GROWTH := 1.18   # enemy strength per level after level 30 (tuned with tests/endgame_report.gd)
 
 static func level_count() -> int:
 	return LEVELS.size()
@@ -312,7 +351,7 @@ static var _toughness_ref := -1.0
 static func level_hp_factor(level: int) -> float:
 	if _toughness_ref < 0.0:
 		var vals := []
-		for l in range(1, level_count() + 1):
+		for l in range(1, mini(level_count(), CAMPAIGN_CORE) + 1):
 			vals.append(level_toughness(l))
 		vals.sort()
 		_toughness_ref = vals[vals.size() / 2]   # median level
@@ -322,6 +361,7 @@ static func level_hp_factor(level: int) -> float:
 ## Each changes every enemy of the level (bosses too); shown on the level card and in the atlas.
 const MODS_FROM := 11
 const MODS_TWO_FROM := 21
+const MODS_THREE_FROM := 31
 const MODIFIERS := {
 	"armored":  {"name": "Бронированные", "icon": "mod_armored", "desc": "Броня врагов ×1.35 — помогают DoT и много мелких ударов"},
 	"swift":    {"name": "Стремительные", "icon": "mod_swift", "desc": "Скорость врагов +20% — чаще бьют и кастуют, важны прерывания"},
@@ -342,6 +382,12 @@ static func level_modifiers(level: int) -> Array:
 	var second: String = MODIFIER_ORDER[(level * 5 + 2 + level % 3) % n]
 	if second == first:
 		second = MODIFIER_ORDER[(level * 5 + 1) % n]
+	if level < MODS_THREE_FROM:
+		return [first, second]
+	for k in n:
+		var third: String = MODIFIER_ORDER[(level * 3 + k) % n]
+		if third != first and third != second:
+			return [first, second, third]
 	return [first, second]
 
 ## Waves per campaign level. The hand-made waves of a level repeat in order
@@ -378,7 +424,7 @@ static func chapter_of(level: int) -> Dictionary:
 
 ## Hand tuning from tests/player_sim.gd: levels differ in composition, so the same scale gives
 ## walls next to free levels. This evens out the days spent per level.
-const LEVEL_PACE := {15: 1.12, 19: 1.08, 21: 1.15, 22: 1.1, 26: 1.12, 27: 0.88, 28: 0.95, 30: 0.75}
+const LEVEL_PACE := {15: 1.12, 19: 1.08, 21: 1.15, 22: 1.1, 26: 1.12, 27: 0.88, 28: 0.95, 30: 0.75, 38: 0.85}
 
 ## Enemy stat multiplier. Chapter 1 grows exponentially (fast early power ramp);
 ## later the curve tracks how strong a typical party of the expected hero level
@@ -387,6 +433,9 @@ const LEVEL_PACE := {15: 1.12, 19: 1.08, 21: 1.15, 22: 1.1, 26: 1.12, 27: 0.88, 
 static func enemy_scale(level: int) -> float:
 	if level <= SCALE_BREAK:
 		return pow(LEVEL_SCALE, level - 1)
+	if level > CAMPAIGN_CORE:
+		# Chapter 6: the hero no longer levels, enemies grow at a fixed rate from level 30 (without its pace tweak).
+		return enemy_scale(CAMPAIGN_CORE) / float(LEVEL_PACE.get(CAMPAIGN_CORE, 1.0)) * pow(ENDGAME_GROWTH, level - CAMPAIGN_CORE) * float(LEVEL_PACE.get(level, 1.0))
 	var base := pow(LEVEL_SCALE, SCALE_BREAK - 1)
 	var h := minf(HERO_AT_BREAK + HERO_PER_LEVEL * (level - SCALE_BREAK), HERO_MAX_LEVEL)
 	return base * pow(GEAR_GROWTH, level - SCALE_BREAK) * party_strength(h) / party_strength(HERO_AT_BREAK) * pow(LATE_TOUGHNESS, mini(level - SCALE_BREAK, TOUGHNESS_LEVELS)) * float(LEVEL_PACE.get(level, 1.0))

@@ -17,7 +17,7 @@ const TABS := [
 var current_tab := "expedition"
 var selected_level := 1
 const MYTHIC_NODE := -1     # selected_level value of the Mythic+ node after the last level
-const MYTHIC_HINT := "Ключи выпадают на уровнях кампании 1–30: за первое прохождение и иногда на фарме."
+const MYTHIC_HINT := "Ключи выпадают на уровнях кампании: за первое прохождение и иногда на фарме."
 var _built_tab := ""         # tab whose content is on screen (scroll is kept when rebuilding the same tab)
 var bag_sort := "level"     # bag order: level / rarity / type
 var selected_item := ""
@@ -1590,9 +1590,12 @@ func _merc_card(m: Dictionary) -> Control:
 	var av := UI.avatar(m["sprite"], role_col, 100, false, m.get("look", []), m.get("appearance", {}))
 	left.add_child(av)
 	UI.tap_overlay(av, _merc_popup.bind(m))
-	var gear_row := UI.hbox(4)
-	for slot in Loot.SLOTS:
-		gear_row.add_child(_small_gear_tile(m["gear"].get(slot), slot, 30))
+	var gear_row := GridContainer.new()
+	gear_row.columns = 5
+	gear_row.add_theme_constant_override("h_separation", 2)
+	gear_row.add_theme_constant_override("v_separation", 2)
+	for slot in _merc_slots(m):
+		gear_row.add_child(_small_gear_tile(m["gear"].get(slot), slot, 18 if _merc_slots(m).size() > 5 else 24))
 	left.add_child(gear_row)
 	h.add_child(left)
 	var v := UI.vbox(6)
@@ -1622,6 +1625,14 @@ func _merc_card(m: Dictionary) -> Control:
 		b = UI.btn("Заменить…", _replace_popup.bind(m), "secondary", Style.FONT_SMALL, "", 0, 44)
 	v.add_child(b)
 	return c
+
+## Slots a mercenary can wear: the four basic ones and those opened by its level.
+func _merc_slots(m: Dictionary) -> Array:
+	var out: Array = Loot.SLOTS.duplicate()
+	for slot in Loot.ALL_SLOTS:
+		if not slot in out and m["gear"].get(slot) != null:
+			out.append(slot)
+	return out
 
 func _small_gear_tile(it, slot: String, size_px: float) -> Control:
 	if it == null:
@@ -1675,8 +1686,11 @@ func _merc_popup(m: Dictionary) -> void:
 		stats.add_child(r)
 	body.add_child(stats)
 	body.add_child(UI.label("Снаряжение", Style.FONT_SMALL, Style.MUTED, true))
-	var gear := UI.hbox(10)
-	for slot in Loot.SLOTS:
+	var gear := GridContainer.new()
+	gear.columns = 3
+	gear.add_theme_constant_override("h_separation", 10)
+	gear.add_theme_constant_override("v_separation", 6)
+	for slot in _merc_slots(m):
 		var it = m["gear"].get(slot)
 		var gv := UI.hbox(6)
 		gv.add_child(_small_gear_tile(it, slot, 48))

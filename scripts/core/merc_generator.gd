@@ -26,6 +26,9 @@ const SPECS := {
 			"aimed_shot", "serpent_sting", "chimera", "explosive", "tranq", "arrow_rain", "beast", "hunters_mark", "kick", "battle_cry"],
 		"core": ["mortal_strike", "strike", "aimed_shot"]},
 }
+## Mercenaries start with weapon, left hand, body and amulet; one more slot opens every 5 levels,
+## so a level 30 mercenary wears a full set (still weaker than a player's: one roll per slot, no crafting).
+const EXTRA_SLOTS := [[5, "head"], [10, "feet"], [15, "hands"], [20, "legs"], [25, "accessory1"], [30, "accessory2"]]
 const SPEC_TALENT_WEIGHT := 20   # a specialist puts almost every point into its branch (a hybrid: 5)
 
 ## Talent branch of a specialist. A greatsword fighter goes Bulwark: most Assault talents
@@ -79,6 +82,17 @@ static func make(rng: RandomNumberGenerator, level: int, forced_weapons: Array =
 		gear["offhand"] = Loot.roll_gear(rng,level,"merc","offhand",weapons[1],role)
 	for slot in ["armor","trinket"]:
 		gear[slot] = Loot.roll_gear(rng,level,"merc",slot,"",role)
+	for extra in EXTRA_SLOTS:
+		if level >= int(extra[0]):
+			var slot: String = extra[1]
+			if slot.begins_with("accessory"):
+				# accessories are rare or better, as everywhere in the game
+				var it := Loot.roll_gear(rng,level,"merc","accessory","",role)
+				if int(it["rarity"]) < Items.RARE:
+					it = Loot.roll_gear(rng,level,"merc","accessory","",role,Items.RARE)
+				gear[slot] = it
+			else:
+				gear[slot] = Loot.roll_gear(rng,level,"merc",slot,"",role)
 	var talents := {}
 	var budget := Talents.points_total(level)
 	var preferred: String = "arcane" if weapons.has("staff") else ("assault" if weapons.has("bow") or weapons.count("sword") == 2 else "bulwark")

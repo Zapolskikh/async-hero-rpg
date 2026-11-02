@@ -113,6 +113,7 @@ static func enemy_snapshot(eid: String, lvl: int) -> Dictionary:
 		"name": e["name"], "color": e["color"], "boss": e.get("boss", false), "target": e["target"],
 		"sprite": e.get("sprite", ""), "ranged": e.get("ranged", false),
 		"stats": st, "spells": spells, "mods": mods, "id": eid,
+		"weapons": e.get("weapons", []), "talents": e.get("talents", {}),
 	}
 
 ## An enemy of the Mythic+ dungeon at this key level: campaign level 30 stats, scaled.

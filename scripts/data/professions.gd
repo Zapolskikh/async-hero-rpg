@@ -411,6 +411,8 @@ const BOSS_DROPS := {
 	"boss_plague":     {"enchanted_thread": 0.06, "boss_core": 0.05},
 	"boss_hierophant": {"enchanted_thread": 0.07, "boss_core": 0.05},
 	"boss_wraith":     {"enchanted_thread": 0.07, "boss_core": 0.06},
+	"boss_ash_commander": {"boss_core": 0.10, "enchanted_thread": 0.06},
+	"boss_ash_archon":    {"enchanted_thread": 0.12, "boss_core": 0.12},
 }
 
 # ---------------------------------------------------------------- helpers

@@ -78,6 +78,8 @@ def humanoid(c, ox, oy, p):
     bulky = p.get("bulky", False)
     robe = p.get("robe", False)
     bx0, bx1 = (9, 22) if bulky else (11, 20)
+    steel = hexc(p["steel"]) if "steel" in p else STEEL          # armour colour (dark for the Ash Order)
+    steel_dark = shade(steel, 0.7) if "steel" in p else STEEL_DARK
 
     # back arm (darker, behind the body)
     c.rect(ox + bx0 - 2, oy + 21, 2, 8, shade(tunic, 0.7))
@@ -101,10 +103,10 @@ def humanoid(c, ox, oy, p):
         c.rect(ox + bx0, oy + 28, bx1 - bx0 + 1, 1, (70, 50, 34))
         c.dot(ox + 16, oy + 28, GOLD)
     if p.get("armor"):
-        c.rect(ox + bx0, oy + 20, bx1 - bx0 + 1, 7, STEEL)
-        c.rect(ox + bx0, oy + 24, bx1 - bx0 + 1, 1, STEEL_DARK)
-        c.rect(ox + bx0 - 1, oy + 20, 3, 3, STEEL_DARK)
-        c.rect(ox + bx1 - 1, oy + 20, 3, 3, STEEL_DARK)
+        c.rect(ox + bx0, oy + 20, bx1 - bx0 + 1, 7, steel)
+        c.rect(ox + bx0, oy + 24, bx1 - bx0 + 1, 1, steel_dark)
+        c.rect(ox + bx0 - 1, oy + 20, 3, 3, steel_dark)
+        c.rect(ox + bx1 - 1, oy + 20, 3, 3, steel_dark)
     # head
     c.rect(ox + 12, oy + 10, 8, 10, skin)
     c.rect(ox + 12, oy + 18, 8, 2, shade(skin, 0.9))
@@ -121,9 +123,9 @@ def humanoid(c, ox, oy, p):
         c.rect(ox + 11, oy + 8, 9, 3, hair)
         c.rect(ox + 11, oy + 11, 2, 5, hair)
     elif head == "helmet":
-        c.rect(ox + 11, oy + 7, 10, 6, STEEL)
-        c.rect(ox + 11, oy + 12, 2, 6, STEEL_DARK)
-        c.rect(ox + 19, oy + 12, 2, 2, STEEL_DARK)
+        c.rect(ox + 11, oy + 7, 10, 6, steel)
+        c.rect(ox + 11, oy + 12, 2, 6, steel_dark)
+        c.rect(ox + 19, oy + 12, 2, 2, steel_dark)
         if p.get("plume"):
             c.rect(ox + 13, oy + 4, 5, 3, hexc(p["plume"]))
     elif head == "hood":
@@ -161,7 +163,7 @@ def humanoid(c, ox, oy, p):
     c.rect(ox + bx1 + 1, oy + 21, 2, 7, shade(tunic, 1.05))
     c.rect(ox + bx1 + 1, oy + 28, 2, 2, skin)
     if p.get("armor"):
-        c.rect(ox + bx1 + 1, oy + 21, 2, 3, STEEL)
+        c.rect(ox + bx1 + 1, oy + 21, 2, 3, steel)
     weapon(c, ox + bx1 + 3, oy, p)
     if p.get("shield"):
         sc = hexc(p["shield"])
@@ -245,6 +247,14 @@ UNITS = {
     "ironclad":  {"tunic": "#5a6a78", "armor": True, "head": "helmet", "weapon": "mace", "shield": "#4a5a68", "bulky": True, "skin": SKIN_GREY},
     "executioner": {"tunic": "#5a2a3a", "head": "hood", "hood": "#2a1420", "weapon": "axe", "bulky": True, "eyes_glow": "#ff4040"},
     "siren":     {"tunic": "#3ac0a8", "robe": True, "head": "hair", "hair": "#1a7a70", "weapon": "staff", "orb": "#a8fff0", "skin": (190, 225, 215)},
+    # Chapter 6, the Ash Order: renegade heroes in black and crimson uniforms with glowing ember eyes.
+    "ash_knight": {"tunic": "#2a2226", "pants": "#1a1416", "armor": True, "steel": "#4a3a40", "head": "helmet", "plume": "#c0302a", "weapon": "sword",
+                   "shield": "#3a1418", "cape": "#7a1a1a", "eyes_glow": "#ff4a2a"},
+    "ash_cleric": {"tunic": "#3a2a2e", "robe": True, "head": "hood", "hood": "#5a1a20", "weapon": "staff", "orb": "#ff8a5a", "eyes_glow": "#ff4a2a"},
+    "ash_magus":  {"tunic": "#241a2a", "robe": True, "head": "wizard", "hat": "#4a1018", "hair": "#2a2a2a", "weapon": "staff", "orb": "#ff3a2a",
+                   "eyes_glow": "#ffb02a", "cape": "#5a1a1a"},
+    "ash_ranger": {"tunic": "#2f2a26", "pants": "#1a1614", "head": "hood", "hood": "#1f1a18", "weapon": "bow", "eyes_glow": "#ff4a2a", "cape": "#6a1a1a"},
+    "ash_blade":  {"tunic": "#1c1a20", "pants": "#141216", "head": "hair", "hair": "#c8c8c8", "weapon": "sword", "eyes_glow": "#ff3a3a", "cape": "#8a1a1a"},
 }
 
 BOSSES = {
@@ -262,6 +272,10 @@ BOSSES = {
                     "bulky": True, "tusk": True, "cape": "#c0502a"}, 2),
     "boss_archlich": ({"tunic": "#0f3a3a", "robe": True, "skin": BONE, "head": "crown", "weapon": "staff", "orb": "#6af0ff",
                        "eyes_glow": "#7affb0", "cape": "#1a6a5a"}, 2),
+    "boss_ash_commander": ({"tunic": "#2a1a1a", "pants": "#1a1010", "armor": True, "steel": "#3a2a2e", "head": "helmet", "plume": "#ff6a2a", "weapon": "sword",
+                            "shield": "#5a1010", "cape": "#a01a1a", "eyes_glow": "#ff6a2a", "bulky": True}, 2),
+    "boss_ash_archon": ({"tunic": "#1a1418", "robe": True, "head": "crown", "weapon": "staff", "orb": "#ff4a1a",
+                         "eyes_glow": "#ffd04a", "cape": "#8a1010"}, 2),
 }
 
 MERC_ROLE_SPRITE = {
