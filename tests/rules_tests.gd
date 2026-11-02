@@ -527,15 +527,21 @@ func test_talents() -> void:
 	print("talents")
 	var p := fresh(41)
 	check(Talents.points_free(p["hero"]) == 0 and not Rules.apply(p, "talent_up", {"id": "toughness"}, T0)["ok"], "no talent points before level 5")
-	p["hero"]["level"] = 7
-	check(Talents.points_free(p["hero"]) == 6, "6 points at level 7 (2 per level from 5)")
+	p["hero"]["level"] = 10
+	check(Talents.points_free(p["hero"]) == 6, "6 points at level 10 (1 per level from 5)")
+	check(Talents.points_total(Db.HERO_MAX_LEVEL) == 26, "26 points at the cap")
 	var hp0: float = Rules.hero_snapshot(p)["stats"]["hp"]
 	for i in 3:
 		Rules.apply(p, "talent_up", {"id": "toughness"}, T0)
 	check(Rules.hero_snapshot(p)["stats"]["hp"] >= hp0 * 1.08 and Talents.points_free(p["hero"]) == 3, "3 ranks cost 3 points and give 9% health")
-	check(not Rules.apply(p, "talent_up", {"id": "full_block"}, T0)["ok"], "second tier needs 10 points in branch")
+	check(not Rules.apply(p, "talent_up", {"id": "full_block"}, T0)["ok"], "second tier needs 5 points in branch")
+	for i in 2:
+		Rules.apply(p, "talent_up", {"id": "toughness"}, T0)
+	check(Rules.apply(p, "talent_up", {"id": "full_block"}, T0)["ok"], "5 points in a branch open the second tier")
 	Rules.apply(p, "talent_reset", {}, T0)
 	check(Talents.points_free(p["hero"]) == 6, "reset returns the points")
+	var cut := Talents.trim({"toughness": 5, "armor_training": 4, "readiness": 3, "full_block": 3, "unstoppable": 3}, 6)
+	check(Talents.points_spent(cut) <= 6 and not cut.has("unstoppable") and not cut.has("full_block"), "trim takes ranks off the top rows first and drops rows that close %s" % str(cut))
 	check(Rules.apply(p, "talent_up", {"id": "poison_blades"}, T0)["ok"] and not Talents._active(Talents.TALENTS["poison_blades"],["bow"]), "sword talent can be learned but is inactive with a bow")
 	check(Loot.sell_price({"ilvl": 10, "rarity": 1}) < (5 + 30) * 3, "selling pays less gold now")
 
@@ -813,6 +819,19 @@ func test_hero_cap() -> void:
 			old["hero"]["talents"][id] = Talents.TALENTS[id]["ranks"]
 	Rules.migrate(old, T0)
 	check(old["hero"]["level"] == Db.HERO_MAX_LEVEL and Talents.points_spent(old["hero"]["talents"]) <= Talents.points_total(Db.HERO_MAX_LEVEL), "older heroes are brought to the cap, extra talent points refunded")
+	var v10 := Rules.new_profile(33, T0)
+	v10["v"] = 10
+	v10["hero"]["level"] = 20
+	v10["hero"]["talents"] = {"toughness": 5, "armor_training": 4}
+	var merc_rng := RandomNumberGenerator.new()
+	merc_rng.seed = 6
+	var heavy: Dictionary = MercGenerator.make(merc_rng, 30)
+	for id in Talents.TALENTS:
+		heavy["talents"][id] = Talents.TALENTS[id]["ranks"]
+	v10["hired"] = [heavy]
+	Rules.migrate(v10, T0)
+	check(v10["hero"]["talents"].is_empty() and Talents.points_free(v10["hero"]) == 16, "v11: hero talents are refunded for the new point rules")
+	check(Talents.points_spent(v10["hired"][0]["talents"]) <= Talents.points_total(30), "v11: mercenary talents fit the new budget")
 	check(Db.enemy_scale(30) < Db.enemy_scale(29) * 1.2, "campaign enemies stop tracking hero growth past the cap")
 
 func test_mythic() -> void:

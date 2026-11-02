@@ -1,10 +1,13 @@
 class_name Talents
 extends RefCounted
 
+## One point a level from level 5 (26 at the cap), and a row opens after 5 points per row
+## below it: one branch to the last row costs 15, so the rest is a real choice between going
+## deeper and a second branch.
 const FIRST_LEVEL := 5
-const POINTS_PER_LEVEL := 2
+const POINTS_PER_LEVEL := 1
 const MAX_RANK := 5
-const GATES := [0, 10, 20, 30]
+const GATES := [0, 5, 10, 15]
 const BRANCHES := [
 	{
 		"id": "arcane",
@@ -585,6 +588,33 @@ static func points_free(hero: Dictionary) -> int:
 
 static func unlocked(id: String, talents: Dictionary) -> bool:
 	return points_spent(talents, TALENTS[id]["branch"]) >= GATES[TALENTS[id]["tier"]]
+
+## Talents cut down to a budget: ranks come off the highest rows first, and ranks
+## whose row is no longer open go too.
+static func trim(talents: Dictionary, budget: int) -> Dictionary:
+	var t := {}
+	for id in talents:
+		if TALENTS.has(id) and int(talents[id]) > 0:
+			t[id] = mini(int(talents[id]), int(TALENTS[id]["ranks"]))
+	var changed := true
+	while changed:
+		changed = false
+		for id in t.keys():
+			if t.has(id) and not unlocked(id, t):
+				t[id] -= 1
+				if t[id] <= 0:
+					t.erase(id)
+				changed = true
+		if points_spent(t) > budget:
+			var top := ""
+			for id in t:
+				if top == "" or int(TALENTS[id]["tier"]) > int(TALENTS[top]["tier"]) or (int(TALENTS[id]["tier"]) == int(TALENTS[top]["tier"]) and int(t[id]) > int(t[top])):
+					top = id
+			t[top] -= 1
+			if t[top] <= 0:
+				t.erase(top)
+			changed = true
+	return t
 
 static func _active(t: Dictionary, weapons: Array) -> bool:
 	return not t.has("w") or (weapons.count("sword") >= 2 if t["w"] == "dual" else t["w"] in weapons)

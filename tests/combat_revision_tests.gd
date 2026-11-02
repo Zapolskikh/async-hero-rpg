@@ -252,7 +252,7 @@ func test_migration() -> void:
 	p["collection"]["twin_strike"] = {"lvl":3,"copies":7}
 	p["hero"]["rotation"] = ["twin_strike","strike","fireball"]
 	Rules.migrate(p,1000.)
-	check(p["hero"]["talents"].is_empty() and Talents.points_free(p["hero"]) == 16,"old talents refunded")
+	check(p["hero"]["talents"].is_empty() and Talents.points_free(p["hero"]) == Talents.points_total(12),"old talents refunded")
 	check(not p["collection"].has("twin_strike") and p["collection"]["strike"]["lvl"] == 3 and p["collection"]["strike"]["copies"] >= 7,"spell replacement retains upgrades")
 	check(p["hero"]["rotation"].size() == 2,"migration removes duplicate rotation entries")
 	var copy: Dictionary = JSON.parse_string(JSON.stringify(p))

@@ -152,6 +152,18 @@ static func relevel(rng: RandomNumberGenerator, merc: Dictionary, level: int) ->
 		fresh[k] = merc[k]
 	return fresh
 
+## Mercenary talents within the budget of its level (older saves had twice the points);
+## stats are rebuilt when anything had to go.
+static func fit_talents(m: Dictionary) -> void:
+	var fitted := Talents.trim(m["talents"], Talents.points_total(int(m["level"])))
+	if fitted == m["talents"]:
+		return
+	m["talents"] = fitted
+	var st := apply_gear(m["base_stats"].duplicate(), m["gear"])
+	Talents.apply_stats(st, fitted, m["weapons"])
+	st.merge(Loot.attack_of(st, m["gear"]), true)
+	m["stats"] = st
+
 ## Fills fields for mercenaries saved by older versions.
 static func ensure_merc(m: Dictionary) -> void:
 	ensure_visuals(m)

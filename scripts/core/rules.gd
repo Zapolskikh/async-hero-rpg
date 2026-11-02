@@ -12,7 +12,7 @@ extends RefCounted
 ## so a server keeps it secret by stripping it before sending the profile.
 ## `ctx` (server only): {"account": id, "real_pool": [public snapshots of other players]}
 
-const VERSION := 10
+const VERSION := 11
 const OFFLINE_CAP := 12.0 * 3600.0
 const BOX_PRICE := 300
 const BOX_PACK := 10
@@ -140,6 +140,9 @@ static func migrate(p: Dictionary, now: float) -> void:
 		hero["talents"][k] = int(hero["talents"][k])
 	hero["xp"] = int(hero["xp"])
 	_migrate_mythic(p)
+	if int(p.get("v", 0)) < 11:
+		# v11: half the talent points, rows open every 5 points: talents are refunded
+		hero["talents"] = {}
 	for slot in hero["equipped"]:
 		_fix_item(hero["equipped"][slot])
 	# v5: a two-handed weapon and something in the left hand cannot be held together
@@ -150,6 +153,7 @@ static func migrate(p: Dictionary, now: float) -> void:
 		_fix_item(it)
 	for m in p["board"] + p["hired"]:
 		Roster.ensure_merc(m)
+		Roster.fit_talents(m)
 	# v1 expedition (live object state) -> restart as a timeline from the save time
 	var ex = p.get("expedition")
 	if ex != null and typeof(ex) == TYPE_DICTIONARY and not ex.has("tl"):

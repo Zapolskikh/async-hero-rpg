@@ -438,11 +438,9 @@ func _run_meter() -> void:
 func _run_talents() -> void:
 	Game.reset_progress()
 	UI.clear(main.popup_layer)
-	Game.profile["hero"]["level"] = 10
-	Game.talent_up("toughness")
-	Game.talent_up("focus")
-	Game.talent_up("focus")
-	Game.talent_up("spell_crit")
+	Game.profile["hero"]["level"] = 30
+	for id in ["focus", "focus", "focus", "fast_cast", "fast_cast", "spark", "spark", "spark", "echo", "echo", "echo", "ignition", "ignition", "ignition", "ignition"]:
+		Game.talent_up(id)
 	main._switch("hero")
 	await _wait(0.4)
 	await _shot("30_hero_talents_button")
