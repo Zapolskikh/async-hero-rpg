@@ -73,8 +73,14 @@ class GameService:
         return account_id, token, self._view(res, {}, [], now)
 
     async def account_by_token(self, token: str) -> db.Account | None:
+        """The guest token of the account, or a device session from a login (e-mail, code, Google)."""
         async with db.Session() as s, s.begin():
             acc = (await s.execute(select(db.Account).where(db.Account.token_hash == hash_token(token)))).scalar_one_or_none()
+            if acc is None:
+                sess = await s.get(db.DeviceSession, hash_token(token))
+                if sess is not None:
+                    sess.last_seen = db.utcnow()
+                    acc = await s.get(db.Account, sess.account_id)
             if acc is not None:
                 acc.last_seen = db.utcnow()
             return acc

@@ -2377,6 +2377,8 @@ func _settings_popup() -> void:
 	else:
 		v.add_child(UI.wrap("Офлайн-прогресс хранится на этом устройстве. В онлайне у вас отдельный аккаунт на сервере: ваш герой появляется в найме у других игроков, а за каждый найм вы получаете золото.", Style.FONT_TINY))
 	var buttons := [["Сохранить имя", _rename.bind(name_edit), "ghost", true], ["Обучение заново", _replay_tutorial, "ghost", true]]
+	if online:
+		buttons.push_front(["Аккаунт", _account_popup, "secondary", true])
 	if Game.online_only:
 		pass
 	elif online:
@@ -2384,6 +2386,156 @@ func _settings_popup() -> void:
 	else:
 		buttons.append(["Подключиться", _connect.bind(url_edit, name_edit), "primary", true])
 	_modal("Настройки", v, buttons)
+
+# ---------------- account linking ----------------
+
+func _account_popup() -> void:
+	UI.clear(popup_layer)
+	var v := UI.vbox(10)
+	v.add_child(UI.label("Загрузка…", Style.FONT_SMALL, Style.MUTED))
+	_modal("Аккаунт", v)
+	var info: Dictionary = await Game.account_info()
+	if not is_instance_valid(v):
+		return
+	UI.clear(v)
+	if not info.get("ok", false):
+		v.add_child(UI.wrap(str(info.get("error", "Ошибка")), Style.FONT_BODY, Style.WARNING))
+		return
+	var linked: Dictionary = info.get("linked", {})
+	var guest: bool = info.get("guest", true)
+	var status := UI.hbox(8)
+	status.add_child(UI.chip("Гость" if guest else "Привязан", Style.CARD_3 if guest else Style.SUCCESS, Style.FONT_SMALL,
+		Style.TEXT if guest else Color("#062b16")))
+	if linked.get("email") != null:
+		status.add_child(UI.label("Почта: " + str(linked["email"]), Style.FONT_SMALL, Style.TEXT))
+	v.add_child(status)
+	if guest:
+		v.add_child(UI.wrap("Прогресс хранится на сервере, но войти в этот аккаунт можно только с этого устройства. Привяжите почту, чтобы играть с телефона и компьютера и не потерять героя.", Style.FONT_SMALL, Style.MUTED))
+	var row := HFlowContainer.new()
+	row.add_theme_constant_override("h_separation", 8)
+	row.add_theme_constant_override("v_separation", 8)
+	if linked.get("email") == null:
+		row.add_child(UI.btn("Привязать почту", _email_form.bind("link"), "primary", Style.FONT_SMALL, "", 0, 46))
+	else:
+		row.add_child(UI.btn("Сменить пароль", _email_form.bind("password"), "secondary", Style.FONT_SMALL, "", 0, 46))
+	row.add_child(UI.btn("Код переноса", _show_transfer_code, "secondary", Style.FONT_SMALL, "", 0, 46))
+	row.add_child(UI.btn("Войти в другой аккаунт", _login_popup, "ghost", Style.FONT_SMALL, "", 0, 46))
+	if not guest:
+		row.add_child(UI.btn("Выйти", _logout, "danger", Style.FONT_SMALL, "", 0, 46))
+	v.add_child(row)
+	var prov := UI.hbox(8)
+	var providers: Dictionary = info.get("providers", {})
+	for p in [["google", "Google"], ["apple", "Apple"]]:
+		var on: bool = providers.get(p[0], false)
+		var done: bool = linked.get(p[0], false)
+		var b := UI.btn(("%s привязан" % p[1]) if done else ("%s — скоро" % p[1] if not on else "Привязать %s" % p[1]), _provider_soon, "ghost", Style.FONT_SMALL, "", 0, 42)
+		b.disabled = true   # sign-in SDKs come with the store releases (docs/ROADMAP.md, stage 4)
+		prov.add_child(b)
+	v.add_child(prov)
+	v.add_child(UI.label("ID аккаунта: " + Game.account_id, Style.FONT_TINY, Style.MUTED))
+
+func _provider_soon() -> void:
+	_toast("Скоро")
+
+func _password_edit(placeholder: String) -> LineEdit:
+	var e := _line_edit("", placeholder)
+	e.secret = true
+	e.max_length = 128
+	return e
+
+## kind: "link" (e-mail + password), "password" (change), "login" (e-mail + password).
+func _email_form(kind: String) -> void:
+	UI.clear(popup_layer)
+	var v := UI.vbox(10)
+	var email := _line_edit("", "почта@example.com")
+	var pw := _password_edit("Пароль" if kind != "password" else "Текущий пароль")
+	var pw2 := _password_edit("Пароль ещё раз" if kind != "password" else "Новый пароль (от 8 символов)")
+	if kind != "password":
+		v.add_child(email)
+	v.add_child(pw)
+	if kind != "login":
+		v.add_child(pw2)
+	if kind == "login":
+		v.add_child(UI.wrap("Этот аккаунт откроется на устройстве вместо текущего. Текущий гостевой прогресс останется на сервере, но без привязки вернуться к нему не получится.", Style.FONT_TINY, Style.WARNING))
+	var err := UI.label("", Style.FONT_SMALL, Style.WARNING)
+	v.add_child(err)
+	var title: String = {"link": "Привязать почту", "password": "Сменить пароль", "login": "Войти по почте"}[kind]
+	var go := UI.btn("Готово", _email_submit.bind(kind, email, pw, pw2, err), "primary", Style.FONT_BODY, "", 160, 52)
+	v.add_child(go)
+	_modal(title, v)
+
+func _email_submit(kind: String, email: LineEdit, pw: LineEdit, pw2: LineEdit, err: Label) -> void:
+	var r: Dictionary
+	if kind == "link":
+		if pw.text != pw2.text:
+			err.text = "Пароли не совпадают"
+			return
+		r = await Game.link_email(email.text, pw.text)
+	elif kind == "password":
+		r = await Game.change_password(pw.text, pw2.text)
+	else:
+		r = await Game.login_email(email.text, pw.text)
+	if not r.get("ok", false):
+		if is_instance_valid(err):
+			err.text = str(r.get("error", "Ошибка"))
+		return
+	_toast({"link": "Почта привязана", "password": "Пароль изменён, другие устройства вышли", "login": "Вы вошли в аккаунт"}[kind])
+	UI.clear(popup_layer)
+	if kind != "login":
+		_account_popup()
+	else:
+		_refresh()
+
+func _show_transfer_code() -> void:
+	var r: Dictionary = await Game.transfer_code()
+	UI.clear(popup_layer)
+	var v := UI.vbox(10)
+	if not r.get("ok", false):
+		v.add_child(UI.wrap(str(r.get("error", "Ошибка")), Style.FONT_BODY, Style.WARNING))
+	else:
+		v.add_child(UI.wrap("На другом устройстве: настройки → «Аккаунт» → «Войти в другой аккаунт» → «По коду». Код действует %d минут и только один раз." % int(int(r["ttl"]) / 60), Style.FONT_SMALL, Style.MUTED))
+		var c := UI.label(str(r["code"]), 44, Style.PRIMARY, true)
+		c.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+		v.add_child(c)
+	_modal("Код переноса", v)
+
+func _login_popup() -> void:
+	UI.clear(popup_layer)
+	var v := UI.vbox(10)
+	v.add_child(UI.wrap("Как войти?", Style.FONT_BODY, Style.TEXT))
+	var row := UI.hbox(8)
+	row.add_child(UI.btn("По почте", _email_form.bind("login"), "primary", Style.FONT_BODY, "", 0, 52))
+	row.add_child(UI.btn("По коду переноса", _code_form, "secondary", Style.FONT_BODY, "", 0, 52))
+	v.add_child(row)
+	_modal("Войти в другой аккаунт", v)
+
+func _code_form() -> void:
+	UI.clear(popup_layer)
+	var v := UI.vbox(10)
+	var code := _line_edit("", "ABCD-EFGH")
+	code.max_length = 16
+	v.add_child(code)
+	v.add_child(UI.wrap("Этот аккаунт откроется на устройстве вместо текущего.", Style.FONT_TINY, Style.WARNING))
+	var err := UI.label("", Style.FONT_SMALL, Style.WARNING)
+	v.add_child(err)
+	v.add_child(UI.btn("Войти", _code_submit.bind(code, err), "primary", Style.FONT_BODY, "", 160, 52))
+	_modal("Код переноса", v)
+
+func _code_submit(code: LineEdit, err: Label) -> void:
+	var r: Dictionary = await Game.use_transfer_code(code.text)
+	if not r.get("ok", false):
+		if is_instance_valid(err):
+			err.text = str(r.get("error", "Ошибка"))
+		return
+	_toast("Вы вошли в аккаунт")
+	UI.clear(popup_layer)
+	_refresh()
+
+func _logout() -> void:
+	UI.clear(popup_layer)
+	await Game.logout()
+	_toast("Вы вышли. Создан новый гостевой аккаунт")
+	_refresh()
 
 func _replay_tutorial() -> void:
 	Game.tutorial({"done": false})

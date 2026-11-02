@@ -664,6 +664,78 @@ func _apply_view(d: Dictionary) -> void:
 		_emit_report(rep)
 	_after_change()
 
+# ---------------- account linking (server/app/accounts.py) ----------------
+
+const ACCOUNT_ERRORS := {
+	"bad email": "Неверный адрес почты",
+	"password must be 8-128 characters": "Пароль: от 8 до 128 символов",
+	"email already linked": "Почта уже привязана",
+	"email belongs to another account": "Эта почта привязана к другому аккаунту",
+	"wrong email or password": "Неверная почта или пароль",
+	"wrong password": "Неверный пароль",
+	"too many attempts, try later": "Слишком много попыток, попробуйте позже",
+	"code is wrong or expired": "Код неверный или устарел",
+	"no email linked": "Почта не привязана",
+	"google sign-in is not configured": "Вход через Google пока не подключён",
+	"apple sign-in is not configured": "Вход через Apple пока не подключён",
+}
+
+func _account_result(r: Dictionary) -> Dictionary:
+	var d: Dictionary = r["data"]
+	if r["status"] == 200:
+		d["ok"] = true
+		return d
+	var err := str(d.get("error", d.get("detail", "")))
+	return {"ok": false, "error": ACCOUNT_ERRORS.get(err, "Нет связи с сервером" if r["status"] == 0 else "Ошибка: " + err)}
+
+## {ok, guest, linked: {email, google, apple}, providers: {google, apple}}
+func account_info() -> Dictionary:
+	if mode != "online":
+		return {"ok": false, "error": "Доступно в онлайне"}
+	return _account_result(await net.get_json("/v1/account"))
+
+func link_email(email: String, password: String) -> Dictionary:
+	return _account_result(await net.post_json("/v1/account/email", {"email": email, "password": password}))
+
+func change_password(old: String, new_password: String) -> Dictionary:
+	return _account_result(await net.post_json("/v1/account/password", {"old": old, "new": new_password}))
+
+## {ok, code: "ABCD-EFGH", ttl}
+func transfer_code() -> Dictionary:
+	return _account_result(await net.post_json("/v1/account/transfer-code", {}))
+
+func login_email(email: String, password: String) -> Dictionary:
+	return await _login(await net.post_json("/v1/auth/login", {"email": email, "password": password}))
+
+func use_transfer_code(code: String) -> Dictionary:
+	return await _login(await net.post_json("/v1/auth/transfer", {"code": code}))
+
+## A login answers with a new device token and the profile of that account.
+func _login(r: Dictionary) -> Dictionary:
+	var res := _account_result(r)
+	if not res["ok"]:
+		return res
+	token = str(res["token"])
+	account_id = str(res["account_id"])
+	net.token = token
+	mode = "online"
+	_queue.clear()
+	_view_id = ""
+	_apply_view(res)
+	online_status = "Онлайн"
+	_save_account()
+	online_changed.emit()
+	return {"ok": true}
+
+## Ends this device's session and starts a fresh guest (only offered once the account is linked).
+func logout() -> void:
+	await net.post_json("/v1/auth/logout", {})
+	token = ""
+	account_id = ""
+	net.token = ""
+	_save_account()
+	await connect_online(server_url)
+
 func leaderboard() -> Dictionary:
 	if server_url == "":
 		return {}

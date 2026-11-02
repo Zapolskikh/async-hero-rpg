@@ -39,6 +39,8 @@ services:
       CORS_ORIGINS: ${CORS_ORIGINS:-https://games.imbapewpew.com}
       ALLOW_FAKE_PURCHASES: ${ALLOW_FAKE_PURCHASES:-0}
       ADMIN_TOKEN: ${ADMIN_TOKEN:-}
+      GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID:-}
+      APPLE_CLIENT_ID: ${APPLE_CLIENT_ID:-}
       ASSIST_DAILY_GOLD_CAP: ${ASSIST_DAILY_GOLD_CAP:-3000}
     expose:
       - "8000"

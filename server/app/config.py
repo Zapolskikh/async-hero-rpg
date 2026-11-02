@@ -37,6 +37,9 @@ class Settings:
     rate_burst: int = int(os.getenv("RATE_BURST", "30"))
     # prototype: "Купить (тест)" grants crystals for free. Off in the production stack (deploy/.env).
     allow_fake_purchases: bool = os.getenv("ALLOW_FAKE_PURCHASES", "1") == "1"
+    # Sign-in providers (account linking). Empty = the buttons stay disabled in the game.
+    google_client_id: str = os.getenv("GOOGLE_CLIENT_ID", "")
+    apple_client_id: str = os.getenv("APPLE_CLIENT_ID", "")
     # Build of the rules this server runs (CI: commit SHA). Clients of another build get 426.
     game_build: str = os.getenv("GAME_BUILD", _build_file())
     # Mythic+ seasons: closing a season pays the places (POST /v1/admin/season/close, header X-Admin-Token).

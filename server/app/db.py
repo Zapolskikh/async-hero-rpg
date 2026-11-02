@@ -8,6 +8,9 @@ Tables
   action_log - audit trail of authority actions (concept 12: anti-exploit)
   mythic_records - best Mythic+ key per account and season (leaderboard)
   season_rewards - places granted when a season closes, paid into the profile on next login
+  sessions   - extra device tokens of an account (login by e-mail, transfer code, Google)
+  credentials - ways to log in: e-mail + password hash, Google / Apple subject
+  transfer_codes - one-time codes to move an account to another device
 """
 from __future__ import annotations
 
@@ -111,6 +114,35 @@ class SeasonReward(Base):
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     __table_args__ = (UniqueConstraint("season", "account_id", name="uq_season_reward"),)
+
+
+class DeviceSession(Base):
+    __tablename__ = "sessions"
+    token_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(32), index=True)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    last_seen: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+
+class Credential(Base):
+    __tablename__ = "credentials"
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    account_id: Mapped[str] = mapped_column(String(32), index=True)
+    kind: Mapped[str] = mapped_column(String(16))          # email | google | apple
+    subject: Mapped[str] = mapped_column(String(320))      # lower-case e-mail or provider user id
+    secret: Mapped[str] = mapped_column(String(256), default="")   # password hash for e-mail
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+
+    __table_args__ = (UniqueConstraint("kind", "subject", name="uq_credential"),
+                      UniqueConstraint("account_id", "kind", name="uq_credential_kind"))
+
+
+class TransferCode(Base):
+    __tablename__ = "transfer_codes"
+    code_hash: Mapped[str] = mapped_column(String(64), primary_key=True)
+    account_id: Mapped[str] = mapped_column(String(32), index=True)
+    expires_at: Mapped[float] = mapped_column(Float)
+    used: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 engine: AsyncEngine | None = None

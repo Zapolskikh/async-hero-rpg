@@ -62,6 +62,48 @@ def test_fake_purchases_can_be_disabled(client):
         settings.allow_fake_purchases = old
 
 
+def test_account_linking(client):
+    set_clock(client, 0)
+    d, h = guest(client, "Связка")
+    info = client.get("/v1/account", headers=h).json()
+    assert info["guest"] and info["linked"]["email"] is None and info["providers"]["google"] is False
+    r = client.post("/v1/account/email", json={"email": "Oleg@Example.com", "password": "short"}, headers=h)
+    assert r.status_code == 400, "passwords need 8+ characters"
+    r = client.post("/v1/account/email", json={"email": "Oleg@Example.com", "password": "correct horse"}, headers=h)
+    assert r.status_code == 200 and r.json()["linked"]["email"] == "o***@example.com"
+    other, h2 = guest(client, "Другой")
+    r = client.post("/v1/account/email", json={"email": "oleg@example.com", "password": "another one"}, headers=h2)
+    assert r.status_code == 409, "an e-mail belongs to one account"
+    assert client.post("/v1/auth/login", json={"email": "oleg@example.com", "password": "wrong pass"}).status_code == 401
+    r = client.post("/v1/auth/login", json={"email": " OLEG@example.com ", "password": "correct horse"})
+    assert r.status_code == 200 and r.json()["account_id"] == d["account_id"]
+    h_new = {"Authorization": "Bearer " + r.json()["token"]}
+    assert client.get("/v1/me", headers=h_new).json()["profile"]["name"] == "Связка", "a second device opens the same profile"
+    # transfer code: one use, then gone
+    code = client.post("/v1/account/transfer-code", headers=h2).json()["code"]
+    r = client.post("/v1/auth/transfer", json={"code": code.lower()})
+    assert r.status_code == 200 and r.json()["account_id"] == other["account_id"]
+    assert client.post("/v1/auth/transfer", json={"code": code}).status_code == 404, "a code works once"
+    # password change logs other devices out, this one stays
+    r = client.post("/v1/account/password", json={"old": "correct horse", "new": "battery staple"}, headers=h_new)
+    assert r.status_code == 200
+    assert client.get("/v1/me", headers=h_new).status_code == 200
+    assert client.get("/v1/me", headers=h).status_code == 401, "the old guest token stops working"
+    assert client.post("/v1/auth/login", json={"email": "oleg@example.com", "password": "battery staple"}).status_code == 200
+    # Google is off until GOOGLE_CLIENT_ID is set
+    r = client.post("/v1/auth/provider", json={"provider": "google", "id_token": "x"})
+    assert r.status_code == 501
+    assert client.post("/v1/auth/logout", headers=h_new).json()["ok"]
+    assert client.get("/v1/me", headers=h_new).status_code == 401
+
+
+def test_login_attempts_are_limited(client):
+    for i in range(8):
+        client.post("/v1/auth/login", json={"email": "nobody@example.com", "password": "guess %d" % i})
+    r = client.post("/v1/auth/login", json={"email": "nobody@example.com", "password": "guess 9"})
+    assert r.status_code == 429
+
+
 def test_validation(client):
     set_clock(client, 0)
     d, h = guest(client, "Валидатор")
@@ -90,7 +132,7 @@ def test_push_farm_and_assists(client):
     hirer, hh = guest(client, "Наниматель")
     # hirer rerolls until the owner's hero shows up on the board (same level 1)
     found = None
-    for i in range(5):
+    for i in range(40):   # the pool is a random pick among all level 1 players of the test run
         res = act(client, hh, "reroll")
         assert res["ok"], res
         ids = [m["id"] for m in res["profile"]["board"]]
@@ -104,7 +146,7 @@ def test_push_farm_and_assists(client):
     old = res["profile"]["hired"][1]["id"]  # the archer: the party keeps its tank and healer
     assert act(client, hh, "replace", old=old, new=found)["ok"]
     # push level 1
-    base = 86400 * 6
+    base = 86400 * 45   # after any reroll day above
     set_clock(client, base)
     for attempt in range(5):  # a random party can lose level 1 now and then
         set_clock(client, base)

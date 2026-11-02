@@ -6,9 +6,20 @@
   GET  /v1/leaderboard                             -> top players, most hired heroes, Mythic+ season board
   POST /v1/admin/season/close {"season": 1}        -> ranks the Mythic+ season and queues place rewards
                                                      (header X-Admin-Token, disabled when ADMIN_TOKEN is empty)
-  GET  /health                                     -> liveness
+  GET  /health                                     -> liveness, build
 
-Auth: "Authorization: Bearer <token>" (guest token from /v1/auth/guest).
+Account linking (app/accounts.py):
+  GET  /v1/account                                 -> linked ways to log in, enabled providers
+  POST /v1/account/email {"email", "password"}     -> link e-mail + password to this account
+  POST /v1/account/password {"old", "new"}         -> change it, other devices are logged out
+  POST /v1/account/transfer-code                   -> one-time code (10 min) to open the account elsewhere
+  POST /v1/account/provider {"provider", "id_token"} -> link Google (Apple later)
+  POST /v1/auth/login {"email", "password"}        -> {"account_id", "token", ...profile view}
+  POST /v1/auth/transfer {"code"}                  -> same, with a transfer code
+  POST /v1/auth/provider {"provider", "id_token"}  -> same, with Google
+  POST /v1/auth/logout                             -> this device's session ends
+
+Auth: "Authorization: Bearer <token>" (guest token or a device session from a login).
 Profile view: {ok, error, result, reports, profile, pending, server_time}.
 """
 from __future__ import annotations
@@ -25,6 +36,7 @@ from pydantic import BaseModel, Field
 
 from . import db
 from .config import settings
+from .accounts import AccountError, Accounts
 from .game import GameError, GameService
 from .worker import WorkerError, WorkerPool
 
@@ -38,6 +50,7 @@ async def lifespan(app: FastAPI):
     pool = WorkerPool(settings.godot_bin, settings.project_dir, settings.workers, settings.worker_timeout)
     await pool.start()
     app.state.game = GameService(pool, settings)
+    app.state.accounts = Accounts(settings)
     app.state.buckets = {}
     log.info("server ready: %d rules workers, db=%s", settings.workers, settings.database_url.split("@")[-1])
     yield
@@ -64,6 +77,11 @@ app.add_middleware(CORSMiddleware, allow_origins=settings.cors_origins, allow_me
 
 @app.exception_handler(GameError)
 async def game_error(_: Request, e: GameError):
+    return JSONResponse(status_code=e.status, content={"ok": False, "error": e.message})
+
+
+@app.exception_handler(AccountError)
+async def account_error(_: Request, e: AccountError):
     return JSONResponse(status_code=e.status, content={"ok": False, "error": e.message})
 
 
@@ -96,6 +114,25 @@ async def current_account(request: Request, authorization: str = Header(default=
     return acc.id
 
 
+def bearer(authorization: str = Header(default="")) -> str:
+    return authorization[7:].strip() if authorization.lower().startswith("bearer ") else ""
+
+
+def accounts(request: Request) -> Accounts:
+    return request.app.state.accounts
+
+
+def client_key(request: Request) -> str:
+    """Who is guessing codes: Cloudflare's client IP, else the proxy chain, else the peer."""
+    return (request.headers.get("cf-connecting-ip") or request.headers.get("x-real-ip")
+            or (request.client.host if request.client else "?"))
+
+
+async def _logged_in(request: Request, account_id: str, token: str) -> dict:
+    view = await game(request).me(account_id)
+    return {"account_id": account_id, "token": token, **view}
+
+
 def _rate_limit(request: Request, account_id: str) -> None:
     """Token bucket per account (in-process; move to Redis when running several API instances)."""
     buckets = request.app.state.buckets
@@ -126,6 +163,74 @@ async def me(request: Request, account_id: str = Depends(current_account)):
 @app.post("/v1/action")
 async def action(body: ActionIn, request: Request, account_id: str = Depends(current_account)):
     return await game(request).action(account_id, body.action, body.args)
+
+
+class EmailIn(BaseModel):
+    email: str = Field(max_length=320)
+    password: str = Field(max_length=128)
+
+
+class PasswordIn(BaseModel):
+    old: str = Field(max_length=128)
+    new: str = Field(max_length=128)
+
+
+class CodeIn(BaseModel):
+    code: str = Field(max_length=16)
+
+
+class ProviderIn(BaseModel):
+    provider: str = Field(max_length=16)
+    id_token: str = Field(max_length=4096)
+
+
+@app.get("/v1/account")
+async def account_info(request: Request, account_id: str = Depends(current_account)):
+    return {"ok": True, **await accounts(request).info(account_id)}
+
+
+@app.post("/v1/account/email")
+async def link_email(body: EmailIn, request: Request, account_id: str = Depends(current_account)):
+    return {"ok": True, **await accounts(request).link_email(account_id, body.email, body.password)}
+
+
+@app.post("/v1/account/password")
+async def change_password(body: PasswordIn, request: Request, account_id: str = Depends(current_account), token: str = Depends(bearer)):
+    return {"ok": True, **await accounts(request).change_password(account_id, body.old, body.new, token)}
+
+
+@app.post("/v1/account/transfer-code")
+async def transfer_code(request: Request, account_id: str = Depends(current_account)):
+    return {"ok": True, **await accounts(request).new_transfer_code(account_id)}
+
+
+@app.post("/v1/account/provider")
+async def link_provider(body: ProviderIn, request: Request, account_id: str = Depends(current_account)):
+    return {"ok": True, **await accounts(request).link_provider(account_id, body.provider, body.id_token)}
+
+
+@app.post("/v1/auth/login")
+async def login(body: EmailIn, request: Request):
+    account_id, token = await accounts(request).login_email(body.email, body.password)
+    return await _logged_in(request, account_id, token)
+
+
+@app.post("/v1/auth/transfer")
+async def login_transfer(body: CodeIn, request: Request):
+    account_id, token = await accounts(request).use_transfer_code(body.code, client_key(request))
+    return await _logged_in(request, account_id, token)
+
+
+@app.post("/v1/auth/provider")
+async def login_provider(body: ProviderIn, request: Request):
+    account_id, token = await accounts(request).login_provider(body.provider, body.id_token)
+    return await _logged_in(request, account_id, token)
+
+
+@app.post("/v1/auth/logout")
+async def logout(request: Request, account_id: str = Depends(current_account), token: str = Depends(bearer)):
+    await accounts(request).logout(token)
+    return {"ok": True}
 
 
 class SeasonIn(BaseModel):
