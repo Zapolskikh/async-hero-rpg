@@ -31,6 +31,7 @@ func _init() -> void:
 	test_migration()
 	test_specialist_enemies()
 	test_new_mechanics()
+	test_shared_needs()
 	print("COMBAT V9: %d assertions, %d failures" % [assertions,failures])
 	quit(1 if failures else 0)
 
@@ -348,4 +349,25 @@ func test_new_mechanics() -> void:
 	var far_hp: float = far.hp
 	sim._channel_pulse(hunter,{"spell":"arrow_rain","amount":100.,"target":near})
 	check(is_equal_approx(near_hp-near.hp,100.) and is_equal_approx(far_hp-far.hp,150.),"arrow rain hits ranged enemies 50% harder")
+	sim.release()
+
+func test_shared_needs() -> void:
+	var a := unit(0,["staff"])
+	var b := unit(1,["staff"])
+	var sim := battle([a,b])
+	a.spells = [{"id":"mass_dispel","lvl":1}]
+	b.spells = [{"id":"mass_dispel","lvl":1}]
+	sim._buff(a,"weakness",.15,15.,a)
+	check(sim._try_rotation(a) and not a.casting.is_empty(),"the first hero starts the mass dispel")
+	check(sim._find_spell_target(b,"mass_dispel") == null and not sim._try_rotation(b),"a second hero does not cast another mass dispel over it")
+	a.casting.clear()
+	check(sim._find_spell_target(b,"mass_dispel") != null,"if the first cast is cancelled, the second hero takes over")
+	b.spells = [{"id":"cleanse","lvl":1}]
+	a.spells = [{"id":"cleanse","lvl":1}]
+	check(sim._try_rotation(a) and not sim._debuffed(a),"an instant cleanse answers the need at once")
+	check(sim._find_spell_target(b,"cleanse") == null,"so the next hero finds nothing to cleanse")
+	var foe: BattleUnit = sim.foes_of(a)[0]
+	foe.casting = {"spell":"e_bolt","lvl":1,"remaining":2.,"total":2.4,"target":a,"interruptible":true,"threshold":-1.}
+	a.casting = {"spell":"kick","lvl":1,"remaining":.5,"total":.5,"target":foe,"interruptible":true,"threshold":-1.}
+	check(sim._find_spell_target(b,"kick") == null,"an interrupt already on its way is not doubled")
 	sim.release()

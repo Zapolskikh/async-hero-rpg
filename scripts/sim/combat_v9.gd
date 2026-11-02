@@ -255,7 +255,7 @@ func _act(u: BattleUnit) -> void:
 			var s: Dictionary = Db.SPELLS[e["id"]]
 			if (s["kind"] == "interrupt" or s.get("reactive",false)) and not u.cooldowns.has(e["id"]) and _usable(u,e["id"]):
 				for f in foes_of(u):
-					if _interruptible(f):
+					if _interruptible(f) and not _claimed(u,"interrupt",f):
 						u.cooldowns[e["id"]] = Db.spell_cd(e["id"],e.get("lvl",1))
 						_cast(u,e["id"],e.get("lvl",1),f)
 						return
@@ -349,6 +349,30 @@ func _try_rotation(u: BattleUnit) -> bool:
 		return true
 	return false
 
+## Spells that answer the same need. While an ally is already casting one of them at a target,
+## nobody else spends a turn on it; if that cast fails, the need is open again on the next check.
+## (Instant answers resolve on the spot, so the next hero simply finds nothing left to do.)
+const NEED_GROUPS := {
+	"cleanse": ["cleanse", "mass_dispel"],
+	"purge": ["purge", "mass_dispel"],
+	"mass_dispel": ["mass_dispel"],
+	"interrupt": ["interrupt", "stun"],
+	"stun": ["interrupt", "stun"],
+	"suppress": ["suppress"],
+	"intervene": ["intervene"],
+}
+
+func _claimed(u: BattleUnit,kind: String,target: BattleUnit) -> bool:
+	if not NEED_GROUPS.has(kind):
+		return false
+	for f in friends_of(u):
+		if f == u or f.casting.is_empty() or not Db.SPELLS.has(f.casting["spell"]):
+			continue
+		var other: String = Db.SPELLS[f.casting["spell"]]["kind"]
+		if other in NEED_GROUPS[kind] and (other == "mass_dispel" or f.casting["target"] == target):
+			return true
+	return false
+
 func _find_spell_target(u: BattleUnit,sid: String,thr: float = -1.):
 	if not Db.SPELLS.has(sid) or not _usable(u,sid) or foes_of(u).is_empty():
 		return null
@@ -374,15 +398,17 @@ func _find_spell_target(u: BattleUnit,sid: String,thr: float = -1.):
 			return friends_of(u)[0]
 		"cleanse":
 			for f in friends_of(u):
-				if _debuffed(f):
+				if _debuffed(f) and not _claimed(u,"cleanse",f):
 					return f
 			return null
 		"purge":
 			for f in foes_of(u):
-				if _positive(f):
+				if _positive(f) and not _claimed(u,"purge",f):
 					return f
 			return null
 		"mass_dispel":
+			if _claimed(u,"mass_dispel",u):
+				return null
 			for f in friends_of(u):
 				if _debuffed(f):
 					return u
@@ -392,12 +418,12 @@ func _find_spell_target(u: BattleUnit,sid: String,thr: float = -1.):
 			return null
 		"interrupt":
 			for f in foes_of(u):
-				if _interruptible(f):
+				if _interruptible(f) and not _claimed(u,"interrupt",f):
 					return f
 			return null
 		"stun":
 			for f in foes_of(u):
-				if _interruptible(f):
+				if _interruptible(f) and not _claimed(u,"stun",f):
 					return f
 			for f in foes_of(u):
 				if not f.is_boss and f.stun <= 0.:
@@ -431,7 +457,7 @@ func _find_spell_target(u: BattleUnit,sid: String,thr: float = -1.):
 		"intervene","suppress":
 			var best: BattleUnit = null
 			for f in friends_of(u):
-				if (f != u or s["kind"] == "suppress") and f.hp_frac() < threshold and not f.buffs.has(s["kind"]) and (best == null or f.hp_frac() < best.hp_frac()):
+				if (f != u or s["kind"] == "suppress") and f.hp_frac() < threshold and not f.buffs.has(s["kind"]) and not _claimed(u,s["kind"],f) and (best == null or f.hp_frac() < best.hp_frac()):
 					best = f
 			return best
 		"mark":
