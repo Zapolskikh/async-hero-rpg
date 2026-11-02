@@ -2,6 +2,8 @@
 
 Играбельный прототип AFK/async RPG по концепту v0.3. Движок Godot 4.5 (GDScript), горизонтальный экран, графика временная: простой пиксель-арт, сгенерированный скриптом.
 
+План до релиза — [docs/ROADMAP.md](docs/ROADMAP.md).
+
 ## Как запустить
 
 **В браузере (в том числе с телефона):** https://zapolskikh.github.io/async-hero-rpg/ — каждый push в `main` автоматически собирает и публикует Web через GitHub Actions. В Settings → Pages выбран Source: GitHub Actions. Телефон лучше повернуть горизонтально.
