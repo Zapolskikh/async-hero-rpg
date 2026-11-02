@@ -16,9 +16,12 @@ const VERSION := 10
 const OFFLINE_CAP := 12.0 * 3600.0
 const BOX_PRICE := 300
 const BOX_PACK := 10
-const BOX_PACK_PRICE := 2700
-## Spell boxes bought for gold per day (packs count as 10). Crystals have no limit.
-const GOLD_BOXES_PER_DAY := 10
+## Spell boxes for gold have no daily limit: the first GOLD_BOXES_FLAT each day cost BOX_PRICE,
+## every next one BOX_PRICE_GROWTH times more than the one before (10 boxes 3000, 20 ~10k, 30 ~38k).
+## Gold becomes the main sink of spell progress, crystals stay at a fixed price.
+const GOLD_BOXES_FLAT := 10
+const BOX_PRICE_GROWTH := 1.15
+const BOX_PACK_DISCOUNT := 0.9   # ten boxes at once: 10% off the sum of their prices
 ## Spell Box odds by spell rarity (common, rare, epic, legendary), per spell.
 const BOX_RARITY_WEIGHTS := [10.0, 3.0, 0.8, 0.25]
 ## Board reroll: price follows the hero level (10 + 3 per level), grows only a little per reroll in a day.
@@ -869,11 +872,10 @@ static func _open_box(p: Dictionary, r: RandomNumberGenerator, use: String, now:
 				return _err("no boxes")
 			p["boxes"] -= 1
 		"gold":
-			if gold_boxes_left(p, now) < 1:
-				return _err("gold box limit")
-			if int(p["gold"]) < BOX_PRICE:
+			var price := gold_box_price(p, now)
+			if int(p["gold"]) < price:
 				return _err("not enough gold")
-			p["gold"] -= BOX_PRICE
+			p["gold"] -= price
 			_count_gold_boxes(p, now, 1)
 		"crystals":
 			if not _spend_crystals(p, Shop.BOX_CRYSTALS, "boxes"):
@@ -882,9 +884,22 @@ static func _open_box(p: Dictionary, r: RandomNumberGenerator, use: String, now:
 			return _err("bad box source")
 	return _ok({"boxes": [_roll_box(p, r)]})
 
-static func gold_boxes_left(p: Dictionary, now: float) -> int:
-	var used: int = int(p.get("gold_boxes_today", 0)) if p.get("gold_box_day", "") == day_of(now) else 0
-	return max(0, GOLD_BOXES_PER_DAY - used)
+static func gold_boxes_today(p: Dictionary, now: float) -> int:
+	return int(p.get("gold_boxes_today", 0)) if p.get("gold_box_day", "") == day_of(now) else 0
+
+## Price of the next gold box today (k boxes already bought: k+1-th box).
+static func gold_box_price(p: Dictionary, now: float, ahead: int = 0) -> int:
+	var k := gold_boxes_today(p, now) + ahead
+	if k < GOLD_BOXES_FLAT:
+		return BOX_PRICE
+	return int(round(BOX_PRICE * pow(BOX_PRICE_GROWTH, k - GOLD_BOXES_FLAT + 1)))
+
+## Ten boxes at once: the sum of their prices with the pack discount.
+static func gold_pack_price(p: Dictionary, now: float) -> int:
+	var total := 0
+	for i in BOX_PACK:
+		total += gold_box_price(p, now, i)
+	return int(round(total * BOX_PACK_DISCOUNT))
 
 static func _count_gold_boxes(p: Dictionary, now: float, n: int) -> void:
 	if p.get("gold_box_day", "") != day_of(now):
@@ -896,11 +911,10 @@ static func _open_pack(p: Dictionary, r: RandomNumberGenerator, use: String, now
 	var n := 0
 	match use:
 		"gold":
-			if gold_boxes_left(p, now) < BOX_PACK:
-				return _err("gold box limit")
-			if int(p["gold"]) < BOX_PACK_PRICE:
+			var price := gold_pack_price(p, now)
+			if int(p["gold"]) < price:
 				return _err("not enough gold")
-			p["gold"] -= BOX_PACK_PRICE
+			p["gold"] -= price
 			_count_gold_boxes(p, now, BOX_PACK)
 			n = BOX_PACK
 		"crystals":

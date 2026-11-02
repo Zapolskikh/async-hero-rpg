@@ -19,6 +19,7 @@ var mythic_only := false
 var dev_only := false
 var fx_level := 0
 var enemy_fx := false
+var boxes_only := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -50,13 +51,17 @@ func _ready() -> void:
 			mythic_only = true
 		if a == "--shots-dev":
 			dev_only = true
+		if a == "--shots-boxes":
+			boxes_only = true
 		if a == "--shots-enemyfx":
 			enemy_fx = true
 		if a.begins_with("--shots-fx="):
 			fx_level = a.trim_prefix("--shots-fx=").to_int()
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if enemy_fx:
+	if boxes_only:
+		_run_boxes()
+	elif enemy_fx:
 		_run_enemy_fx()
 	elif fx_level > 0:
 		_run_fx()
@@ -681,4 +686,20 @@ func _run_enemy_fx() -> void:
 	await _shot("e_zz_kill_2")
 	await _wait(.6)
 	await _shot("e_zz_kill_3")
+	get_tree().quit()
+
+## Spell boxes for gold: the price before and after the first ten of a day.
+func _run_boxes() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	Game.profile["gold"] = 50000
+	main._switch("spells")
+	await _wait(.4)
+	await _shot("b1_price")
+	for i in 12:
+		Rules.apply(Game.profile, "open_box", {"use": "gold"}, Game.now())
+	UI.clear(main.popup_layer)
+	main._refresh()
+	await _wait(.4)
+	await _shot("b2_after12")
 	get_tree().quit()

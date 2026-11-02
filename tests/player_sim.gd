@@ -247,9 +247,10 @@ func open_boxes(p: Dictionary, now: float) -> void:
 	if Rules.free_box_available(p,now): Rules.apply(p,"open_box",{"use":"free"},now)
 	while int(p["boxes"]) > 0: Rules.apply(p,"open_pack",{"use":"token"},now)
 	var budget := int(p["gold"]*BOX_GOLD_RESERVE)
-	while budget >= Rules.BOX_PRICE and Rules.gold_boxes_left(p,now) > 0:
+	while budget >= Rules.gold_box_price(p,now):
+		var price := Rules.gold_box_price(p,now)
 		if not Rules.apply(p,"open_box",{"use":"gold"},now)["ok"]: break
-		budget -= Rules.BOX_PRICE
+		budget -= price
 
 func spend_talents(p: Dictionary, build: String) -> void:
 	var weapons := Loot.weapon_types(p["hero"]["equipped"])

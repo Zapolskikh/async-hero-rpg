@@ -244,10 +244,12 @@ func test_crystals() -> void:
 	var p := fresh(61)
 	check(int(p["crystals"]) == 0 and Rules.apply(p, "fake_purchase", {"pack": "c550"}, T0)["ok"] and int(p["crystals"]) == 550, "test purchase grants crystals")
 	check(not Rules.apply(p, "fake_purchase", {"pack": "nope"}, T0)["ok"], "unknown pack rejected")
-	# boxes: gold limited per day, crystals not
+	# boxes: no gold limit, the price rises after the first 10 of a day; crystals keep their price
 	p["gold"] = 100000
-	check(Rules.apply(p, "open_pack", {"use": "gold"}, T0)["ok"] and not Rules.apply(p, "open_box", {"use": "gold"}, T0)["ok"], "10 gold boxes a day, then the limit")
-	check(Rules.apply(p, "open_box", {"use": "gold"}, T0 + 86400.0)["ok"], "gold limit resets next day")
+	check(Rules.gold_box_price(p, T0) == Rules.BOX_PRICE and Rules.apply(p, "open_pack", {"use": "gold"}, T0)["ok"], "the first 10 gold boxes of a day cost the base price")
+	var eleventh := Rules.gold_box_price(p, T0)
+	check(eleventh == int(round(Rules.BOX_PRICE * Rules.BOX_PRICE_GROWTH)) and Rules.apply(p, "open_box", {"use": "gold"}, T0)["ok"] and Rules.gold_box_price(p, T0) > eleventh, "more boxes the same day: each one dearer, no limit")
+	check(Rules.gold_box_price(p, T0 + 86400.0) == Rules.BOX_PRICE, "the price resets next day")
 	var c0 := int(p["crystals"])
 	for i in 3:
 		Rules.apply(p, "open_pack", {"use": "crystals"}, T0)
@@ -519,7 +521,7 @@ func test_boxes_and_validation() -> void:
 	var copies_after := 0
 	for sid in p["collection"]:
 		copies_after += 1 + int(p["collection"][sid]["copies"])
-	check(r["ok"] and r["boxes"].size() == 10 and p["gold"] == 300 and copies_after == copies_before + 10 * Rules.BOX_COPIES, "pack of 10 for 2700 gold")
+	check(r["ok"] and r["boxes"].size() == 10 and p["gold"] == 300 and copies_after == copies_before + 10 * Rules.BOX_COPIES, "pack of 10 for 2700 gold (10% off)")
 	check(not Rules.apply(p, "open_pack", {"use": "gold"}, T0)["ok"], "cannot buy without gold")
 	check(Rules.apply(p, "open_box", {"use": "free"}, T0)["ok"] and not Rules.apply(p, "open_box", {"use": "free"}, T0 + 60)["ok"], "one free box per day")
 	check(Rules.apply(p, "open_box", {"use": "free"}, T0 + 86400.0)["ok"], "free box again next day")

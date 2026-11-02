@@ -1753,11 +1753,12 @@ func _screen_spells() -> Control:
 		UI.badge(free)
 	var tok := UI.btn("Открыть (%d)" % Game.boxes, _open_box.bind("token"), "secondary", Style.FONT_SMALL, "box", 0, 52)
 	tok.disabled = Game.boxes <= 0
-	var left := Game.gold_boxes_left()
-	var buy := UI.btn("%d" % Game.BOX_PRICE, _open_box.bind("gold"), "primary", Style.FONT_SMALL, "gold", 0, 52)
-	buy.disabled = Game.gold < Game.BOX_PRICE or left < 1
-	var buy10 := UI.btn("×%d  %d" % [Game.BOX_PACK, Game.BOX_PACK_PRICE], _open_pack.bind("gold"), "primary", Style.FONT_SMALL, "gold", 0, 52)
-	buy10.disabled = Game.gold < Game.BOX_PACK_PRICE or left < Game.BOX_PACK
+	var price := Game.gold_box_price()
+	var pack_price := Game.gold_pack_price()
+	var buy := UI.btn("%d" % price, _open_box.bind("gold"), "primary", Style.FONT_SMALL, "gold", 0, 52)
+	buy.disabled = Game.gold < price
+	var buy10 := UI.btn("×%d  %d" % [Game.BOX_PACK, pack_price], _open_pack.bind("gold"), "primary", Style.FONT_SMALL, "gold", 0, 52)
+	buy10.disabled = Game.gold < pack_price
 	var cb := UI.btn("%d" % Shop.BOX_CRYSTALS, _open_box.bind("crystals"), "secondary", Style.FONT_SMALL, "crystal", 0, 52)
 	cb.disabled = Game.crystals < Shop.BOX_CRYSTALS
 	var cb10 := UI.btn("×%d  %d" % [Game.BOX_PACK, Shop.BOX_PACK_CRYSTALS], _open_pack.bind("crystals"), "secondary", Style.FONT_SMALL, "crystal", 0, 52)
@@ -1768,7 +1769,9 @@ func _screen_spells() -> Control:
 		h.add_child(UI.btn("Открыть все" if Game.boxes <= Game.BOX_PACK else "Открыть %d" % Game.BOX_PACK, _open_pack.bind("token"), "secondary", Style.FONT_SMALL, "box", 0, 52))
 	v.add_child(bar)
 	var buy_row := UI.hbox(8)
-	buy_row.add_child(UI.label("Купить за золото (сегодня ещё %d):" % left, Style.FONT_SMALL, Style.MUTED))
+	var bought := Game.gold_boxes_today()
+	var note := "Купить за золото (сегодня куплено %d; первые %d по %d, дальше дороже):" % [bought, Rules.GOLD_BOXES_FLAT, Game.BOX_PRICE]
+	buy_row.add_child(UI.label(note, Style.FONT_SMALL, Style.MUTED))
 	buy_row.add_child(buy)
 	buy_row.add_child(buy10)
 	buy_row.add_child(UI.spacer())

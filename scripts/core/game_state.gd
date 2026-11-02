@@ -23,7 +23,6 @@ const AUTOSAVE_EVERY := 10.0
 # re-exported for the UI
 const BOX_PRICE := Rules.BOX_PRICE
 const BOX_PACK := Rules.BOX_PACK
-const BOX_PACK_PRICE := Rules.BOX_PACK_PRICE
 const SPELL_MAX_LEVEL := Rules.SPELL_MAX_LEVEL
 const MAX_HIRED := Rules.MAX_HIRED
 const OFFLINE_CAP := Rules.OFFLINE_CAP
@@ -349,8 +348,14 @@ func spell_threshold(sid: String) -> float:
 var crystals: int:
 	get: return int(profile.get("crystals", 0))
 
-func gold_boxes_left() -> int:
-	return Rules.gold_boxes_left(profile, now())
+func gold_box_price() -> int:
+	return Rules.gold_box_price(profile, now())
+
+func gold_pack_price() -> int:
+	return Rules.gold_pack_price(profile, now())
+
+func gold_boxes_today() -> int:
+	return Rules.gold_boxes_today(profile, now())
 
 func set_cosmetic(slot: String, id: String) -> void:
 	act("set_cosmetic", {"slot": slot, "id": id})
