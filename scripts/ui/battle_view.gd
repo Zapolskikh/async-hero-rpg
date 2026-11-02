@@ -527,6 +527,7 @@ func _gap(side: int) -> float:
 func _statuses(u: BattleUnit) -> Array:
 	var good := {}
 	var bad := {}
+	var stacks := {}
 	for id in u.buffs:
 		var left: float = u.buffs[id].get("remaining", -1.0)
 		if not BUFF_ICONS.has(id):
@@ -534,14 +535,21 @@ func _statuses(u: BattleUnit) -> Array:
 		(bad if id in HARMFUL_BUFFS else good)[BUFF_ICONS[id]] = left
 	for d in u.dots:
 		bad["sp_" + str(d["id"])] = maxf(bad.get("sp_" + str(d["id"]), 0.0), d["remaining"])
+		stacks["sp_" + str(d["id"])] = int(stacks.get("sp_" + str(d["id"]), 0)) + 1
 	for h in u.hots:
 		good["sp_" + str(h["id"])] = maxf(good.get("sp_" + str(h["id"]), 0.0), h["remaining"])
+		stacks["sp_" + str(h["id"])] = int(stacks.get("sp_" + str(h["id"]), 0)) + 1
 	if u.shield > 0.0:
 		good["sp_" + (u.shield_sid if u.shield_sid != "" else "barrier")] = u.shield_time if u.shield_time < 999.0 else -1.0
 	if u.stun > 0.0:
 		bad["sp_bash"] = u.stun
 	if u.silence > 0.0:
 		bad["sp_kick"] = u.silence
+	# The same HoT or DoT from several casters: one icon with the count in its corner.
+	for key in stacks:
+		if int(stacks[key]) > 1:
+			var row: Dictionary = good if good.has(key) else bad
+			row[key] = [row[key], int(stacks[key])]
 	return [good, bad]
 
 ## Row of effect icons above `top`; returns the y the next row starts from.
@@ -557,9 +565,14 @@ func _draw_status_row(effects: Dictionary, x: float, top: float, tint: Color, fa
 		draw_rect(box.grow(1.5), tint)
 		var icon := UI.icon_tex(keys[i])
 		draw_texture_rect(icon if icon != null else UI.icon_tex(fallback), box, false)
-		var seconds: float = effects[keys[i]]
+		var value = effects[keys[i]]
+		var seconds: float = float(value[0]) if value is Array else float(value)
 		if seconds >= 0.0:
 			_text(font, box.position + Vector2(2.0, side - 2.0), str(ceili(seconds)), 12, Color.WHITE, 3)
+		if value is Array:
+			var label := "×%d" % int(value[1])
+			var w := font.get_string_size(label, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+			_text(font, box.position + Vector2(side - w, 11.0), label, 13, Color("#ffe066"), 3)
 	return y
 
 func _status_height(u: BattleUnit) -> float:

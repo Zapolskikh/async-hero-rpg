@@ -658,6 +658,12 @@ func _run_enemy_fx() -> void:
 		await _wait(.35)
 		await _shot("e_%s_3" % sid)
 		for a in allies: a.hp = a.max_hp
+	# two Wild Growths from different healers on the same ally: one icon with ×2
+	ex.sim._hot(allies[2],allies[1],"wild_growth",50.,6.,true)
+	ex.sim._hot(allies[3],allies[1],"wild_growth",50.,6.,true)
+	ex.sim._hot(allies[3],allies[1],"renew",30.,8.)
+	await _wait(.3)
+	await _shot("e_zy_stacks")
 	# absorbed by a shield
 	allies[2].shield = 99999.
 	ex.sim._cast(caster,"e_bolt",1,allies[2])
