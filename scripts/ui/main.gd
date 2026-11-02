@@ -911,9 +911,9 @@ func _meter_details(rows: Array, i: int, field: String, title: String) -> void:
 	for k in keys:
 		var amount := float(by[k])
 		var row := UI.hbox(8)
-		var icon := "atk" if k == "attack" else UI.spell_icon(k)
-		row.add_child(UI.icon(icon, 28))
-		var name: String = "Автоатака" if k == "attack" else Db.SPELLS[k]["name"]
+		var entry := _meter_entry(str(k))
+		row.add_child(UI.icon(entry[0], 28))
+		var name: String = entry[1]
 		var nv := UI.vbox(2)
 		nv.add_child(UI.label(name, Style.FONT_SMALL, Style.TEXT, true))
 		nv.add_child(UI.progress(amount, max(1.0, total), Style.SECONDARY, 8))
@@ -921,6 +921,20 @@ func _meter_details(rows: Array, i: int, field: String, title: String) -> void:
 		row.add_child(UI.label("%d (%d/с) · %d%%" % [roundi(amount), roundi(amount / t), roundi(amount / max(1.0, total) * 100)], Style.FONT_SMALL, Style.TEXT))
 		v.add_child(row)
 	_modal("%s: %s · за забег" % [title, u.name], v)
+
+## Icon and name of a meter breakdown key: a spell, a talent, an item proc or an item effect.
+func _meter_entry(k: String) -> Array:
+	if k == "attack":
+		return ["atk", "Автоатака"]
+	if k.begins_with("item:") and Db.SPELLS.has(k.trim_prefix("item:")):
+		var sid := k.trim_prefix("item:")
+		return [UI.spell_icon(sid), "%s (предмет)" % Db.SPELLS[sid]["name"]]
+	if Db.SPELLS.has(k):
+		return [UI.spell_icon(k), Db.SPELLS[k]["name"]]
+	if Talents.TALENTS.has(k):
+		return [Talents.TALENTS[k]["icon"], "%s (талант)" % Talents.TALENTS[k]["name"]]
+	var items := {"lifesteal": "Вампиризм (предмет)", "thorns": "Шипы (предмет)", "double_attack": "Вторая автоатака (предмет)", "heal": "Лечение"}
+	return ["item_trinket", items.get(k, k)]
 
 func _fill_meter(rows: Array, units: Array, field: String, t: float) -> void:
 	var allies := units.duplicate()

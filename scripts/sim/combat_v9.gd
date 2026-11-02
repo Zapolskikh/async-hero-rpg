@@ -18,6 +18,27 @@ var event_seq := 0
 var _acc := 0.0
 var taunt_seq := 0
 var _redirecting := false  # guards Intervene from redirecting its own share again
+## Meter credit: while a talent or item proc runs, its damage and healing by `_credit_src`
+## are listed under `_credit` in the breakdown (totals do not change).
+var _credit := ""
+var _credit_src: BattleUnit = null
+
+## Breakdown key of a hit or heal: an active proc credit, the spell, the talent, or the fallback.
+func _meter_key(src: BattleUnit, sid: String, fallback: String) -> String:
+	if Talents.TALENTS.has(sid) or sid == "lifesteal" or sid == "thorns":
+		return sid
+	if _credit != "" and src == _credit_src:
+		return _credit
+	return sid if Db.SPELLS.has(sid) else fallback
+
+## Runs `body` with its damage and healing by `src` credited to `key`.
+func _credited(src: BattleUnit, key: String, body: Callable) -> void:
+	var before := [_credit, _credit_src]
+	_credit = key
+	_credit_src = src
+	body.call()
+	_credit = before[0]
+	_credit_src = before[1]
 
 func setup(allies: Array, enemy_snaps: Array, seed_value: int) -> void:
 	rng.seed = seed_value
@@ -188,10 +209,13 @@ func _tick(u: BattleUnit) -> void:
 			var t := _injured(u) if s["id"] == "healing_totem" else pick_target(u)
 			if t != null:
 				if s["id"] == "healing_totem":
-					_heal(u,t,s["amount"],false,"heal")
+					_credited(u,"healing_totem",func(): _heal(u,t,s["amount"],false,"heal"))
 					_fx(u,t,"heal","#86efa2",s["id"])
+				elif s["id"] == "beast":
+					_deal(u,t,s["amount"],false,false,"beast",true,"physical",false)
 				else:
-					_deal(u,t,s["amount"],false,false,"beast" if s["id"] == "beast" else "fireball",true,"physical" if s["id"] == "beast" else "magic",false)
+					_credited(u,s["id"],func(): _deal(u,t,s["amount"],false,false,"fireball",true,"magic",false))
+				if s["id"] != "healing_totem":
 					_fx(u,t,"beast" if s["id"] == "beast" else "fire","#edb45b",s["id"])
 		if s["remaining"] <= 0.:
 			u.summons.erase(s)
@@ -296,7 +320,7 @@ func _autoattack(u: BattleUnit,t: BattleUnit) -> void:
 	if offhand > 0.:
 		_deal(u,t,offhand,true,false,"attack")
 	if u.gear_fx.has("double_attack") and rng.randf() < u.gear_fx["double_attack"]:
-		_deal(u,t,a,true,false,"attack",true)
+		_credited(u,"double_attack",func(): _deal(u,t,a,true,false,"attack",true))
 	for id in u.cooldowns:
 		if Db.SPELLS.has(id):
 			u.cooldowns[id] = maxf(0.,u.cooldowns[id]-.1*u.rank("battle_rhythm")*(2. if offhand > 0. else 1.))
@@ -306,14 +330,14 @@ func _autoattack(u: BattleUnit,t: BattleUnit) -> void:
 		_stun(t,1.)
 	if u.equipped("greatsword"):
 		if rng.randf() < .1*u.rank("unstoppable"):
-			_deal(u,t,a*.5,true,false,"attack",true)
+			_credited(u,"unstoppable",func(): _deal(u,t,a*.5,true,false,"attack",true))
 		if u.rank("wide_swing"):
 			for other in foes_of(u):
 				if other != t:
-					_deal(u,other,a*.15*u.rank("wide_swing"),false,false,"attack",true)
+					_credited(u,"wide_swing",func(): _deal(u,other,a*.15*u.rank("wide_swing"),false,false,"attack",true))
 					break
 	if u.equipped("dual") and rng.randf() < .2*u.rank("paired_blades"):
-		_deal(u,t,a*.5,true,false,"attack",true)
+		_credited(u,"paired_blades",func(): _deal(u,t,a*.5,true,false,"attack",true))
 		_poison(u,t)
 
 func _usable(u: BattleUnit,sid: String) -> bool:
@@ -511,7 +535,7 @@ func _cast(u: BattleUnit,sid: String,lvl: int,target,scale: float = 1.,copy: boo
 				break
 		if rng.randf() < .1*target.rank("reflection"):
 			_status(target,"Отражено")
-			_cast(target,sid,lvl,u,scale,true,a)
+			_credited(target,"reflection",func(): _cast(target,sid,lvl,u,scale,true,a))
 			return
 	_emit({"t":"spell","uid":u.uid,"text":s["name"],"sid":sid,"kind":s["kind"],"tgt":target.uid})
 	if s.has("channel") and not copy:
@@ -671,7 +695,7 @@ func _cast(u: BattleUnit,sid: String,lvl: int,target,scale: float = 1.,copy: boo
 		if u.rank("residual"):
 			_shield(u,u,u.power*.15*u.rank("residual"),6.,"residual",false)
 		if _offensive(s) and rng.randf() < .1*u.rank("echo"):
-			_cast(u,sid,lvl,target,.5,true)
+			_credited(u,"echo",func(): _cast(u,sid,lvl,target,.5,true))
 
 func _channel_pulse(u: BattleUnit,c: Dictionary) -> void:
 	var sid: String = c["spell"]
@@ -799,7 +823,7 @@ func _hot_tick(src: BattleUnit,t: BattleUnit,a: float,sid: String) -> void:
 	if t.hp >= t.max_hp and src.rank("passing_care"):
 		var f := _injured(src,1.,t)
 		if f != null:
-			_heal(src,f,a*[0.,.3,.6,1.][src.rank("passing_care")],false,sid)
+			_credited(src,"passing_care",func(): _heal(src,f,a*[0.,.3,.6,1.][src.rank("passing_care")],false,sid))
 	else:
 		_heal(src,t,a,false,sid)
 
@@ -810,7 +834,7 @@ func _shield(src: BattleUnit,t: BattleUnit,a: float,dur: float,sid: String,addit
 	var before := t.shield
 	t.shield = t.shield+a if additive else maxf(t.shield,a)
 	if t.shield > before:
-		t.shield_parts.append({"src":src,"sid":sid,"left":t.shield-before})
+		t.shield_parts.append({"src":src,"sid":_meter_key(src,sid,"heal"),"left":t.shield-before})
 	t.shield_time = maxf(t.shield_time,dur)
 	t.shield_owner = src
 	t.shield_sid = sid
@@ -825,7 +849,7 @@ func _credit_absorb(t: BattleUnit,amount: float) -> void:
 	while amount > 0. and not t.shield_parts.is_empty():
 		var part: Dictionary = t.shield_parts[0]
 		var taken := minf(amount,part["left"])
-		var meter_id: String = part["sid"] if Db.SPELLS.has(part["sid"]) else "heal"
+		var meter_id: String = part["sid"]
 		part["src"].healed += taken
 		part["src"].healed_by[meter_id] = part["src"].healed_by.get(meter_id,0.)+taken
 		part["left"] -= taken
@@ -942,11 +966,11 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 		while not t.damage_history.is_empty() and t.damage_history[0][0] < time-5.:
 			t.damage_history.pop_front()
 	src.dealt += lost+absorbed
-	var meter_id: String = sid if Db.SPELLS.has(sid) else "attack"
+	var meter_id := _meter_key(src,sid,"attack")
 	src.dealt_by[meter_id] = src.dealt_by.get(meter_id,0.)+lost+absorbed
 	if lost > 0. and src.alive() and src.rank("life_source"):
 		for f in friends_of(src):
-			_heal(src,f,lost*[0.,.01,.03,.05][src.rank("life_source")],false,meter_id)
+			_credited(src,"life_source",func(): _heal(src,f,lost*[0.,.01,.03,.05][src.rank("life_source")],false,meter_id))
 	if not proc and not is_dot:
 		if weapon and src.equipped("sword"):
 			_poison(src,t)
@@ -960,13 +984,17 @@ func _deal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,is_dot: bo
 		if src.equipped("bow") and weapon and s.get("kind","") not in ["aoe_damage","channel_aoe","explosive","dot"] and rng.randf() < .1*src.rank("piercing_shot"):
 			for other in foes_of(src):
 				if other != t:
-					_deal(src,other,amount,can_crit,false,sid,true,school)
+					_credited(src,"piercing_shot",func(): _deal(src,other,amount,can_crit,false,sid,true,school))
 	if lost > 0.:
 		_gear_procs(src,t,lost,proc or is_dot)
 	if lost > 0. and t.alive():
+		# Reactive heals are their own casts: no proc credit carries over to them.
+		var credit := _credit
+		_credit = ""
 		_reactive_heals(t)
+		_credit = credit
 	if lost > 0. and not proc and not is_dot and school == "physical" and t.rank("retaliation"):
-		_deal(t,src,lost*.1*t.rank("retaliation"),false,false,"attack",true,"physical")
+		_credited(t,"retaliation",func(): _deal(t,src,lost*.1*t.rank("retaliation"),false,false,"attack",true,"physical"))
 	if t.counters.has("seed"):
 		t.counters["seed"]["damage"] += lost
 		if t.counters["seed"]["damage"] >= t.counters["seed"]["threshold"] or not t.alive():
@@ -1016,14 +1044,14 @@ func _gear_procs(src: BattleUnit,t: BattleUnit,lost: float,quiet: bool) -> void:
 	if quiet:
 		return
 	if t.gear_fx.has("thorns") and src.alive():
-		_deal(t,src,lost*t.gear_fx["thorns"],false,false,"attack",true,"physical")
+		_credited(t,"thorns",func(): _deal(t,src,lost*t.gear_fx["thorns"],false,false,"attack",true,"physical"))
 	for p in src.gear_fx.get("procs",[]):
 		if t.alive() and not src.counters.has("gear_proc") and rng.randf() < p["chance"]:
 			src.counters["gear_proc"] = true
 			var lvl := 1
 			for e in src.spells:
 				lvl = maxi(lvl,int(e["lvl"]))
-			_cast(src,p["sid"],lvl,t,p["scale"],true)
+			_credited(src,"item:"+str(p["sid"]),func(): _cast(src,p["sid"],lvl,t,p["scale"],true))
 			src.counters.erase("gear_proc")
 
 func _heal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,sid: String = "",direct: bool = false) -> void:
@@ -1039,7 +1067,7 @@ func _heal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,sid: Strin
 	var actual := minf(h,t.max_hp-t.hp)
 	t.hp += actual
 	src.healed += actual
-	var meter_id: String = sid if Db.SPELLS.has(sid) else "heal"
+	var meter_id := _meter_key(src,sid,"heal")
 	src.healed_by[meter_id] = src.healed_by.get(meter_id,0.)+actual
 	if actual > 0.:
 		_emit({"t":"heal","uid":t.uid,"v":round(actual),"crit":crit})
@@ -1052,11 +1080,11 @@ func _heal(src: BattleUnit,t: BattleUnit,amount: float,can_crit: bool,sid: Strin
 	if src.rank("living_cover"):
 		for hot in t.hots.duplicate():
 			if hot["src"] == src:
-				_hot_tick(src,t,hot["per_tick"]*[0.,.3,.6,1.][src.rank("living_cover")],hot["id"])
+				_credited(src,"living_cover",func(): _hot_tick(src,t,hot["per_tick"]*[0.,.3,.6,1.][src.rank("living_cover")],hot["id"]))
 	if src.rank("shared_care") and actual > 0.:
 		var f := _injured(src,1.,t)
 		if f != null:
-			_heal(src,f,actual*.1*src.rank("shared_care"),false,sid)
+			_credited(src,"shared_care",func(): _heal(src,f,actual*.1*src.rank("shared_care"),false,sid))
 	if src.rank("healing_trail"):
 		_hot(src,t,"healing_trail",amount*.1*src.rank("healing_trail")/4.,4.)
 

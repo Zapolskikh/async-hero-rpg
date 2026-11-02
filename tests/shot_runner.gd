@@ -368,6 +368,19 @@ func _run_meter() -> void:
 	await _shot("28_meter_start")
 	await _wait(6.0)
 	await _shot("29_meter_fight")
+	var top = Game.expedition.sim.unit_by_uid(int(main.meter_rows[0]["uid"]))
+	for k in ["fire_totem", "ignition", "echo", "item:fireball", "thorns", "paired_blades"]:
+		top.dealt_by[k] = 40.0 + top.dealt_by.size() * 7.0
+	for k in ["healing_totem", "living_cover", "reserve", "lifesteal"]:
+		top.healed_by[k] = 30.0 + top.healed_by.size() * 5.0
+	main._meter_details(main.meter_rows, 0, "dealt_by", "Урон")
+	await _wait(0.3)
+	await _shot("29d_meter_breakdown")
+	UI.clear(main.popup_layer)
+	main._meter_details(main.meter_rows, 0, "healed_by", "Лечение + поглощение")
+	await _wait(0.3)
+	await _shot("29e_heal_breakdown")
+	UI.clear(main.popup_layer)
 	var units: Array = Game.expedition.sim.units
 	for u in units:
 		u.buffs["wall"] = {"value": 0.3, "remaining": 6.0, "src": u}

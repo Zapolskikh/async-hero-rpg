@@ -33,6 +33,7 @@ func _init() -> void:
 	test_new_mechanics()
 	test_shared_needs()
 	test_spell_lock()
+	test_meter_credit()
 	print("COMBAT V9: %d assertions, %d failures" % [assertions,failures])
 	quit(1 if failures else 0)
 
@@ -382,4 +383,27 @@ func test_spell_lock() -> void:
 	u.spell_cd = 99.
 	sim._act(u)
 	check(foe.casting.is_empty() and foe.silence >= 4.9 and u.cooldowns.has("spell_lock"),"spell lock interrupts out of rotation and silences for 5 s")
+	sim.release()
+
+## Talent and item procs show up as their own lines in the meter breakdown; totals do not change.
+func test_meter_credit() -> void:
+	var shaman := unit(0,["staff"],{"fire_totem":3,"healing_totem":3,"ignition":3})
+	shaman.crit = 1.
+	var ally := unit(1)
+	var sim := battle([shaman,ally])
+	ally.hp = 2000.
+	for i in 100:
+		sim.step()
+	check(shaman.dealt_by.get("fire_totem",0.) > 0. and not shaman.dealt_by.has("fireball"),"fire totem damage has its own meter line")
+	check(shaman.healed_by.get("healing_totem",0.) > 0. and not shaman.healed_by.has("heal"),"healing totem has its own meter line")
+	sim._cast(shaman,"fireball",1,sim.foes_of(shaman)[0])
+	for i in 50:
+		sim.step()
+	check(shaman.dealt_by.get("ignition",0.) > 0.,"burning from a crit is listed as its talent")
+	var total := 0.
+	for k in shaman.dealt_by:
+		total += shaman.dealt_by[k]
+	check(is_equal_approx(total,shaman.dealt),"breakdown adds up to the total")
+	sim._credited(shaman,"echo",func(): sim._deal(shaman,sim.foes_of(shaman)[0],100.,false,false,"fireball",true))
+	check(shaman.dealt_by.get("echo",0.) > 0.,"echo copies are listed as the talent")
 	sim.release()
