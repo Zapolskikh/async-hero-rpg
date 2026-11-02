@@ -328,7 +328,11 @@ func test_items() -> void:
 	check(is_equal_approx(twin.gear_fx["double_attack"], 0.35), "effects add up")
 	check(is_equal_approx(Items.damage_bonus({"spell:fireball": 0.35, "magic_bonus": 0.05}, "fireball", "damage", false, "magic", false, 1.0), 0.4), "spell bonus applies")
 	var helm := Items.make("tank_t2_0_plate_head", 12, "h1")
-	check(["gear:head", "plate_head_t3"] in Roster.look({"head": helm}), "worn art reaches the look layers")
+	check(["gear:head", "plate_head_q%d" % int(helm["rarity"])] in Roster.look({"head": helm}), "worn plate shows its rarity set")
+	var cap := Items.make("tank_t2_0_plate_head", 12, "h2")
+	cap["atype"] = "leather"
+	cap["look"] = "leather_head_t3"
+	check(["gear:head", "leather_head_t3"] in Roster.look({"head": cap}), "types without rarity sets keep their tier look")
 	check(not GearArt.find("plate_head_t3", "female").is_empty() and not GearArt.find("sword_t3", "male").is_empty(), "drawn gear is found for each body")
 	check(GearArt.find("no_such_look", "male").is_empty(), "gear without art falls back to the body")
 	var undrawn := []

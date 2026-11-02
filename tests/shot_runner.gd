@@ -20,6 +20,7 @@ var dev_only := false
 var fx_level := 0
 var enemy_fx := false
 var boxes_only := false
+var skins_only := false
 
 func _ready() -> void:
 	for a in OS.get_cmdline_user_args():
@@ -51,6 +52,8 @@ func _ready() -> void:
 			mythic_only = true
 		if a == "--shots-dev":
 			dev_only = true
+		if a == "--shots-skins":
+			skins_only = true
 		if a == "--shots-boxes":
 			boxes_only = true
 		if a == "--shots-enemyfx":
@@ -59,7 +62,9 @@ func _ready() -> void:
 			fx_level = a.trim_prefix("--shots-fx=").to_int()
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if boxes_only:
+	if skins_only:
+		_run_skins()
+	elif boxes_only:
 		_run_boxes()
 	elif enemy_fx:
 		_run_enemy_fx()
@@ -702,4 +707,24 @@ func _run_boxes() -> void:
 	main._refresh()
 	await _wait(.4)
 	await _shot("b2_after12")
+	get_tree().quit()
+
+## Worn plate in each rarity on the hero screen.
+func _run_skins() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	var rng := RandomNumberGenerator.new()
+	rng.seed = 4
+	for q in 6:
+		for slot in ["head", "armor", "hands", "legs", "feet"]:
+			var it := Items.roll(rng, 25, q, slot, "", "tank")
+			it["atype"] = "plate"
+			it["slot"] = slot
+			it["look"] = "plate_%s_t5" % slot
+			Game.profile["hero"]["equipped"][slot] = it
+		Game.changed.emit()
+		main._switch("hero")
+		main._refresh()
+		await _wait(.5)
+		await _shot("s_q%d" % q)
 	get_tree().quit()

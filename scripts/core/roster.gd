@@ -23,6 +23,18 @@ const GEAR_LAYERS := ["head", "armor", "hands", "legs", "feet", "weapon", "offha
 const LOOK_TINTS := ["#8f96a3", "#c9cdd4", "#5fc46a", "#5b9be8", "#b06ef0", "#f0aa40"]
 
 ## Layers drawn over doll_body for this gear, back to front: [[layer, tint or ""], ...].
+## Armour types drawn by rarity (tools/gen_gear_skins.py); the others still use their tier looks.
+const RARITY_SKINS := ["plate"]
+
+## How a worn item looks: ordinary armour of a drawn type shows its rarity set
+## (<type>_<slot>_q<rarity>); unique crafted and legendary pieces keep their own look.
+static func skin_look(it: Dictionary) -> String:
+	var look: String = it["look"]
+	var atype: String = it.get("atype", "")
+	if atype in RARITY_SKINS and look.begins_with(atype + "_") and it.get("slot", "") in ["head", "armor", "hands", "legs", "feet"]:
+		return "%s_%s_q%d" % [atype, it["slot"], clampi(int(it["rarity"]), 0, 5)]
+	return look
+
 static func look(gear: Dictionary) -> Array:
 	var out := []
 	var off = gear.get("offhand")
@@ -41,7 +53,7 @@ static func look(gear: Dictionary) -> Array:
 	for slot in GEAR_LAYERS:
 		var it = gear.get(slot)
 		if it != null and it.has("look"):
-			out.append(["gear:" + slot, it["look"]])
+			out.append(["gear:" + slot, skin_look(it)])
 	return out
 
 ## Worn cosmetics as colours for the views: {"glow": "#hex", "aura": "#hex"}.
