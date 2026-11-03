@@ -422,7 +422,7 @@ func _run_meter() -> void:
 	for u in units:
 		u.buffs["wall"] = {"value": 0.3, "remaining": 6.0, "src": u}
 		u.hots.append({"id": "renew", "src": u, "per_tick": 1.0, "remaining": 9.0, "duration": 9.0, "tick": 1.0, "decay": 0.0})
-		u.dots.append({"id": "e_plague", "per_tick": 1.0, "remaining": 7.0, "tick": 1.0, "src": u, "school": "magic"})
+		u.dots.append({"id": "e_plague", "per_tick": 1.0, "remaining": 7.0, "duration": 7.0, "tick": 1.0, "src": u, "school": "magic", "spell_dot": false})
 		u.buffs["weakness"] = {"value": 0.2, "remaining": 4.0, "src": u}
 		u.shield = 50.0
 		u.shield_time = 8.0

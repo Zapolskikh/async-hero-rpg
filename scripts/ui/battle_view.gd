@@ -787,10 +787,10 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 		var sname: String = Db.SPELLS[c["spell"]]["name"]
 		var sw2 := font.get_string_size(sname, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
 		_text(font, Vector2(home.x - sw2 / 2.0, cb.end.y - 3), sname, 13, Color.WHITE, 4)
-	if u.alive() and u.side == 0 and not u.is_npc:
+	if u.alive() and u.side == 0:
 		_draw_spell_row(u, home)
 
-## Heroes' spells under the cast bar with a WoW-style cooldown sweep: the dark sector is
+## The party's spells (hero and mercenaries, not enemies) under the cast bar with a WoW-style cooldown sweep: the dark sector is
 ## what is left (global cooldown or the spell's own one, whichever ends later), the bright
 ## part has recovered, a light hand marks the edge. No numbers.
 func _draw_spell_row(u: BattleUnit, home: Vector2) -> void:
