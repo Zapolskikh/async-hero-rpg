@@ -669,7 +669,7 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 			offset += _lunge_offset(u,a["lunge"])
 		if a["hurt"] > 0.0:
 			offset.x -= dir * 8.0 * (a["hurt"] / HURT_TIME)
-		if u.is_casting():
+		if _casting_shown(u):
 			offset.y -= 4.0
 	var t := tex(u.sprite)
 	var tint := Color.WHITE
@@ -687,7 +687,7 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 	_ellipse(home + Vector2(offset.x, 0), Vector2(shadow_w, 9), Color(0, 0, 0, 0.25))
 
 	# cast glow under the feet
-	if u.is_casting():
+	if _casting_shown(u):
 		var c: Dictionary = u.casting if not u.casting.is_empty() else u.channel
 		var col: Color = Color(Db.SPELLS[c["spell"]].get("color", "#ffd27a"))
 		col.a = 0.35 + 0.2 * sin(clock * 10.0)
@@ -775,8 +775,8 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 		var effects := _statuses(u)
 		var row_top := _draw_status_row(effects[1], home.x, bar.position.y - 23.0, Color("#e0413a"), "sp_ignite", font)
 		_draw_status_row(effects[0], home.x, row_top, Color("#3f8cff"), "sp_renew", font)
-	# cast bar under the feet
-	if u.is_casting():
+	# cast bar under the feet (gone once the wave is over: a cast cut off by the end is not shown)
+	if _casting_shown(u):
 		var c: Dictionary = u.casting if not u.casting.is_empty() else u.channel
 		var cb := Rect2(Vector2(home.x - 60, home.y + 6), Vector2(120, CAST_BAR_H))
 		draw_rect(cb.grow(1.5), Color(0, 0, 0, 0.8))
@@ -822,6 +822,9 @@ func _draw_spell_row(u: BattleUnit, home: Vector2) -> void:
 			frac = clampf(gcd_left / maxf(0.01, gcd_total), 0.0, 1.0)
 		if frac > 0.0:
 			_draw_sweep(box, frac)
+
+func _casting_shown(u: BattleUnit) -> bool:
+	return u.is_casting() and not (_sim_ref != null and _sim_ref.finished)
 
 ## Interrupts, taunts and emergency answers are not held by the global cooldown.
 func _reactive(sid: String) -> bool:

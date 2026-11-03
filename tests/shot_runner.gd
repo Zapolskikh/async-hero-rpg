@@ -23,6 +23,8 @@ var boxes_only := false
 var skins_only := false
 var wskins_only := false
 var tutorial_only := false
+var ending_only := false
+var layout_only := false
 var skins_female := false
 
 func _ready() -> void:
@@ -55,6 +57,10 @@ func _ready() -> void:
 			mythic_only = true
 		if a == "--shots-dev":
 			dev_only = true
+		if a == "--shots-layout":
+			layout_only = true
+		if a == "--shots-ending":
+			ending_only = true
 		if a == "--shots-tutorial":
 			tutorial_only = true
 		if a == "--shots-wskins":
@@ -70,7 +76,11 @@ func _ready() -> void:
 			fx_level = a.trim_prefix("--shots-fx=").to_int()
 	DirAccess.make_dir_recursive_absolute(out_dir)
 	main = get_parent()
-	if tutorial_only:
+	if layout_only:
+		_run_layout()
+	elif ending_only:
+		_run_ending()
+	elif tutorial_only:
 		_run_tutorial()
 	elif wskins_only:
 		_run_wskins()
@@ -773,6 +783,55 @@ func _run_boxes() -> void:
 	get_tree().quit()
 
 ## Worn armour of every type in each rarity, and the crafted sets, on the hero screen.
+## Every tab must fit between the top bar and the bottom menu (the menu is never cut).
+func _run_layout() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	for tab in ["expedition", "hero", "mercs", "spells", "crafts", "bag"]:
+		main._switch(tab)
+		main._refresh()
+		await _wait(0.5)
+		var win: Vector2 = main.get_rect().size
+		var nav_bottom: float = main.nav_bar.get_global_rect().end.y
+		print("layout %s: content min %.0f of %.0f, menu %.0f..%.0f of %.0f %s" % [tab, main.content.get_combined_minimum_size().y,
+			main.content.size.y, main.nav_bar.get_global_rect().position.y, nav_bottom, win.y, "OK" if nav_bottom <= win.y + 0.5 else "CUT"])
+		if tab == "hero":
+			var scr = main.content.get_child(0)
+			for c in scr.get_children():
+				print("   column min ", c.get_combined_minimum_size())
+		await _shot("layout_" + tab)
+	print("shots done")
+	get_tree().quit()
+
+## How a push ends on screen: a won level and a lost one, a moment after the rules closed it.
+func _run_ending() -> void:
+	Game.reset_progress()
+	UI.clear(main.popup_layer)
+	for case in [[1, "win"], [12, "loss"]]:
+		Game.profile["closed_level"] = int(case[0]) - 1
+		await main._start(int(case[0]), "push")
+		Game.watch_speed = 8.0
+		var waited := 0.0
+		while Game.expedition != null and waited < 400.0:
+			await _wait(0.5)
+			waited += 0.5
+		UI.clear(main.popup_layer)
+		Game.watch_speed = 1.0
+		main._open_watch()
+		await _wait(0.6)
+		await _shot("end_%s_a" % case[1])
+		# the live copy may still be a few seconds behind the rules: let it play out
+		var lb = Game.last_battle
+		var t := 0.0
+		while lb != null and lb.sim != null and not lb.sim.finished and t < 20.0:
+			await _wait(0.5)
+			t += 0.5
+		await _wait(2.0)
+		UI.clear(main.popup_layer)
+		await _shot("end_%s_b" % case[1])
+	print("shots done")
+	get_tree().quit()
+
 ## The first-session guide, step by step, and an unlock hint.
 func _run_tutorial() -> void:
 	Game.reset_progress()

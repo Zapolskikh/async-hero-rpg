@@ -139,6 +139,10 @@ func now() -> float:
 func _process(delta: float) -> void:
 	if expedition != null:
 		expedition.advance(delta * watch_speed)
+	elif last_battle != null and last_battle.sim != null and not last_battle.sim.finished:
+		# The rules may close a push a moment before this live copy gets there: play the last
+		# wave to its end (visual only), so the losing side falls instead of freezing on low HP.
+		last_battle.sim.advance(delta * watch_speed)
 	# x2..x8 (offline) speeds up only the expedition: it is moved back in time,
 	# so professions, potions and daily timers keep real time
 	if mode == "offline" and watch_speed > 1.0 and profile.get("expedition") != null:
