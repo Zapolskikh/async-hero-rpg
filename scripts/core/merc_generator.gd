@@ -63,6 +63,70 @@ static func spec_spells(rng: RandomNumberGenerator, spec: String, weapons: Array
 		pool.erase(id)
 	return picked
 
+## A mercenary may be at most this much stronger (Roster.power_score) than the hero who meets it.
+const POWER_OVER_HERO := 1.10
+
+## Hero Power times POWER_OVER_HERO: the cap for the mercenaries this hero is offered.
+static func power_cap_for(hero_snapshot: Dictionary) -> float:
+	return float(Roster.power_score(hero_snapshot)) * POWER_OVER_HERO
+
+## Brings a mercenary under `cap` (no cap when <= 0): its rarest item drops one quality and
+## is rolled again for the same slot, then its highest spell loses a level, until it fits.
+## Specialisation, weapons, spells and talents stay as rolled; only gear and spell levels give.
+static func fit_power(rng: RandomNumberGenerator, m: Dictionary, cap: float) -> void:
+	if cap <= 0.0:
+		return
+	var role := Items.role_of(m["weapons"])
+	if SPECS.has(m.get("spec", "")) and SPECS[m["spec"]]["role"] != "":
+		role = SPECS[m["spec"]]["role"]
+	for guard in 120:
+		if Roster.power_score(m) <= cap:
+			return
+		var worst := ""
+		for slot in m["gear"]:
+			var it = m["gear"][slot]
+			if it == null:
+				continue
+			var floor_q := Items.UNCOMMON if it["slot"] == "accessory" else Items.POOR
+			if int(it["rarity"]) <= floor_q:
+				continue
+			if worst == "" or int(it["rarity"]) > int(m["gear"][worst]["rarity"]) or (int(it["rarity"]) == int(m["gear"][worst]["rarity"]) and Loot.item_score(it) > Loot.item_score(m["gear"][worst])):
+				worst = slot
+		if worst != "":
+			var old: Dictionary = m["gear"][worst]
+			var kind := "accessory" if old["slot"] == "accessory" else str(old["slot"])
+			m["gear"][worst] = Loot.roll_gear(rng, int(m["level"]), "merc", kind if not old.has("wtype") else "", old.get("wtype", ""), role, int(old["rarity"]) - 1)
+		else:
+			var top := -1
+			for i in m["spells"].size():
+				if int(m["spells"][i]["lvl"]) > 1 and (top < 0 or int(m["spells"][i]["lvl"]) > int(m["spells"][top]["lvl"])):
+					top = i
+			if top < 0:
+				# all poor and level I: accessories come off, then items get an older (lower) item level
+				var removed := false
+				for slot in ["accessory2", "accessory1"]:
+					if m["gear"].get(slot) != null and not removed:
+						m["gear"][slot] = null
+						removed = true
+				if not removed:
+					var oldest := ""
+					for slot in m["gear"]:
+						var it = m["gear"][slot]
+						if it != null and int(it["ilvl"]) > 1 and (oldest == "" or int(it["ilvl"]) > int(m["gear"][oldest]["ilvl"])):
+							oldest = slot
+					if oldest == "":
+						return
+					var o: Dictionary = m["gear"][oldest]
+					m["gear"][oldest] = Loot.roll_gear(rng, maxi(1, int(o["ilvl"]) - 3), "merc", str(o["slot"]) if not o.has("wtype") else "", o.get("wtype", ""), role, int(o["rarity"]))
+			else:
+				m["spells"][top]["lvl"] = int(m["spells"][top]["lvl"]) - 1
+		var st := Roster.apply_gear(m["base_stats"].duplicate(), m["gear"])
+		Talents.apply_stats(st, m["talents"], m["weapons"])
+		st.merge(Loot.attack_of(st, m["gear"]), true)
+		m["stats"] = st
+		m["effects"] = Items.effects_of(m["gear"])
+		m["look"] = Roster.look(m["gear"])
+
 static func make(rng: RandomNumberGenerator, level: int, forced_weapons: Array = [], forced_talents: String = "", forced_spells: Array = [], spec: String = "") -> Dictionary:
 	if spec == "" and forced_weapons.is_empty() and forced_talents == "" and forced_spells.is_empty():
 		spec = roll_spec(rng)

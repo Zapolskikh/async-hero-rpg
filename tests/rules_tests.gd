@@ -392,6 +392,28 @@ func test_items() -> void:
 			if not found_acc:
 				break
 	check(found_acc, "accessories are in the normal drop list")
+	# mercenaries are never more than 10% stronger than the hero who meets them
+	var capped := Rules.new_profile(78, T0)
+	var cap_rng := RandomNumberGenerator.new()
+	cap_rng.seed = 12
+	capped["hero"]["level"] = 12
+	for slot in ["weapon", "armor", "trinket", "head", "hands", "legs", "feet"]:
+		capped["hero"]["equipped"][slot] = Loot.roll_gear(cap_rng, 12, "drop", slot, "sword" if slot == "weapon" else "", "melee")
+	var merc_cap := MercGenerator.power_cap_for(Rules.hero_snapshot(capped))
+	var board := Rules.roll_board(capped, cap_rng, {})
+	var over := []
+	for m in board:
+		if m.get("npc", true) and Roster.power_score(m) > merc_cap:
+			over.append(Roster.power_score(m))
+	check(over.is_empty(), "board mercenaries stay within 110%% of the hero's power (cap %d, over: %s)" % [int(merc_cap), str(over)])
+	var wild := MercGenerator.make(cap_rng, 12, ["greatsword"], "", ["whirlwind", "mortal_strike", "strike"])
+	for slot in wild["gear"]:
+		if wild["gear"][slot] != null:
+			wild["gear"][slot] = Loot.roll_gear(cap_rng, 12, "merc", "" if wild["gear"][slot].has("wtype") else str(wild["gear"][slot]["slot"]), wild["gear"][slot].get("wtype", ""), "melee", Items.EPIC)
+	for e in wild["spells"]:
+		e["lvl"] = 5
+	MercGenerator.fit_power(cap_rng, wild, merc_cap)
+	check(Roster.power_score(wild) <= merc_cap and wild["spells"][0]["id"] == "whirlwind", "an epic greatsword merc with level V spells is brought down to the cap, spells kept")
 	var role_rng := RandomNumberGenerator.new()
 	role_rng.seed = 5
 	var roles_seen := {}

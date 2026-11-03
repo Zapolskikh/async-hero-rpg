@@ -84,8 +84,9 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 		p["inventory"].append(Loot.roll_gear(r, 1, "start", "", wtype))
 	for sid in Db.STARTER_SPELLS:
 		p["collection"][sid] = {"lvl": 1, "copies": 0}
-	p["board"] = Roster.roll_board(r, 1)
-	p["hired"] = Roster.starter_party(r)
+	var cap := MercGenerator.power_cap_for(hero_snapshot(p))
+	p["board"] = Roster.roll_board(r, 1, cap)
+	p["hired"] = Roster.starter_party(r, cap)
 	p["party_order"] = [p["hired"][0]["id"], "hero", p["hired"][1]["id"], p["hired"][2]["id"]]
 	_save_rng(p, r)
 	return p
@@ -1183,7 +1184,7 @@ static func _apply_rewards(p: Dictionary, r: RandomNumberGenerator, rep: Diction
 		for i in p["board"].size():
 			var m: Dictionary = p["board"][i]
 			if m.get("npc", true) and int(m["level"]) < lvl - 1:
-				p["board"][i] = Roster.relevel(r, m, lvl)
+				p["board"][i] = Roster.relevel(r, m, lvl, MercGenerator.power_cap_for(hero_snapshot(p)))
 
 ## A cleared key raises the key level by one; a failed one leaves it. The record is the
 ## highest cleared key, ties broken by the shorter battle time.
@@ -1434,7 +1435,7 @@ static func _use_item(p: Dictionary, res: String, now: float) -> Dictionary:
 ## guild NPCs; a tank and a healer are always present (concept 9).
 static func roll_board(p: Dictionary, r: RandomNumberGenerator, ctx: Dictionary) -> Array:
 	var lvl: int = p["hero"]["level"]
-	var npcs := Roster.roll_board(r, lvl)
+	var npcs := Roster.roll_board(r, lvl, MercGenerator.power_cap_for(hero_snapshot(p)))
 	var pool: Array = ctx.get("real_pool", [])
 	var reals := []
 	var hired_ids := {}

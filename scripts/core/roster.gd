@@ -147,7 +147,7 @@ static func make_merc(rng: RandomNumberGenerator, _template_idx: int, level: int
 	return MercGenerator.make(rng, level)
 
 ## Guild mercenaries on the board grow with the hero (same build, new gear).
-static func relevel(rng: RandomNumberGenerator, merc: Dictionary, level: int) -> Dictionary:
+static func relevel(rng: RandomNumberGenerator, merc: Dictionary, level: int, power_cap: float = -1.0) -> Dictionary:
 	var spec: String = merc.get("spec", "hybrid")
 	var fresh := MercGenerator.make(rng, level, merc.get("weapons",[]), "", [], spec if MercGenerator.SPECS.has(spec) else "hybrid")
 	fresh["spells"] = merc["spells"].duplicate(true)
@@ -157,6 +157,7 @@ static func relevel(rng: RandomNumberGenerator, merc: Dictionary, level: int) ->
 		if not merc.has(k):
 			continue
 		fresh[k] = merc[k]
+	MercGenerator.fit_power(rng, fresh, power_cap)
 	return fresh
 
 ## Mercenary talents within the budget of its level (older saves had twice the points);
@@ -211,7 +212,7 @@ static func baseline_spell_level(level: int) -> int:
 static func expected_power(level: int) -> float:
 	var st := Db.hero_base_stats(level)
 	st["atk"] = st["str"]
-	return _power_value(st, st["power"], POWER_SPELL_WEIGHT, 3 * baseline_spell_level(level), 0)
+	return _power_value(st, st["power"] * Db.spell_level_mult(baseline_spell_level(level)), POWER_SPELL_WEIGHT, 3 * baseline_spell_level(level), 0)
 
 const POWER_SPELL_WEIGHT := 2.5 # Doubled for a staff: it has no basic attack, all damage is spells.
 const POWER_PER_EFFECT := 0.06  # A unique effect has no stats, it is priced as a share of the total.
@@ -243,7 +244,8 @@ static func power_score(snap: Dictionary) -> int:
 		spell_levels += int(s["lvl"])
 		var d: Dictionary = Db.SPELLS[s["id"]]
 		if float(d.get("mult", 0.0)) > 0.0 or d.has("tick_mult"):
-			stat_sum += Db.spell_stat_value(s["id"], st)
+			# a higher spell level hits harder: it counts in Power the way it does in combat
+			stat_sum += Db.spell_stat_value(s["id"], st) * Db.spell_level_mult(int(s["lvl"]))
 			scaled += 1
 	var spell_stat: float = stat_sum / scaled if scaled > 0 else float(st["power"])
 	var weight: float = POWER_SPELL_WEIGHT * 2.0 if "staff" in weapons else (POWER_SPELL_WEIGHT if scaled > 0 else 0.0)
@@ -261,22 +263,26 @@ static func _power_value(st: Dictionary, spell_stat: float, weight: float, spell
 	return int((offense + toughness + 10.0 * spell_levels) * (1.0 + POWER_PER_EFFECT * effects))
 
 ## Six independent random candidates near the hero level.
-static func roll_board(rng: RandomNumberGenerator, hero_level: int) -> Array:
+## Six candidates near the hero level. `power_cap` > 0: none is stronger than that
+## (MercGenerator.fit_power), so a lucky roll cannot carry the hero through the campaign.
+static func roll_board(rng: RandomNumberGenerator, hero_level: int, power_cap: float = -1.0) -> Array:
 	var board := []
 	var names := {}
 	for i in 6:
 		var m := MercGenerator.make(rng, _merc_level(rng, hero_level))
+		MercGenerator.fit_power(rng, m, power_cap)
 		while names.has(m["name"]):
 			m["name"] = Db.MERC_NAMES[rng.randi_range(0, Db.MERC_NAMES.size()-1)]
 		names[m["name"]] = true
 		board.append(m)
 	return board
 
-static func starter_party(rng: RandomNumberGenerator) -> Array:
+static func starter_party(rng: RandomNumberGenerator, power_cap: float = -1.0) -> Array:
 	var party := []
 	var names := {}
 	for s in MercGenerator.STARTERS:
 		var m := MercGenerator.make(rng, 1, s["weapons"], s["talents"], s["spells"])
+		MercGenerator.fit_power(rng, m, power_cap)
 		while names.has(m["name"]):
 			m["name"] = Db.MERC_NAMES[rng.randi_range(0, Db.MERC_NAMES.size()-1)]
 		names[m["name"]] = true
