@@ -428,7 +428,20 @@ func _run_meter() -> void:
 		u.shield_time = 8.0
 		u.shield_sid = "barrier"
 		u.silence = 3.0
-	await _wait(0.2)
+	# cooldown sweeps on the hero: global cooldown 45% left, own cooldowns 80% left
+	var hero_u = null
+	for u in units:
+		if u.side == 0 and not u.is_npc:
+			hero_u = u
+	for f in 12:
+		if hero_u != null:
+			hero_u.silence = 0.0
+			hero_u.stun = 0.0
+			hero_u.spell_cd = hero_u.spell_interval() * 0.45
+			for e in hero_u.spells:
+				if Db.spell_cd(e["id"], int(e.get("lvl", 1))) > 0.0:
+					hero_u.cooldowns[e["id"]] = Db.spell_cd(e["id"], int(e.get("lvl", 1))) * 0.8
+		await get_tree().process_frame
 	await _shot("29a_statuses")
 	Game.profile["time_warp"] = float(Game.profile.get("time_warp", 0.0)) + 3000.0
 	await _wait(1.5)

@@ -9,6 +9,8 @@ const BOSS_SCALE := 1.9          # bosses are generated at 2x already
 const UNIT_GAP := 150.0          # between units of one side on a 720px tall view
 const SCREEN_MARGIN := 140.0     # kept free at the screen edge and in the middle
 const STATUS_ICON := 24.0
+const SPELL_ICON := 24.0     # rotation icons under a hero's cast bar
+const CAST_BAR_H := 16.0
 const STATUS_MAX := 6            # icons per row, more would run into the neighbour
 const HARMFUL_BUFFS := ["slow", "weakness", "haunt", "sunder", "mortal_wounds"]
 const BUFF_ICONS := {"wall": "sp_shield_wall", "physical": "sp_battle_cry", "bloodlust": "sp_bloodlust", "rally": "sp_rally",
@@ -776,14 +778,75 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 	# cast bar under the feet
 	if u.is_casting():
 		var c: Dictionary = u.casting if not u.casting.is_empty() else u.channel
-		var cb := Rect2(Vector2(home.x - 50, home.y + 6), Vector2(100, 12))
+		var cb := Rect2(Vector2(home.x - 60, home.y + 6), Vector2(120, CAST_BAR_H))
 		draw_rect(cb.grow(1.5), Color(0, 0, 0, 0.8))
 		var frac: float = 1.0 - c["remaining"] / c["total"]
 		var col := Color("#f0a23a") if c.get("interruptible", true) else Color("#b0b0b0")
 		draw_rect(Rect2(cb.position, Vector2(cb.size.x * frac, cb.size.y)), col)
+		# the spell name sits inside the bar, the hero's spell icons go right under it
 		var sname: String = Db.SPELLS[c["spell"]]["name"]
-		var sw2 := font.get_string_size(sname, HORIZONTAL_ALIGNMENT_LEFT, -1, 15).x
-		_text(font, Vector2(home.x - sw2 / 2.0, cb.end.y + 17), sname, 15, Color.WHITE, 4)
+		var sw2 := font.get_string_size(sname, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+		_text(font, Vector2(home.x - sw2 / 2.0, cb.end.y - 3), sname, 13, Color.WHITE, 4)
+	if u.alive() and u.side == 0 and not u.is_npc:
+		_draw_spell_row(u, home)
+
+## Heroes' spells under the cast bar with a WoW-style cooldown sweep: the dark sector is
+## what is left (global cooldown or the spell's own one, whichever ends later), the bright
+## part has recovered, a light hand marks the edge. No numbers.
+func _draw_spell_row(u: BattleUnit, home: Vector2) -> void:
+	var side: float = SPELL_ICON * k()
+	var n := u.spells.size()
+	if n == 0:
+		return
+	var y := home.y + 6.0 + CAST_BAR_H + 5.0
+	var left := home.x - n * (side + 4.0) / 2.0 + 2.0
+	var gcd_total := u.spell_interval()
+	var gcd_left := maxf(0.0, u.spell_cd) if u.spell_cd > BattleUnit.RETRY_DELAY else 0.0
+	for i in n:
+		var e: Dictionary = u.spells[i]
+		var sid: String = e["id"]
+		var box := Rect2(left + i * (side + 4.0), y, side, side)
+		var usable := Db.spell_usable(sid, u.weapons, u.talents)
+		draw_rect(box.grow(1.5), Color(0, 0, 0, 0.85))
+		var icon := UI.icon_tex(UI.spell_icon(sid))
+		if icon != null:
+			draw_texture_rect(icon, box, false, Color.WHITE if usable else Color(0.45, 0.45, 0.45))
+		if not usable:
+			continue
+		var own_left: float = float(u.cooldowns.get(sid, 0.0))
+		var own_total: float = maxf(0.01, Db.spell_cd(sid, int(e.get("lvl", 1))))
+		var frac := 0.0   # share still left
+		if own_left > gcd_left and own_left > 0.0:
+			frac = clampf(own_left / own_total, 0.0, 1.0)
+		elif gcd_left > 0.0 and not _reactive(sid):
+			frac = clampf(gcd_left / maxf(0.01, gcd_total), 0.0, 1.0)
+		if frac > 0.0:
+			_draw_sweep(box, frac)
+
+## Interrupts, taunts and emergency answers are not held by the global cooldown.
+func _reactive(sid: String) -> bool:
+	var s: Dictionary = Db.SPELLS[sid]
+	return s["kind"] in ["interrupt", "taunt", "suppress"] or s.get("reactive", false)
+
+func _draw_sweep(box: Rect2, left_frac: float) -> void:
+	var c := box.get_center()
+	var r := box.size.length()
+	# Recovered part runs clockwise from 12 o'clock; the rest stays dark.
+	var start := -PI / 2.0 + (1.0 - left_frac) * TAU
+	var stop := -PI / 2.0 + TAU
+	var pts := PackedVector2Array([c])
+	var steps := maxi(2, int(ceil(left_frac * 32.0)))
+	for i in steps + 1:
+		var a := lerpf(start, stop, float(i) / steps)
+		pts.append(c + Vector2(cos(a), sin(a)) * r)
+	var square := PackedVector2Array([box.position, Vector2(box.end.x, box.position.y), box.end, Vector2(box.position.x, box.end.y)])
+	for poly in Geometry2D.intersect_polygons(pts, square):
+		if poly.size() >= 3:
+			draw_colored_polygon(poly, Color(0, 0, 0, 0.66))
+	var hand := c + Vector2(cos(start), sin(start)) * r
+	var clipped := Geometry2D.intersect_polyline_with_polygon(PackedVector2Array([c, hand]), square)
+	if not clipped.is_empty() and clipped[0].size() >= 2:
+		draw_line(clipped[0][0], clipped[0][1], Color(1, 0.95, 0.75, 0.9), 1.5, true)
 
 func _draw_projectile(p: Dictionary) -> void:
 	if p["t"] < 0.:
