@@ -631,10 +631,52 @@ func _draw() -> void:
 		var w := font.get_string_size(f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, f["size"]).x
 		draw_string_outline(font, pos - Vector2(w / 2.0, 0), f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, f["size"], 5, Color(0, 0, 0, col.a))
 		draw_string(font, pos - Vector2(w / 2.0, 0), f["text"], HORIZONTAL_ALIGNMENT_LEFT, -1, f["size"], col)
+	if training_sim == null:
+		_draw_potion(font)
 	if training_sim == null and ex != null and ex.pause > 0.0:
 		var msg := "Волна %d / %d" % [ex.wave_index + 1, ex.total_waves()]
 		var w := font.get_string_size(msg, HORIZONTAL_ALIGNMENT_LEFT, -1, 44).x
 		_text(font, Vector2(size.x / 2.0 - w / 2.0, size.y * 0.33), msg, 44, UI.ACCENT)
+
+## Active potion in the top-left corner: icon, name, effect and the time left with a bar.
+func _draw_potion(font: Font) -> void:
+	if Game.profile.is_empty():
+		return
+	var buff = Rules.active_buffs(Game.profile, Game.now()).get("potion")
+	if buff == null or not Prof.CONSUMABLES.has(str(buff.get("res", ""))):
+		return
+	var res := str(buff["res"])
+	var c: Dictionary = Prof.CONSUMABLES[res]
+	var left := maxf(0.0, float(buff["until"]) - Game.now())
+	var total := maxf(1.0, float(c.get("duration", left)))
+	var box := Rect2(Vector2(12, hud_top), Vector2(330, 64))
+	draw_style_box(_potion_style(), box)
+	var icon := UI.icon_tex("res_" + res)
+	if icon != null:
+		draw_texture_rect(icon, Rect2(box.position + Vector2(8, 8), Vector2(48, 48)), false)
+	var x := box.position.x + 64.0
+	var name: String = Prof.RESOURCES.get(res, {}).get("name", res)
+	_text(font, Vector2(x, box.position.y + 21), name, 15, Color.WHITE, 3)
+	var effect: String = str(c.get("desc", "")).replace(" на 2 ч", "")
+	_text(font, Vector2(x, box.position.y + 40), effect, 13, Color("#8be38f"), 3)
+	var time_txt := UI.format_time(left)
+	var tw := font.get_string_size(time_txt, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
+	_text(font, Vector2(box.end.x - tw - 10, box.position.y + 40), time_txt, 13, Color("#ffd479"), 3)
+	var bar := Rect2(Vector2(x, box.end.y - 14), Vector2(box.end.x - x - 10, 6))
+	draw_rect(bar, Color(0, 0, 0, 0.6))
+	draw_rect(Rect2(bar.position, Vector2(bar.size.x * clampf(left / total, 0.0, 1.0), bar.size.y)), Color("#ffb347"))
+
+var _potion_box: StyleBoxFlat
+## Top edge of the corner HUD (the watch screen's header covers the first pixels).
+var hud_top := 12.0
+func _potion_style() -> StyleBoxFlat:
+	if _potion_box == null:
+		_potion_box = StyleBoxFlat.new()
+		_potion_box.bg_color = Color(0.07, 0.08, 0.12, 0.78)
+		_potion_box.border_color = Color(1, 0.75, 0.35, 0.55)
+		_potion_box.set_border_width_all(2)
+		_potion_box.set_corner_radius_all(10)
+	return _potion_box
 
 func _draw_background() -> void:
 	var gy := ground_y()

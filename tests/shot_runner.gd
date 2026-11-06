@@ -409,6 +409,8 @@ func _run_gear() -> void:
 func _run_meter() -> void:
 	Game.reset_progress()
 	UI.clear(main.popup_layer)
+	# an active potion shows in the top-left corner of the battle
+	Game.profile["buffs"]["potion"] = {"value": 1.2, "until": Game.now() + 4380.0, "res": "greater_strength_potion"}
 	await Game.start_expedition(1, "push")
 	main._open_watch()
 	await _wait(0.4)

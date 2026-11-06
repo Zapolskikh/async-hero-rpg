@@ -870,6 +870,7 @@ func _build_watch_layer() -> void:
 	add_child(watch_layer)
 	battle_view = BattleView.new()
 	battle_view.show_last = true
+	battle_view.hud_top = 74.0   # under the header bar
 	battle_view.set_anchors_preset(Control.PRESET_FULL_RECT)
 	watch_layer.add_child(battle_view)
 	var bar := PanelContainer.new()
