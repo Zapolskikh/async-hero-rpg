@@ -2,13 +2,16 @@ class_name Expedition
 extends RefCounted
 ## An AFK expedition on one campaign level (concept 7.1).
 ##   push: a single attempt at a level. A wipe ends it with partial rewards.
-##   farm: a closed level looped forever; each run gives full rewards.
+##   farm: a closed level looped forever; time-budgeted XP/gold and spell boxes on wins.
 ##   mythic: a single attempt at the Mythic+ dungeon; `level` is the key level.
 ##     No kill rewards: a clear pays gold and one spell box, a wipe pays nothing.
 ## HP carries over between waves, so sustain matters over a whole level.
 
 const WAVE_PAUSE := 1.5
 const FARM_DROP_CHANCE := 0.08  # per farm run won (~3 items an hour); first clears always drop
+const REWARD_VERSION := 12
+const FARM_RUN_CREDIT_CAP := 180.0
+const FARM_BOX_SECONDS := 7200.0
 
 var level := 1
 var mode := "push"
@@ -26,8 +29,16 @@ var elapsed := 0.0             # sim seconds spent, including pauses
 
 # Rewards accumulated since the player last collected.
 var gold := 0
-var _gold_change := 0.0   # A kill pays less than a coin on the first levels.
+var _gold_change := 0.0   # Fractional rewards survive short runs and collections.
 var xp := 0
+var _xp_change := 0.0
+var farm_work := 0.0  # successful combat seconds, capped per run; retained in timelines
+var _box_work := 0.0
+var _run_started := 0.0
+var _run_kill_weight := 0.0
+var _level_kill_weight := 0.0
+var _push_xp_paid := 0.0
+var _push_gold_paid := 0.0
 var kills := 0
 var items: Array = []
 var boxes := 0
@@ -49,6 +60,10 @@ func start(p_level: int, p_mode: String, p_party: Array, p_seed: int, p_first_cl
 	party = p_party.duplicate(true)
 	base_seed = p_seed
 	first_clear_pending = p_first_clear
+	_level_kill_weight = 0.0
+	for wave in waves():
+		for eid in wave:
+			_level_kill_weight += 8.0 if Db.ENEMIES[eid].get("boss", false) else 1.0
 	rng.seed = p_seed
 	mat_rng.seed = hash([p_seed, "mats"])
 	_start_run()
@@ -64,6 +79,10 @@ static func is_attempt(p_mode: String) -> bool:
 var run_time_done := 0.0
 
 func _start_run() -> void:
+	_run_started = elapsed
+	_run_kill_weight = 0.0
+	_push_xp_paid = 0.0
+	_push_gold_paid = 0.0
 	run_time_done = 0.0
 	if sim != null:
 		sim.release()
@@ -152,18 +171,25 @@ func step_wave_headless() -> void:
 	_on_wave_end()
 
 func _on_wave_end() -> void:
-	var sc := Db.enemy_scale(level)
 	for u in sim.units:
 		if u.side == 1 and not u.alive():
 			kills += 1
 			if mode == "mythic":
 				continue
 			var mult := 8 if u.is_boss else 1
-			_gold_change += Db.kill_gold(level, mode) * mult
-			gold += int(_gold_change)
-			_gold_change -= int(_gold_change)
-			xp += int(round(6.0 * Db.XP_MULT * Db.xp_level_factor(level) * pow(sc, 0.35) * mult))
+			_run_kill_weight += mult
 			_drop_mats(u)
+	if mode == "push":
+		# Repeated aborts/wipes cannot turn partial push rewards into the best farm.
+		var killed := minf(1.0, _run_kill_weight / _level_kill_weight)
+		var partial := minf(Db.stage_xp_budget(level) * 0.05 * killed, Db.farm_xp_per_hour(level) * elapsed / 3600.0 * 0.1 * killed)
+		_grant_xp(maxf(0.0, partial - _push_xp_paid))
+		_push_xp_paid = partial
+		var coins := Db.farm_gold_per_hour(level) * elapsed / 3600.0 * 0.1 * killed
+		_gold_change += maxf(0.0, coins - _push_gold_paid)
+		gold += int(_gold_change)
+		_gold_change -= int(_gold_change)
+		_push_gold_paid = coins
 	if sim.won:
 		sim.end_wave()
 		wave_index += 1
@@ -193,6 +219,17 @@ func _on_run_end(cleared: bool, reason: String) -> void:
 			runs_lost += 1
 		finished = true
 		return
+	if mode == "farm":
+		var credit := minf(elapsed - _run_started, FARM_RUN_CREDIT_CAP)
+		# A wipe earns at most 10%; fast trivial runs cannot inflate hourly income.
+		var share := 1.0 if cleared else 0.1 * minf(1.0, _run_kill_weight / _level_kill_weight)
+		_grant_xp(Db.farm_xp_per_hour(level) * credit / 3600.0 * share)
+		_gold_change += Db.farm_gold_per_hour(level) * credit / 3600.0 * share
+		gold += int(_gold_change)
+		_gold_change -= int(_gold_change)
+		if cleared:
+			farm_work += credit
+			_grant_box_work(credit)
 	if cleared:
 		runs_won += 1
 		# Mythic+ keys drop on every level of the campaign; they open at hero level 30.
@@ -202,8 +239,8 @@ func _on_run_end(cleared: bool, reason: String) -> void:
 			var table := Prof.cloth_table(level)
 			var best: String = table.keys()[-1]
 			_add_mat(best, Prof.CLOTH_ON_CLEAR)
-		xp += int(round(30.0 * Db.XP_MULT * Db.xp_level_factor(level)))
 		if first_clear_pending:
+			_grant_xp(Db.first_clear_xp(level))
 			first_clear_pending = false
 			gold += Db.first_clear_gold(level)
 			level_closed_now = true
@@ -220,6 +257,18 @@ func _on_run_end(cleared: bool, reason: String) -> void:
 		finished = true
 	else:
 		_start_run()
+
+func _grant_xp(amount: float) -> void:
+	_xp_change += amount
+	var whole := int(floor(_xp_change + 0.0000001))
+	xp += whole
+	_xp_change -= whole
+
+func _grant_box_work(seconds: float) -> void:
+	_box_work += seconds
+	var count := int(floor((_box_work + 0.0000001) / FARM_BOX_SECONDS))
+	boxes += count
+	_box_work -= count * FARM_BOX_SECONDS
 
 ## Cloth from every kill, special materials from bosses (spec 9-10, 20).
 func _drop_mats(u: BattleUnit) -> void:
@@ -251,7 +300,7 @@ func total_waves() -> int:
 ## Runs are simulated for real up to `sim_budget` seconds, the rest of a farm is
 ## extrapolated from the observed reward rate.
 func fast_forward(seconds: float, sim_budget: float = 1200.0) -> Dictionary:
-	var start := {"gold": gold, "xp": xp, "kills": kills, "items": items.size(), "won": runs_won, "lost": runs_lost}
+	var start := {"gold": gold, "xp": xp, "kills": kills, "items": items.size(), "won": runs_won, "lost": runs_lost, "work": farm_work}
 	var target: float = elapsed + min(seconds, sim_budget)
 	var t0 := elapsed
 	record_events = false
@@ -264,6 +313,9 @@ func fast_forward(seconds: float, sim_budget: float = 1200.0) -> Dictionary:
 		var k := extra / simulated
 		gold += int((gold - start["gold"]) * k)
 		xp += int((xp - start["xp"]) * k)
+		var extra_work: float = (farm_work - start["work"]) * k
+		farm_work += extra_work
+		_grant_box_work(extra_work)
 		kills += int((kills - start["kills"]) * k)
 		var new_items := int(round((items.size() - start["items"]) * k))
 		for i in min(new_items, 30):
@@ -316,9 +368,10 @@ const P_WON := 6
 const P_LOST := 7
 const P_WAVE := 8
 const P_MATS := 9   # Dictionary resource -> cumulative count
+const P_WORK := 10  # successful farm seconds; fractional progress survives collect/restart
 
 func _point() -> Array:
-	return [snappedf(elapsed, 0.01), gold, xp, kills, items.size(), boxes, runs_won, runs_lost, best_wave, mats.duplicate()]
+	return [snappedf(elapsed, 0.01), gold, xp, kills, items.size(), boxes, runs_won, runs_lost, best_wave, mats.duplicate(), farm_work]
 
 static func build_timeline(p_level: int, p_mode: String, p_party: Array, p_seed: int, p_first: bool, p_recipes: Array = []) -> Dictionary:
 	var ex := Expedition.new()
@@ -333,7 +386,7 @@ static func build_timeline(p_level: int, p_mode: String, p_party: Array, p_seed:
 			pts.append(ex._point())
 		ex.sim.release()
 		return {"mode": p_mode, "level": p_level, "seed": p_seed, "pts": pts, "items": ex.items.duplicate(true),
-			"t_end": snappedf(ex.elapsed, 0.01), "won": ex.runs_won > 0, "reason": ex.last_reason,
+			"reward_version": REWARD_VERSION, "t_end": snappedf(ex.elapsed, 0.01), "won": ex.runs_won > 0, "reason": ex.last_reason,
 			"waves": ex.best_wave, "total": ex.total_waves(), "closed": ex.level_closed_now}
 	var last_run := 0
 	while true:
@@ -351,9 +404,10 @@ static func build_timeline(p_level: int, p_mode: String, p_party: Array, p_seed:
 	for res in pts[-1][P_MATS]:
 		mat_rate[res] = float(pts[-1][P_MATS][res]) / t_sim
 	rate.append(mat_rate)
+	rate.append(ex.farm_work / t_sim)
 	ex.sim.release()
 	return {"mode": "farm", "level": p_level, "seed": p_seed, "pts": pts, "items": ex.items.duplicate(true),
-		"sim_until": t_sim, "rate": rate}
+		"reward_version": REWARD_VERSION, "sim_until": t_sim, "rate": rate}
 
 ## Cumulative rewards at time t (seconds since start).
 static func rewards_at(tl: Dictionary, t: float) -> Array:
@@ -376,13 +430,18 @@ static func rewards_at(tl: Dictionary, t: float) -> Array:
 		for res in last_m:
 			m[res] = int(last_m[res]) + int(floor(float(rate_m.get(res, 0.0)) * extra))
 		cur.append(m)
+		cur.append(float(last[P_WORK]) + float(tl["rate"][P_WORK]) * extra if last.size() > P_WORK and tl["rate"].size() > P_WORK else 0.0)
 	if cur.size() <= P_MATS:
 		cur.append({})
+	if cur.size() <= P_WORK:
+		cur.append(0.0)
+	if tl["mode"] == "farm" and int(tl.get("reward_version", 0)) >= REWARD_VERSION:
+		cur[P_BOXES] = int(floor((float(cur[P_WORK]) + 0.0000001) / FARM_BOX_SECONDS))
 	cur[P_T] = t
 	return cur
 
 static func zero_point() -> Array:
-	return [0.0, 0, 0, 0, 0, 0, 0, 0, 0, {}]
+	return [0.0, 0, 0, 0, 0, 0, 0, 0, 0, {}, 0.0]
 
 ## a - b for material dictionaries
 static func mats_diff(a: Dictionary, b: Dictionary) -> Dictionary:

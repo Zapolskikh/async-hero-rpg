@@ -478,7 +478,7 @@ func test_power_and_gold() -> void:
 	high_crit["crit"] += 0.1
 	var low_snap := {"stats": low, "spells": []}
 	check(Roster.power_score({"stats": low_crit, "spells": []}) - Roster.power_score(low_snap) < Roster.power_score({"stats": high_crit, "spells": []}) - Roster.power_score({"stats": fighter_stats, "spells": []}), "crit multiplies damage, so it is worth more on a stronger hero")
-	check(Db.kill_gold(30, "farm") == Db.kill_gold(8, "farm") and Db.kill_gold(30, "push") > Db.kill_gold(8, "push"), "farm gold stops growing, push gold does not")
+	check(Db.farm_gold_per_hour(30) > Db.farm_gold_per_hour(8), "later stages have a larger farm gold budget")
 	var snap := Rules.hero_snapshot(Rules.new_profile(7, T0))
 	var ex := Expedition.new()
 	ex.start(1, "push", [snap], 5, true)
@@ -665,8 +665,8 @@ func test_migrate_v1() -> void:
 		"gold": 77, "xp": 10, "kills": 2, "items": [], "boxes": 0, "won": 0, "lost": 0, "closed_now": false}
 	var json = JSON.parse_string(JSON.stringify(old))
 	Rules.migrate(json, T0)
-	check(json["v"] == Rules.VERSION and json["expedition"].has("tl") and json["gold"] == p["gold"] + 77, "v1 expedition becomes a timeline, old loot kept")
-	check(Rules.push_finished(json, T0), "time since the old save counts (push already over)")
+	check(json["v"] == Rules.VERSION and json["expedition"] == null and json["gold"] >= p["gold"] + 77, "v1 completed expedition is settled, old loot kept")
+	check(not json["reports"].is_empty() and json["reports"][-1]["type"] == "push_end", "time since the old save counts (push settled during migration)")
 
 func test_real_players_and_assists() -> void:
 	print("real players and assists")

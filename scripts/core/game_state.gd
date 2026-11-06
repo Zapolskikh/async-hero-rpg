@@ -824,5 +824,6 @@ func _make_offline_report(saved_at: float) -> void:
 		"away": min(away, OFFLINE_CAP), "level": ex["level"], "mode": ex["mode"],
 		"gold": after["gold"] - before["gold"], "xp": after["xp"] - before["xp"],
 		"items": after["items"] - before["items"],
+		"boxes": after["boxes"] - before["boxes"],
 		"won": after["won"] - before["won"], "lost": after["lost"] - before["lost"],
 	}

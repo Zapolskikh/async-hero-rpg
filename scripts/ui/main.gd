@@ -565,6 +565,7 @@ func _level_card() -> Control:
 	if hints.size() > MAX_HINTS:
 		flow.add_child(UI.chip("+%d" % (hints.size() - MAX_HINTS), Style.BG_DEEP))
 	v.add_child(flow)
+	v.add_child(UI.wrap("Штурм: основной опыт за первую победу. Фарм: медленный рост и ящики заклинаний за успешные зачистки (~1 за 2 ч). Слабые этапы дают меньше опыта; прогресс к ящику сохраняется.", Style.FONT_TINY, Style.MUTED))
 	v.add_child(UI.spacer())
 
 	var party := UI.hbox(6)
@@ -627,8 +628,8 @@ func _tick_status() -> void:
 		where = "Штурм ур. %d, волна %d/%d" % [ex["level"], min(int(pd.get("wave", 0)) + 1, int(ex["tl"]["total"])), int(ex["tl"]["total"])]
 	else:
 		where = "Фарм ур. %d, %s" % [ex["level"], UI.format_time(pd["t"])]
-	exp_status.text = "%s · накоплено %d золота, %d опыта, %d предм. · побед %d, поражений %d" % [
-		where, pd["gold"], pd["xp"], pd["items"], pd["won"], pd["lost"]]
+	exp_status.text = "%s · накоплено %d золота, %d опыта, %d предм., %d ящиков · побед %d, поражений %d" % [
+		where, pd["gold"], pd["xp"], pd["items"], pd["boxes"], pd["won"], pd["lost"]]
 
 # =====================================================================
 # Mythic+
@@ -2865,6 +2866,8 @@ func _show_offline_report(o: Dictionary) -> void:
 	pills.add_child(UI.pill("gold", "+%d" % o["gold"], 24))
 	pills.add_child(UI.pill("xp", "+%d" % o["xp"], 24))
 	pills.add_child(UI.pill("item_weapon", "+%d" % o["items"], 24))
+	if int(o.get("boxes", 0)) > 0:
+		pills.add_child(UI.pill("box", "+%d" % o["boxes"], 24))
 	v.add_child(pills)
 	v.add_child(UI.label("Побед %d, поражений %d. Добычу заберите на экране «Поход»." % [o["won"], o["lost"]], Style.FONT_SMALL, Style.MUTED))
 	_modal("Пока вас не было", v, [], "Хорошо")

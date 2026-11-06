@@ -316,7 +316,6 @@ const CHAPTERS := [
 
 ## All gold income (kills, push clears, selling items) is multiplied by this.
 const GOLD_MULT := 0.075   # price of a sold item
-const XP_MULT := 0.85
 const LEVEL_SCALE := 1.25   # enemy stat growth per level for chapter 1 (levels 1-10)
 const SCALE_BREAK := 10     # after this level enemies follow the party's expected growth
 const HERO_AT_BREAK := 16.0 # hero level a typical player has when clearing SCALE_BREAK
@@ -533,35 +532,45 @@ static func hero_base_stats(level: int) -> Dictionary:
 		"crit": 0.05,
 	}
 
-## Gold is scarce: it grows with the level, not with enemy strength, and comes from pushing
-## new levels, not from idle farm, so a player has to choose what to spend it on.
-const FARM_KILL_GOLD := 1.0
-
-static func kill_gold(level: int, mode: String) -> float:
-	return minf(0.5 * level, FARM_KILL_GOLD) if mode == "farm" else 0.5 * level
-
 static func first_clear_gold(level: int) -> int:
 	return 15 * level
 
-## XP rewards grow a bit faster than linearly so late levels do not drag.
-static func xp_level_factor(level: int) -> float:
-	return pow(level, 1.15)
-
-## Levels 1-5 are quick; after that every level costs several times more
-## (x2.3 at 6, x8.6 at 10, x28 at 20): progress needs a good build or hours of farm.
-const XP_SLOWDOWN_FROM := 6
-const XP_SLOWDOWN_POW := 1.2
-## After XP_LATE_FROM a hero level is a days-long goal, so gear, spells and professions get time to matter.
-const XP_LATE_FROM := 12
-const XP_LATE_POW := 1.25
-
 static func xp_to_next(level: int) -> int:
+	return 60 * level * level
+
+## Only for settling v11 saves before converting their progress to the new curve.
+static func legacy_xp_to_next(level: int) -> int:
 	var base := 60.0 * pow(level, 1.4)
-	if level >= XP_SLOWDOWN_FROM:
-		base *= pow(level - XP_SLOWDOWN_FROM + 2, XP_SLOWDOWN_POW)
-	if level > XP_LATE_FROM:
-		base *= pow(level - XP_LATE_FROM + 1, XP_LATE_POW)
+	if level >= 6:
+		base *= pow(level - 4, 1.2)
+	if level > 12:
+		base *= pow(level - 11, 1.25)
 	return int(base)
+
+## Budget follows campaign milestones, never enemy count or enemy stat inflation.
+## 75% is paid once for winning, at most 5% through kills (also time-capped).
+static func stage_xp_budget(level: int) -> int:
+	if level > CAMPAIGN_CORE:
+		return xp_to_next(HERO_MAX_LEVEL - 1)
+	var before := 1 if level == 1 else expected_hero_level(level)
+	var after := expected_hero_level(level + 1)
+	var budget := 0
+	for h in range(before, after):
+		budget += xp_to_next(h)
+	return maxi(budget, xp_to_next(before))
+
+static func first_clear_xp(level: int) -> int:
+	return int(round(stage_xp_budget(level) * 0.75))
+
+static func farm_xp_per_hour(level: int) -> float:
+	var h := expected_hero_level(level)
+	return xp_to_next(h) / lerpf(16.0, 24.0, float(h - 1) / (HERO_MAX_LEVEL - 1))
+
+static func farm_xp_efficiency(stage: int, hero_level: int) -> float:
+	return maxf(0.02, pow(0.5, maxi(0, hero_level - expected_hero_level(stage) - 1)))
+
+static func farm_gold_per_hour(level: int) -> float:
+	return 80.0 + 30.0 * level
 
 ## Spells whose hp threshold the player can choose, and the choices.
 const THRESHOLD_KINDS := ["heal", "hot", "hot_all", "riptide", "chain_heal", "penance"]

@@ -12,7 +12,7 @@ extends RefCounted
 ## so a server keeps it secret by stripping it before sending the profile.
 ## `ctx` (server only): {"account": id, "real_pool": [public snapshots of other players]}
 
-const VERSION := 11
+const VERSION := 12
 const OFFLINE_CAP := 12.0 * 3600.0
 const BOX_PRICE := 300
 const BOX_PACK := 10
@@ -63,7 +63,7 @@ const MYTHIC_SEASON_REWARDS := [
 static func new_profile(seed_value: int, now: float, name: String = "Герой") -> Dictionary:
 	var p := {
 		"v": VERSION, "name": name, "created": now,
-		"gold": 100, "boxes": 1, "closed_level": 0,
+		"gold": 100, "boxes": 1, "closed_level": 0, "farm_box_work": 0.0, "farm_xp_fraction": 0.0,
 		"hero": {"name": name, "level": 1, "xp": 0, "rotation": ["kick", "fireball", "strike"], "talents": {}, "spell_settings": {}, "cosmetics": {},
 			"equipped": _empty_equipment(), "appearance": CharacterAppearance.normalize({})},
 		"collection": {}, "inventory": [], "board": [], "hired": [], "party_order": [],
@@ -93,6 +93,7 @@ static func new_profile(seed_value: int, now: float, name: String = "Герой"
 
 ## Brings any older or JSON-parsed profile to the current shape (ints restored).
 static func migrate(p: Dictionary, now: float) -> void:
+	var old_rewards := int(p.get("v", 0)) < 12
 	var old_combat := int(p.get("v",0)) < 9
 	_drop_extra_heroes(p)
 	var old_items := int(p.get("v", 0)) < 10
@@ -103,6 +104,8 @@ static func migrate(p: Dictionary, now: float) -> void:
 		p["rng"] = {"seed": str(randi()), "state": ""}
 	for k in ["gold", "boxes", "closed_level", "rerolls_today"]:
 		p[k] = int(p.get(k, 0))
+	p["farm_box_work"] = float(p.get("farm_box_work", 0.0))
+	p["farm_xp_fraction"] = float(p.get("farm_xp_fraction", 0.0))
 	for k in ["reroll_day", "free_box_day"]:
 		p[k] = str(p.get(k, ""))
 	if not p.has("name"):
@@ -181,6 +184,25 @@ static func migrate(p: Dictionary, now: float) -> void:
 		if previous["mode"] == "farm":
 			p["expedition"] = _make_expedition(p,int(previous["level"]),"farm",party_snapshots(p),int(previous["seed"]),false,now)
 		_save_rng(p,random)
+	if old_rewards:
+		# Settle the old timeline with its old XP thresholds, once, before converting.
+		var previous = p.get("expedition")
+		if previous != null:
+			var random := _rng(p)
+			var settled := _collect(p, random, now, {}, true)
+			if settled.get("ok", false):
+				p["reports"].append(settled["report"])
+			_save_rng(p, random)
+		var h := int(p["hero"]["level"])
+		p["hero"]["xp"] = int(floor(float(p["hero"]["xp"]) / Db.legacy_xp_to_next(h) * Db.xp_to_next(h))) if h < Db.HERO_MAX_LEVEL else 0
+		p["v"] = VERSION
+		if previous != null and previous["mode"] == "farm":
+			p["expedition"] = _make_expedition(p, int(previous["level"]), "farm", party_snapshots(p), int(previous["seed"]), false, now)
+		elif previous != null and now - float(previous["started_at"]) < float(previous["tl"]["t_end"]):
+			# Keep an unfinished push/mythic at the same wave, without paying its settled waves twice.
+			var resumed := _make_expedition(p, int(previous["level"]), str(previous["mode"]), previous["party"], int(previous["seed"]), bool(previous.get("first", false)), float(previous["started_at"]))
+			resumed["collected"] = Expedition.rewards_at(resumed["tl"], maxf(0.0, now - float(previous["started_at"])))
+			p["expedition"] = resumed
 	p.erase("time")
 	p.erase("v")
 	p["v"] = VERSION
@@ -386,6 +408,8 @@ static func _fix_point(pt: Array) -> void:
 	var m: Dictionary = pt[Expedition.P_MATS]
 	for res in m.keys():
 		m[res] = int(m[res])
+	if pt.size() <= Expedition.P_WORK:
+		pt.append(0.0)
 
 static func _fix_item(it) -> void:
 	if it == null:
@@ -405,6 +429,8 @@ static func _fix_expedition(ex: Dictionary) -> void:
 	_fix_point(ex["collected"])
 	if tl.has("rate") and tl["rate"].size() <= Expedition.P_MATS:
 		tl["rate"].append({})
+	if tl.has("rate") and tl["rate"].size() <= Expedition.P_WORK:
+		tl["rate"].append(0.0)
 	for it in tl["items"]:
 		_fix_item(it)
 	for m in ex["party"]:
@@ -481,7 +507,7 @@ static func party_ready(p: Dictionary) -> bool:
 	return party_snapshots(p).size() == 4
 
 static func level_unlocked(p: Dictionary, level: int) -> bool:
-	return level <= int(p["closed_level"]) + 1 and level <= Db.level_count()
+	return level >= 1 and level <= int(p["closed_level"]) + 1 and level <= Db.level_count()
 
 static func day_of(now: float) -> String:
 	return Time.get_date_string_from_unix_time(int(now))
@@ -522,9 +548,60 @@ static func pending(p: Dictionary, now: float) -> Dictionary:
 	var t := expedition_time(ex, now)
 	var tot := Expedition.rewards_at(ex["tl"], t)
 	var c: Array = ex["collected"]
-	return {"gold": tot[1] - c[1], "xp": tot[2] - c[2], "kills": tot[3] - c[3], "items": tot[4] - c[4],
+	var out := {"gold": tot[1] - c[1], "xp": tot[2] - c[2], "kills": tot[3] - c[3], "items": tot[4] - c[4],
 		"boxes": tot[5] - c[5], "won": tot[6] - c[6], "lost": tot[7] - c[7], "t": t, "wave": tot[8],
 		"mats": Expedition.mats_diff(tot[Expedition.P_MATS], c[Expedition.P_MATS] if c.size() > Expedition.P_MATS else {})}
+	if _new_farm(ex):
+		var farm := _farm_rewards(p, ex, tot)
+		out["xp"] = farm["xp"]
+		out["boxes"] = farm["boxes"]
+		out["gold"] += _farm_boost_bonus(p, ex, tot, Expedition.P_GOLD)
+	return out
+
+static func _new_farm(ex: Dictionary) -> bool:
+	return ex["mode"] == "farm" and int(ex["tl"].get("reward_version", 0)) >= Expedition.REWARD_VERSION
+
+## Reward differences at boost boundaries telescope across frequent collections.
+static func _farm_boost_bonus(p: Dictionary, ex: Dictionary, tot: Array, field: int) -> int:
+	var b = p.get("buffs", {}).get("farm_x2")
+	if b == null:
+		return 0
+	var start := maxf(float(ex["collected"][0]), float(b["from"]) - float(ex["started_at"]))
+	var end := minf(float(tot[0]), float(b["until"]) - float(ex["started_at"]))
+	if end <= start:
+		return 0
+	var a := Expedition.rewards_at(ex["tl"], start)
+	var z := Expedition.rewards_at(ex["tl"], end)
+	return int((int(z[field]) - int(a[field])) * (Shop.BOOST_MULT - 1.0))
+
+## Integrate diminishing XP across level boundaries. Collect frequency must not change income.
+static func _farm_rewards(p: Dictionary, ex: Dictionary, tot: Array, boosted: bool = true) -> Dictionary:
+	var c: Array = ex["collected"]
+	var raw := float(tot[Expedition.P_XP] - c[Expedition.P_XP])
+	# Apply the boost before diminishing returns; no rounded bonus per collect.
+	if boosted:
+		raw += _farm_boost_bonus(p, ex, tot, Expedition.P_XP)
+	var h := int(p["hero"]["level"])
+	var start_fraction := float(p.get("farm_xp_fraction", 0.0))
+	var progress := float(p["hero"]["xp"]) + start_fraction
+	var earned := start_fraction
+	while raw > 0.0000001 and h < Db.HERO_MAX_LEVEL:
+		var efficiency := Db.farm_xp_efficiency(int(ex["level"]), h)
+		var remaining := maxf(0.0, Db.xp_to_next(h) - progress)
+		var used := minf(raw, remaining / efficiency)
+		earned += used * efficiency
+		progress += used * efficiency
+		raw -= used
+		if progress >= Db.xp_to_next(h) - 0.0000001:
+			h += 1
+			progress = 0.0
+		else:
+			break
+	var xp := int(floor(earned + 0.0000001))
+	var work := float(p.get("farm_box_work", 0.0)) + float(tot[Expedition.P_WORK]) - float(c[Expedition.P_WORK])
+	var boxes := int(floor((work + 0.0000001) / Expedition.FARM_BOX_SECONDS))
+	return {"xp": xp, "xp_fraction": maxf(0.0, earned - xp) if h < Db.HERO_MAX_LEVEL else 0.0,
+		"boxes": boxes, "box_work": maxf(0.0, work - boxes * Expedition.FARM_BOX_SECONDS)}
 
 static func push_finished(p: Dictionary, now: float) -> bool:
 	var ex = p.get("expedition")
@@ -1127,9 +1204,25 @@ static func _collect(p: Dictionary, r: RandomNumberGenerator, now: float, ctx: D
 			rep["boost_xp"] = int(round(rep["xp"] * frac * (Shop.BOOST_MULT - 1.0)))
 			rep["gold"] += rep["boost_gold"]
 			rep["xp"] += rep["boost_xp"]
+		if _new_farm(ex):
+			var farm := _farm_rewards(p, ex, tot)
+			rep["boost_gold"] = _farm_boost_bonus(p, ex, tot, Expedition.P_GOLD)
+			rep["gold"] = tot[1] - c[1] + rep["boost_gold"]
+			rep["xp"] = farm["xp"]
+			rep["boxes"] = farm["boxes"]
+			rep["boost_xp"] = int(farm["xp"]) - int(_farm_rewards(p, ex, tot, false)["xp"])
+			if rep["boost_gold"] == 0 and rep["boost_xp"] == 0:
+				rep.erase("boost_gold")
+				rep.erase("boost_xp")
+			p["farm_xp_fraction"] = farm["xp_fraction"]
+			p["farm_box_work"] = farm["box_work"]
 	ex["collected"] = tot
 	var st := _stats(p)
 	if ex["mode"] == "farm":
+		# Discard time beyond the cap, rather than letting repeated collects redeem it.
+		var skipped := maxf(0.0, now - float(ex["started_at"]) - t)
+		ex["started_at"] = float(ex["started_at"]) + skipped
+		st["skipped_sec"] += skipped
 		st["farm_sec"] += maxf(0.0, t - float(c[Expedition.P_T]))
 	elif ex["mode"] == "push" and push_over and not rep["closed"]:
 		st["wipes"] += 1
@@ -1207,8 +1300,12 @@ static func _add_xp(p: Dictionary, amount: int) -> int:
 	var hero: Dictionary = p["hero"]
 	var ups := 0
 	hero["xp"] = int(hero["xp"]) + amount
-	while int(hero["level"]) < Db.HERO_MAX_LEVEL and int(hero["xp"]) >= Db.xp_to_next(int(hero["level"])):
-		hero["xp"] = int(hero["xp"]) - Db.xp_to_next(int(hero["level"]))
+	var legacy := int(p.get("v", VERSION)) < 12
+	while int(hero["level"]) < Db.HERO_MAX_LEVEL:
+		var needed := Db.legacy_xp_to_next(int(hero["level"])) if legacy else Db.xp_to_next(int(hero["level"]))
+		if int(hero["xp"]) < needed:
+			break
+		hero["xp"] = int(hero["xp"]) - needed
 		hero["level"] = int(hero["level"]) + 1
 		ups += 1
 	if int(hero["level"]) >= Db.HERO_MAX_LEVEL:
