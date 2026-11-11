@@ -78,7 +78,8 @@ const SPELLS := {
 	"twin_strike": {"name": "Кровожадность", "group": "melee", "kind": "damage", "mult": 1.8, "cd": 6.0, "cast": 0.0, "rarity": 0, "desc": "Удар мечом, лечит себя на 20% фактического урона здоровью.", "fx": "slash", "color": "#ece4cc", "tags": ["dps"], "stat": "str", "req": ["sword", "greatsword"], "school": "physical", "weapon": true, "leech": 0.2, "hidden": true},
 
 	# --- Enemy spells ---
-	"e_smash":      {"name": "Сокрушение",      "kind": "damage",     "mult": 2.6, "cast": 1.6, "interruptible": true, "enemy": true, "fx": "heavy", "color": "#ffb26b"},
+	# Melee blows (smash, execute) can't be interrupted: the party saves its kicks for casters.
+	"e_smash":      {"name": "Сокрушение",      "kind": "damage",     "mult": 2.6, "cast": 1.6, "interruptible": false, "enemy": true, "fx": "heavy", "color": "#ffb26b"},
 	"e_bolt":       {"name": "Тёмная стрела",   "kind": "damage",     "mult": 3.2, "cast": 2.4, "interruptible": true, "enemy": true, "fx": "shadow", "color": "#b44dff"},
 	"e_mend":       {"name": "Заживление",      "kind": "heal",       "mult": 3.2, "cast": 2.0, "threshold": 0.75, "interruptible": true, "enemy": true, "fx": "heal", "color": "#86efa2"},
 	"e_guard":      {"name": "Защита",          "kind": "shield",     "mult": 2.2, "cast": 0.0, "cd": 8.0, "dur": 8.0, "enemy": true, "fx": "shield", "color": "#8fd0ff"},
@@ -98,7 +99,7 @@ const SPELLS := {
 	"e_doom":       {"name": "Зов гибели",      "kind": "aoe_damage", "mult": 4.6, "cd": 6.0, "cast": 3.0, "min_targets": 1, "interruptible": true, "enemy": true, "fx": "doom", "color": "#c03aff"},
 	"e_ward":       {"name": "Рунный покров",   "kind": "shield_all", "mult": 3.2, "cast": 0.0, "cd": 12.0, "dur": 9.0, "enemy": true, "fx": "shield", "color": "#7fe0ff"},
 	"e_plague":     {"name": "Моровое поветрие", "kind": "dot",       "mult": 1.5, "cast": 0.0, "cd": 5.0, "dur": 10.0, "enemy": true, "fx": "poison", "color": "#a8c83a"},
-	"e_execute":    {"name": "Казнящий удар",   "kind": "damage",     "mult": 4.2, "cd": 6.0, "cast": 1.4, "interruptible": true, "enemy": true, "fx": "heavy", "color": "#ff3b3b"},
+	"e_execute":    {"name": "Казнящий удар",   "kind": "damage",     "mult": 4.2, "cd": 6.0, "cast": 1.4, "interruptible": false, "enemy": true, "fx": "heavy", "color": "#ff3b3b"},
 	"e_silence":    {"name": "Песнь сирены",    "kind": "silence",    "mult": 0.0, "cast": 1.2, "cd": 9.0, "dur": 4.0, "interruptible": true, "enemy": true, "fx": "curse", "color": "#3ac0a8"},
 }
 
@@ -486,7 +487,7 @@ static func level_hints(level: int) -> Array:
 			hints.append(en["hint"])
 		if en.get("boss", false):
 			for sp in en["spells"]:
-				if not SPELLS[sp].get("interruptible", true) and not "Сильный урон босса" in hints:
+				if not SPELLS[sp].get("interruptible", true) and SPELLS[sp]["kind"] == "aoe_damage" and not "Сильный урон босса" in hints:
 					hints.append("Сильный урон босса")
 	var bosses := 0
 	for wave in LEVELS[level - 1]["waves"]:

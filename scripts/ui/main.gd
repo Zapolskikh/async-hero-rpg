@@ -1308,11 +1308,15 @@ func _atlas_popup(lvl: int) -> void:
 			if s.get("cd", 0.0) > 0.0:
 				bits.append("кд %.0f с" % s["cd"])
 			if s.get("cast", 0.0) > 0.0:
-				bits.append("можно сбить" if s.get("interruptible", true) else "НЕЛЬЗЯ сбить")
+				if s.get("interruptible", true):
+					bits.append("можно сбить")
+				else:
+					bits.append("НЕЛЬЗЯ сбить" if s["kind"] == "aoe_damage" else "удар, не сбивается")
+			# red only for the big area casts the party has to outlast; melee blows aren't kick targets
+			var big: bool = s.get("cast", 0.0) > 0.0 and not s.get("interruptible", true) and s["kind"] == "aoe_damage"
 			var sl := UI.hbox(6)
 			sl.add_child(UI.label("• " + s["name"], Style.FONT_TINY, Style.TEXT, true))
-			sl.add_child(UI.label(" · ".join(bits), Style.FONT_TINY,
-				Style.DANGER if s.get("cast", 0.0) > 0.0 and not s.get("interruptible", true) else Style.MUTED))
+			sl.add_child(UI.label(" · ".join(bits), Style.FONT_TINY, Style.DANGER if big else Style.MUTED))
 			cv.add_child(sl)
 		h.add_child(UI.expand(cv))
 		list.add_child(c)
