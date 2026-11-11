@@ -399,9 +399,19 @@ func _run_gear() -> void:
 	await _wait(0.3)
 	await _shot("40d_merge_pick")
 	UI.clear(main.popup_layer)
-	var hs: Dictionary = Rules.hero_snapshot(Game.profile)
-	main._stat_info("armor", hs["stats"], hs)
+	# a real click on the "Броня" row must open its description
+	var cell: Control = main.tut_targets.get("stat_armor")
+	var at: Vector2 = cell.get_global_rect().get_center()
+	for pressed in [true, false]:
+		var ev := InputEventMouseButton.new()
+		ev.button_index = MOUSE_BUTTON_LEFT
+		ev.pressed = pressed
+		ev.position = at
+		ev.global_position = at
+		Input.parse_input_event(ev)
+		await get_tree().process_frame
 	await _wait(0.3)
+	print("STAT_TAP popup=", main.popup_layer.get_child_count())
 	await _shot("40e_stat_info")
 	UI.clear(main.popup_layer)
 	await Game.start_expedition(1, "push")

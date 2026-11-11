@@ -1081,9 +1081,17 @@ func _screen_hero() -> Control:
 	rows.add_child(UI.stat_row("crit", "Крит", "%d%%" % roundi(st["crit"] * 100)))
 	rows.add_child(UI.stat_row("loop", "Ход ротации", "%.1f с" % SpellInfo.rotation_interval(st["haste"], snap.get("effects", []))))
 	# a tap on a stat explains what it does, with this hero's numbers
+	# (the row goes into a MarginContainer: an HBox would lay the tap button out as a zero-width item)
 	var keys := ["hp", "atk", "str", "agi", "power", "armor", "haste", "crit", "loop"]
-	for i in rows.get_child_count():
-		UI.tap_overlay(rows.get_child(i), _stat_info.bind(keys[i], st, snap))
+	var stat_rows := rows.get_children()
+	for i in stat_rows.size():
+		var row: Control = stat_rows[i]
+		var cell := MarginContainer.new()
+		rows.add_child(cell)
+		rows.move_child(cell, i)
+		row.reparent(cell)
+		tut_targets["stat_" + keys[i]] = cell
+		UI.tap_overlay(cell, _stat_info.bind(keys[i], st, snap))
 	var rows_scroll := UI.scroll(rows)
 	rows_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sv.add_child(rows_scroll)
