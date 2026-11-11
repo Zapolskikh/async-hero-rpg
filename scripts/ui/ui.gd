@@ -336,6 +336,43 @@ static func badge(parent: Control, text: String = "", near_center: bool = false)
 	p.mouse_filter = Control.MOUSE_FILTER_IGNORE
 	parent.add_child(p)
 
+## A stat as a table row you can press: striped background, hover/press highlight and a
+## "?" mark on the right so it is obvious the row opens an explanation.
+static func stat_button(icon_name: String, name: String, value: String, alt: bool, cb: Callable) -> Button:
+	var b := Button.new()
+	b.custom_minimum_size = Vector2(0, 32)
+	b.focus_mode = Control.FOCUS_NONE
+	var base := Style.CARD if alt else Style.BG_DEEP
+	b.add_theme_stylebox_override("normal", Style.box(base, Style.RADIUS_SMALL, 0))
+	b.add_theme_stylebox_override("hover", Style.box(Style.CARD_2, Style.RADIUS_SMALL, 0))
+	b.add_theme_stylebox_override("pressed", Style.box(Style.CARD_3, Style.RADIUS_SMALL, 0))
+	b.add_theme_stylebox_override("hover_pressed", Style.box(Style.CARD_3, Style.RADIUS_SMALL, 0))
+	b.add_theme_stylebox_override("focus", StyleBoxEmpty.new())
+	var m := MarginContainer.new()
+	m.set_anchors_preset(Control.PRESET_FULL_RECT)
+	for side in ["left", "right"]:
+		m.add_theme_constant_override("margin_" + side, 8)
+	m.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	b.add_child(m)
+	var h := hbox(8)
+	h.mouse_filter = Control.MOUSE_FILTER_IGNORE
+	m.add_child(h)
+	h.add_child(icon(icon_name, 22))
+	h.add_child(expand(label(name, Style.FONT_SMALL, Style.MUTED)))
+	h.add_child(label(value, Style.FONT_SMALL, Style.TEXT, true))
+	var q := flat(Style.SECONDARY, 0, 10)
+	q.custom_minimum_size = Vector2(20, 20)
+	q.size_flags_vertical = Control.SIZE_SHRINK_CENTER
+	var ql := label("?", 13, Color.WHITE, true)
+	ql.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	q.add_child(ql)
+	h.add_child(q)
+	for c in [h] + h.get_children() + [ql]:
+		(c as Control).mouse_filter = Control.MOUSE_FILTER_IGNORE
+	connect_tap(b, cb)
+	b.pressed.connect(_click_sound.bind(b))
+	return b
+
 static func stat_row(icon_name: String, name: String, value: String) -> HBoxContainer:
 	var h := hbox(8)
 	h.add_child(icon(icon_name, 26))

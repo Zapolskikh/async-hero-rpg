@@ -414,6 +414,20 @@ func _run_gear() -> void:
 	print("STAT_TAP popup=", main.popup_layer.get_child_count())
 	await _shot("40e_stat_info")
 	UI.clear(main.popup_layer)
+	await _wait(0.2)
+	# same with a finger tap (phones and the web build on a phone)
+	var crit: Control = main.tut_targets.get("stat_crit")
+	var tp: Vector2 = crit.get_global_rect().get_center()
+	for pressed in [true, false]:
+		var te := InputEventScreenTouch.new()
+		te.index = 0
+		te.pressed = pressed
+		te.position = tp
+		Input.parse_input_event(te)
+		await get_tree().process_frame
+	await _wait(0.3)
+	print("STAT_TOUCH popup=", main.popup_layer.get_child_count())
+	UI.clear(main.popup_layer)
 	await Game.start_expedition(1, "push")
 	main._open_watch()
 	await _wait(3.0)

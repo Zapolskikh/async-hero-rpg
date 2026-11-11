@@ -1069,29 +1069,25 @@ func _screen_hero() -> Control:
 	pwh.add_child(UI.expand(UI.label("Мощь", Style.FONT_BODY, Style.MUTED)))
 	pwh.add_child(UI.title(str(Roster.power_score(snap)), 28, Style.PRIMARY))
 	sv.add_child(pw)
-	# The stat list scrolls when the window is short, so the bottom menu always fits.
-	var rows := UI.vbox(4)
-	rows.add_child(UI.stat_row("hp", "Здоровье", "%d" % st["hp"]))
-	rows.add_child(UI.stat_row("atk", "Атака", ("%d · %.1f с" % [st["atk"], st.get("atk_speed", 1.6) / (1.0 + st["haste"])]) if st["atk"] > 0 else "нет (посох)"))
-	rows.add_child(UI.stat_row("str", "Сила", "%d" % st["str"]))
-	rows.add_child(UI.stat_row("agi", "Ловкость", "%d" % st["agi"]))
-	rows.add_child(UI.stat_row("power", "Сила заклинаний", "%d" % st["power"]))
-	rows.add_child(UI.stat_row("armor", "Броня", "%d" % st["armor"]))
-	rows.add_child(UI.stat_row("haste", "Скорость", "%d%%" % roundi(st["haste"] * 100)))
-	rows.add_child(UI.stat_row("crit", "Крит", "%d%%" % roundi(st["crit"] * 100)))
-	rows.add_child(UI.stat_row("loop", "Ход ротации", "%.1f с" % SpellInfo.rotation_interval(st["haste"], snap.get("effects", []))))
-	# a tap on a stat explains what it does, with this hero's numbers
-	# (the row goes into a MarginContainer: an HBox would lay the tap button out as a zero-width item)
-	var keys := ["hp", "atk", "str", "agi", "power", "armor", "haste", "crit", "loop"]
-	var stat_rows := rows.get_children()
-	for i in stat_rows.size():
-		var row: Control = stat_rows[i]
-		var cell := MarginContainer.new()
-		rows.add_child(cell)
-		rows.move_child(cell, i)
-		row.reparent(cell)
-		tut_targets["stat_" + keys[i]] = cell
-		UI.tap_overlay(cell, _stat_info.bind(keys[i], st, snap))
+	# The stats are a table of buttons: a tap on a row explains what the stat does, with this
+	# hero's numbers. The list scrolls when the window is short, so the bottom menu always fits.
+	var rows := UI.vbox(2)
+	var table := [
+		["hp", "Здоровье", "%d" % st["hp"]],
+		["atk", "Атака", ("%d · %.1f с" % [st["atk"], st.get("atk_speed", 1.6) / (1.0 + st["haste"])]) if st["atk"] > 0 else "нет (посох)"],
+		["str", "Сила", "%d" % st["str"]],
+		["agi", "Ловкость", "%d" % st["agi"]],
+		["power", "Сила заклинаний", "%d" % st["power"]],
+		["armor", "Броня", "%d" % st["armor"]],
+		["haste", "Скорость", "%d%%" % roundi(st["haste"] * 100)],
+		["crit", "Крит", "%d%%" % roundi(st["crit"] * 100)],
+		["loop", "Ход ротации", "%.1f с" % SpellInfo.rotation_interval(st["haste"], snap.get("effects", []))],
+	]
+	for i in table.size():
+		var r: Array = table[i]
+		var b := UI.stat_button(r[0], r[1], r[2], i % 2 == 1, _stat_info.bind(r[0], st, snap))
+		tut_targets["stat_" + r[0]] = b
+		rows.add_child(b)
 	var rows_scroll := UI.scroll(rows)
 	rows_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sv.add_child(rows_scroll)
