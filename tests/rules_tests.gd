@@ -222,7 +222,7 @@ func test_feedback_fixes() -> void:
 	check(r["ok"] and q["inventory"].is_empty(), "merge takes the items at once")
 	check(Rules.apply(q, "merge_claim", {}, T0 + 10.0)["error"] == "not finished", "merge takes time")
 	check(Rules.apply(q, "merge_claim", {}, T0 + float(Rules.MERGE_TIME[0]))["ok"], "merge finishes on time")
-	check(r["ok"] and q["inventory"].size() == 1 and int(q["inventory"][0]["rarity"]) == 1 and int(q["inventory"][0]["ilvl"]) == 3 + Rules.MERGE_COUNT, "5 poor -> 1 common at the highest level")
+	check(r["ok"] and q["inventory"].size() == 1 and int(q["inventory"][0]["rarity"]) == 1 and int(q["inventory"][0]["ilvl"]) == 7, "5 poor (levels 4-8) -> 1 common of the average level + 1")
 	check(not Rules.apply(q, "merge_items", {"rarity": 1}, T0)["ok"], "merge needs 5 items")
 	var pick := fresh(93)
 	pick["gold"] = 1000
@@ -237,6 +237,26 @@ func test_feedback_fixes() -> void:
 	check(not Rules.apply(pick, "merge_items", {"rarity": 2, "ids": chosen}, T0)["ok"], "picked items must be of that rarity")
 	check(Rules.apply(pick, "merge_items", {"rarity": 1, "ids": chosen}, T0)["ok"], "the player picks what to merge")
 	check(pick["inventory"].map(func(it): return it["id"]) == kept, "only the picked items are used")
+	# the result follows the merged types: 5 legs always give legs, 3 legs + 2 bows give legs ~60%
+	var legs_hits := 0
+	var bows := 0
+	for trial in 40:
+		var mg := fresh(200 + trial)
+		mg["gold"] = 10000
+		mg["inventory"].clear()
+		for i in 5:
+			mg["inventory"].append(Loot.roll_gear(rng, 10, "drop", "legs" if i < 3 or trial < 20 else "", "" if i < 3 or trial < 20 else "bow", "", 1))
+		Rules.apply(mg, "merge_items", {"rarity": 1}, T0)
+		Rules.apply(mg, "merge_claim", {}, T0 + float(Rules.MERGE_TIME[1]))
+		var got: Dictionary = mg["inventory"][0]
+		if trial < 20:
+			legs_hits += int(got["slot"] == "legs")
+		else:
+			bows += int(got.get("wtype", "") == "bow")
+	check(legs_hits == 20, "5 legs always merge into legs")
+	check(bows >= 2 and bows <= 15, "3 legs + 2 bows: a bow about 40%% of the time (%d of 20)" % bows)
+	var pv := Rules.merge_preview([{"slot": "legs", "ilvl": 10}, {"slot": "legs", "ilvl": 12}, {"slot": "weapon", "wtype": "bow", "ilvl": 14}])
+	check(pv["ilvl"] == 13 and pv["odds"][0][0] == "legs" and is_equal_approx(pv["odds"][0][2], 2.0 / 3.0), "merge preview: odds by type and level average + 1")
 	# level toughness is evened out
 	var lo := 10.0
 	var hi := 0.0

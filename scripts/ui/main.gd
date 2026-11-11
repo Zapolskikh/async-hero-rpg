@@ -1080,6 +1080,10 @@ func _screen_hero() -> Control:
 	rows.add_child(UI.stat_row("haste", "Скорость", "%d%%" % roundi(st["haste"] * 100)))
 	rows.add_child(UI.stat_row("crit", "Крит", "%d%%" % roundi(st["crit"] * 100)))
 	rows.add_child(UI.stat_row("loop", "Ход ротации", "%.1f с" % SpellInfo.rotation_interval(st["haste"], snap.get("effects", []))))
+	# a tap on a stat explains what it does, with this hero's numbers
+	var keys := ["hp", "atk", "str", "agi", "power", "armor", "haste", "crit", "loop"]
+	for i in rows.get_child_count():
+		UI.tap_overlay(rows.get_child(i), _stat_info.bind(keys[i], st, snap))
 	var rows_scroll := UI.scroll(rows)
 	rows_scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	sv.add_child(rows_scroll)
@@ -2144,7 +2148,7 @@ func _merge_popup() -> void:
 	Game.track({"e": "popup", "name": "merge"})
 	UI.clear(popup_layer)
 	var v := UI.vbox(10)
-	v.add_child(UI.wrap("%d вещей одной редкости → 1 случайная вещь следующей редкости, уровня самой высокой из них. Вещи выбираете вы, надетые не трогаются. Переплавка идёт одна за раз и занимает время." % Rules.MERGE_COUNT, Style.FONT_SMALL, Style.MUTED))
+	v.add_child(UI.wrap("%d вещей одной редкости → 1 вещь следующей редкости: тип скорее всего как у переплавляемых (каждая — 20%% шанс на свой тип), уровень — средний у них + 1. Вещи выбираете вы, надетые не трогаются. Переплавка идёт одна за раз и занимает время." % Rules.MERGE_COUNT, Style.FONT_SMALL, Style.MUTED))
 	var job = Game.profile["merging"]
 	if job != null:
 		var done: bool = Game.now() >= float(job["ends_at"])
@@ -2192,9 +2196,10 @@ func _merge_pick_popup(rarity: int) -> void:
 		merge_sel_rarity = rarity
 	merge_sel = merge_sel.filter(func(id): return id in ids)
 	var v := UI.vbox(10)
-	v.add_child(UI.wrap("Отметьте %d вещей: %s → %s. Сначала предложены самые слабые." % [Rules.MERGE_COUNT, Items.QUALITY_NAMES[rarity], Items.QUALITY_NAMES[rarity + 1]], Style.FONT_SMALL, Style.MUTED))
+	v.add_child(UI.wrap("Отметьте %d вещей: %s → %s. Каждая вещь — 20%% шанс, что выйдет вещь её типа (5 ног — точно ноги). Уровень — средний у выбранных + 1. Сначала предложены самые слабые." % [Rules.MERGE_COUNT, Items.QUALITY_NAMES[rarity], Items.QUALITY_NAMES[rarity + 1]], Style.FONT_SMALL, Style.MUTED))
 	var list := UI.vbox(6)
 	var counter := UI.label("", Style.FONT_SMALL, Style.TEXT, true)
+	counter.autowrap_mode = TextServer.AUTOWRAP_WORD_SMART
 	var go := UI.btn("Переплавить  %d" % Rules.MERGE_GOLD[rarity], _merge_go.bind(rarity), "primary", Style.FONT_BODY, "gold", 0, 52)
 	for it in items:
 		var row := UI.flat(Style.BG_DEEP, 6)
@@ -2245,7 +2250,17 @@ func _merge_toggle(id: String, slot: Control, it: Dictionary, counter: Label, go
 	_merge_pick_status(counter, go, rarity)
 
 func _merge_pick_status(counter: Label, go: Button, rarity: int) -> void:
-	counter.text = "Выбрано %d из %d" % [merge_sel.size(), Rules.MERGE_COUNT]
+	var picked: Array = Game.profile["inventory"].filter(func(it): return str(it["id"]) in merge_sel)
+	var text := "Выбрано %d из %d" % [merge_sel.size(), Rules.MERGE_COUNT]
+	if not picked.is_empty():
+		# what the result will likely be: each picked item is a 20% chance for its own type
+		var pv := Rules.merge_preview(picked)
+		var parts := []
+		for o in pv["odds"]:
+			var kind: String = Loot.WEAPON_TYPES[o[1]]["name"] if str(o[1]) != "" else Loot.SLOT_NAMES[o[0]]
+			parts.append("%s %d%%" % [kind, roundi(float(o[2]) * 100.0 * merge_sel.size() / Rules.MERGE_COUNT)])
+		text += "\nВыйдет: %s · ур. %d" % [", ".join(parts), int(pv["ilvl"])]
+	counter.text = text
 	go.disabled = merge_sel.size() != Rules.MERGE_COUNT or Game.gold < Rules.MERGE_GOLD[rarity] or Game.profile["merging"] != null
 
 func _merge_go(rarity: int) -> void:
@@ -2546,6 +2561,27 @@ func _logout() -> void:
 	await Game.logout()
 	_toast("Вы вышли. Создан новый гостевой аккаунт")
 	_refresh()
+
+## What a hero stat does, with the numbers of this hero.
+func _stat_info(key: String, st: Dictionary, snap: Dictionary) -> void:
+	var wt := Loot.WEAPON_TYPES
+	var armor_cut := 100.0 - 100.0 * 100.0 / (100.0 + float(st["armor"]))
+	var info := {
+		"hp": ["Здоровье", "Сколько урона герой выдерживает. Растёт с уровнем и от вещей и талантов; лечение восстанавливает до этого значения. Между волнами здоровье не восполняется само."],
+		"atk": ["Атака", "Урон одной автоатаки и время между ударами (уже со Скоростью). Меч: %.2f × Сила + урон меча, удар раз в %.1f с. Двуручный меч: %.2f × Сила + урон, раз в %.1f с. Лук: %.2f × Ловкость + урон лука, раз в %.1f с. Меч в левой руке добавляет %d%% своего урона. С посохом герой не атакует — посох усиливает заклинания." % [
+			wt["sword"]["coef"], wt["sword"]["speed"], wt["greatsword"]["coef"], wt["greatsword"]["speed"], wt["bow"]["coef"], wt["bow"]["speed"], roundi(Loot.OFFHAND_SWORD_SHARE * 100)]],
+		"str": ["Сила", "Главная характеристика мечей: от неё растёт атака мечом и двуручником и урон физических заклинаний воина (Смертельный удар, Вихрь и другие). Сейчас %d." % int(st["str"])],
+		"agi": ["Ловкость", "Главная характеристика лука: от неё растёт атака луком и урон выстрелов и ядов стрелка (Прицельный выстрел, Укус змеи и другие). Сейчас %d." % int(st["agi"])],
+		"power": ["Сила заклинаний", "Урон и лечение магических заклинаний, сила щитов и лечения со временем. Посох не бьёт сам, зато даёт много Силы заклинаний. Сейчас %d." % int(st["power"])],
+		"armor": ["Броня", "Снижает физический урон по герою: урон × 100 / (100 + броня). С бронёй %d физический урон меньше на %d%%. От магии броня не защищает." % [int(st["armor"]), roundi(armor_cut)]],
+		"haste": ["Скорость", "Ускоряет автоатаки, касты и ход ротации: время делится на (1 + скорость). Сейчас +%d%%." % roundi(float(st["haste"]) * 100)],
+		"crit": ["Крит", "Шанс, что удар, заклинание или лечение сработает в 2 раза сильнее. Сейчас %d%%." % roundi(float(st["crit"]) * 100)],
+		"loop": ["Ход ротации", "Глобальный кулдаун: раз в столько секунд герой берёт следующее подходящее заклинание из ротации. Базово %.1f с, делится на (1 + скорость), некоторые аксессуары его сокращают. Сейчас %.1f с." % [BattleUnit.SPELL_INTERVAL, SpellInfo.rotation_interval(st["haste"], snap.get("effects", []))]],
+	}
+	var v := UI.vbox(10)
+	v.custom_minimum_size.x = 520
+	v.add_child(UI.wrap(info[key][1], Style.FONT_BODY, Style.TEXT))
+	_modal(info[key][0], v)
 
 func _replay_tutorial() -> void:
 	Game.tutorial({"done": false})

@@ -902,9 +902,11 @@ static func _buy_boost(p: Dictionary, now: float) -> Dictionary:
 		p["buffs"]["farm_x2"] = {"from": now, "until": now + Shop.BOOST_SECONDS, "value": Shop.BOOST_MULT}
 	return _ok()
 
-## Item merge, one at a time: MERGE_COUNT bag items of one rarity -> one random item of the next
-## rarity at the highest item level of them. The player picks the items; without a pick the
-## weakest ones are used.
+## Item merge, one at a time: MERGE_COUNT bag items of one rarity -> one item of the next rarity.
+## Its type follows the merged items: each one is a 1 in MERGE_COUNT (20%) chance for its own
+## type (slot, or weapon type), so 3 legs give legs 60% of the time and 5 legs always do.
+## Item level = average of the merged items + 1. The player picks the items; without a pick
+## the weakest ones are used.
 const MERGE_COUNT := 5
 const MERGE_GOLD := [20, 60, 400, 2000]   # poor, common, uncommon, rare; legendaries cannot be merged
 const MERGE_TIME := [600, 3600, 14400, 43200]   # seconds
@@ -916,6 +918,30 @@ static func merge_candidates(p: Dictionary, rarity: int) -> Array:
 			list.append(it)
 	list.sort_custom(func(a, b): return Loot.item_score(a) < Loot.item_score(b))
 	return list.slice(0, MERGE_COUNT) if list.size() >= MERGE_COUNT else []
+
+## [slot, weapon type] an item counts as in a merge: legs are legs, a bow is a bow.
+static func merge_type(it: Dictionary) -> Array:
+	return [str(it["slot"]), str(it.get("wtype", ""))]
+
+## Chances of the merge result's type and its item level for these items:
+## {"odds": [[slot, wtype, share], ...] (most likely first), "ilvl": n}.
+static func merge_preview(items: Array) -> Dictionary:
+	var counts := {}
+	var order := []
+	var sum := 0
+	for it in items:
+		var t := merge_type(it)
+		var key := "%s|%s" % t
+		if not counts.has(key):
+			counts[key] = 0
+			order.append(t)
+		counts[key] += 1
+		sum += int(it["ilvl"])
+	var odds := []
+	for t in order:
+		odds.append([t[0], t[1], float(counts["%s|%s" % t]) / maxf(1.0, items.size())])
+	odds.sort_custom(func(a, b): return a[2] > b[2])
+	return {"odds": odds, "ilvl": roundi(float(sum) / maxf(1.0, items.size())) + 1 if not items.is_empty() else 0}
 
 ## Bag items with these ids, if they are exactly MERGE_COUNT different items of this rarity.
 static func merge_pick(p: Dictionary, rarity: int, ids: Array) -> Array:
@@ -937,11 +963,14 @@ static func _merge_start(p: Dictionary, rarity: int, now: float, ids = []) -> Di
 	if int(p["gold"]) < int(MERGE_GOLD[rarity]):
 		return _err("not enough gold")
 	p["gold"] -= int(MERGE_GOLD[rarity])
-	var ilvl := 1
+	var ilvl_sum := 0
+	var types := []
 	for it in used:
-		ilvl = max(ilvl, int(it["ilvl"]))
+		ilvl_sum += int(it["ilvl"])
+		types.append(merge_type(it))
 		p["inventory"].erase(it)
-	p["merging"] = {"rarity": rarity + 1, "ilvl": ilvl, "started_at": now, "ends_at": now + float(MERGE_TIME[rarity])}
+	var ilvl := roundi(float(ilvl_sum) / used.size()) + 1
+	p["merging"] = {"rarity": rarity + 1, "ilvl": ilvl, "types": types, "started_at": now, "ends_at": now + float(MERGE_TIME[rarity])}
 	return _ok({"ends_at": p["merging"]["ends_at"]})
 
 static func _merge_claim(p: Dictionary, r: RandomNumberGenerator, now: float) -> Dictionary:
@@ -950,7 +979,13 @@ static func _merge_claim(p: Dictionary, r: RandomNumberGenerator, now: float) ->
 		return _err("nothing to claim")
 	if now < float(job["ends_at"]):
 		return _err("not finished")
-	var out := Loot.roll_gear(r, int(job["ilvl"]), "drop", "", "", "", int(job["rarity"]))
+	var types: Array = job.get("types", [])
+	var out: Dictionary
+	if types.is_empty():   # a job started before types were kept
+		out = Loot.roll_gear(r, int(job["ilvl"]), "drop", "", "", "", int(job["rarity"]))
+	else:
+		var t: Array = types[r.randi_range(0, types.size() - 1)]
+		out = Loot.roll_gear(r, int(job["ilvl"]), "drop", "" if str(t[1]) != "" else str(t[0]), str(t[1]), "", int(job["rarity"]))
 	p["inventory"].append(out)
 	p["merging"] = null
 	return _ok({"item": out})
