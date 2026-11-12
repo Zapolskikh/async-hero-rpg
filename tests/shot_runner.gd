@@ -760,6 +760,12 @@ func _run_enemy_fx() -> void:
 	caster.casting = {"spell":"e_bolt","lvl":1,"remaining":1.6,"total":2.4,"target":allies[2],"interruptible":true,"threshold":-1.}
 	await _wait(.3)
 	await _shot("e_00_aim")
+	# after the tank's taunt a new cast goes to the tank (name in red while the taunt lasts)
+	ex.sim._cast(allies[0],"taunt",1,allies[0])
+	caster.casting = {"spell":"e_bolt","lvl":1,"remaining":1.6,"total":2.4,"target":ex.sim._find_spell_target(caster,"e_bolt"),"interruptible":true,"threshold":-1.}
+	await _wait(.3)
+	await _shot("e_01_taunt")
+	allies[0].taunt = 0.
 	caster.casting = {}
 	for sid in ["e_bolt","e_curse","e_plague","e_volley","e_cataclysm","e_breath","e_doom","e_quake","e_mend","e_smash"]:
 		var tgt: BattleUnit = allies[2] if Db.SPELLS[sid]["kind"] != "heal" else caster

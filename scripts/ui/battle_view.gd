@@ -829,6 +829,12 @@ func _draw_unit(u: BattleUnit, font: Font) -> void:
 		var sname: String = Db.SPELLS[c["spell"]]["name"]
 		var sw2 := font.get_string_size(sname, HORIZONTAL_ALIGNMENT_LEFT, -1, 13).x
 		_text(font, Vector2(home.x - sw2 / 2.0, cb.end.y - 3), sname, 13, Color.WHITE, 4)
+		# an enemy's aimed cast names its target, so a taunt pulling new casts is visible
+		var ct = c.get("target")
+		if u.side == 1 and ct is BattleUnit and ct.side == 0:
+			var tname := "→ " + str(ct.name)
+			var tw := font.get_string_size(tname, HORIZONTAL_ALIGNMENT_LEFT, -1, 12).x
+			_text(font, Vector2(home.x - tw / 2.0, cb.end.y + 15), tname, 12, Color("#ff9a8a") if ct.taunt > 0.0 else Color("#e8e0d0"), 4)
 	if u.alive() and u.side == 0:
 		_draw_spell_row(u, home)
 

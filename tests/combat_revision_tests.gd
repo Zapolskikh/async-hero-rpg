@@ -156,6 +156,27 @@ func test_taunts() -> void:
 			gaps += 1
 	check(gaps == 0,"max talent taunt refreshes on cooldown with no gap")
 	sim.release()
+	# Enemy aimed spells go to the taunter; a cast begun before the taunt keeps its target.
+	var tank := unit(0)
+	var healer := unit(1,["staff"])
+	var sim2 := battle([tank,healer])
+	var caster: BattleUnit = sim2.foes_of(tank)[0]
+	caster.target_rule = "back"
+	caster.spells = [{"id":"e_bolt","lvl":1}]
+	check(sim2._find_spell_target(caster,"e_bolt") == healer,"without a taunt the caster aims at the back line")
+	check(sim2._try_rotation(caster) and caster.casting["target"] == healer,"the caster starts a bolt at the healer")
+	sim2._cast(tank,"taunt",1,tank)
+	check(caster.casting["target"] == healer,"a cast begun before the taunt keeps its target")
+	caster.casting.clear()
+	for sid in ["e_bolt","e_smash","e_execute","e_curse","e_silence","e_backstab"]:
+		check(sim2._find_spell_target(caster,sid) == tank,"under taunt %s aims at the taunter" % sid)
+	caster.spells = [{"id":"e_bolt","lvl":1}]
+	caster.cooldowns.clear()
+	caster.spell_cd = 0.
+	check(sim2._try_rotation(caster) and caster.casting["target"] == tank,"a new cast after the taunt starts on the taunter")
+	sim2._apply_dot(caster,tank,"e_curse",10.,8.)
+	check(sim2._find_spell_target(caster,"e_curse") == null,"a DoT already on the taunter does not hop to another hero")
+	sim2.release()
 
 func test_healing() -> void:
 	var h := unit(0,["staff"],{"living_cover":3,"healing_trail":3,"shared_care":3,"reserve":3})

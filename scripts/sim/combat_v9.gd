@@ -512,7 +512,8 @@ func _find_spell_target(u: BattleUnit,sid: String,thr: float = -1.):
 			var target := pick_target(u)
 			if _own_dot(target,u,sid) == null:
 				return target
-			if u.equipped("bow") and u.rank("weak_hunt"):
+			# a taunted unit keeps its aimed spells on the taunter: no hopping to someone else
+			if (u.equipped("bow") and u.rank("weak_hunt")) or target.taunt > 0.:
 				return null
 			for f in foes_of(u):
 				if _own_dot(f,u,sid) == null:
