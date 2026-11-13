@@ -273,7 +273,7 @@ func niche(m: Dictionary) -> String:
 	return "tank" if "shield" in m.get("weapons",[]) else "dps"
 
 func merc_score(m: Dictionary) -> float:
-	return float(Roster.power_score(m))
+	return float(Roster.build_value(m))
 
 func wanted_niches(build: String) -> Array:
 	if build == "healer": return ["tank","dps","dps"]

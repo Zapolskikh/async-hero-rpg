@@ -264,7 +264,7 @@ func _nav_badges() -> Dictionary:
 	var ex = Game.exp_info()
 	var bag_upgrade := false
 	for it in Game.inventory:
-		if Game.power_with(it) > Game.power_now():
+		if Game.build_with(it) > Game.build_now():
 			bag_upgrade = true
 			break
 	var fusable := false
@@ -1062,12 +1062,9 @@ func _screen_hero() -> Control:
 	var sv := UI.vbox(6)
 	sc.add_child(sv)
 	sv.add_child(UI.title("Характеристики", 22))
-	var pw := UI.flat(Style.BG_DEEP, 10)
-	var pwh := UI.hbox(10)
-	pw.add_child(pwh)
-	pwh.add_child(UI.icon("star", 34))
-	pwh.add_child(UI.expand(UI.label("Мощь", Style.FONT_BODY, Style.MUTED)))
-	pwh.add_child(UI.title(str(Roster.power_score(snap)), 28, Style.PRIMARY))
+	var pw := UI.stat_button("star", "Мощь", str(Roster.power_score(snap)), false, _power_info.bind(snap), 26, Style.PRIMARY)
+	pw.custom_minimum_size.y = 44
+	tut_targets["stat_power_score"] = pw
 	sv.add_child(pw)
 	# The stats are a table of buttons: a tap on a row explains what the stat does, with this
 	# hero's numbers. The list scrolls when the window is short, so the bottom menu always fits.
@@ -1463,7 +1460,7 @@ func _gear_popup(slot: String) -> void:
 	for x in Game.inventory:
 		if x["slot"] == slot or (slot == "offhand" and Loot.fits_offhand(x)) or (x["slot"] == "accessory" and slot.begins_with("accessory")):
 			fits.append(x)
-	fits.sort_custom(func(a, b): return Game.power_with(a, slot) > Game.power_with(b, slot))
+	fits.sort_custom(func(a, b): return Game.build_with(a, slot) > Game.build_with(b, slot))
 	if not fits.is_empty():
 		body.add_child(UI.label("Из сумки в этот слот:", Style.FONT_SMALL, Style.TEXT, true))
 		var list := UI.vbox(6)
@@ -2312,7 +2309,7 @@ func _select_item(id: String) -> void:
 
 func _item_tile(it: Dictionary) -> Control:
 	var t := UI.tile(UI.item_icon(it), Style.QUALITY[it["rarity"]], 84, false, it["id"] == selected_item)
-	if Game.power_with(it) > Game.power_now():
+	if Game.build_with(it) > Game.build_now():
 		var up := UI.chip("▲", Style.SUCCESS, 12, Color("#062b16"))
 		up.position = Vector2(-6, -6)
 		t.add_child(up)
@@ -2361,6 +2358,10 @@ func _item_details(it: Dictionary, compare: bool) -> Control:
 		bv.add_child(UI.wrap(("%s — %s" % [UI.item_title(eq), UI.item_line(eq)]) if eq != null else "ничего", Style.FONT_SMALL, Style.TEXT))
 		bv.add_child(UI.label(("Мощь героя +%d" % diff) if diff > 0 else ("Мощь героя %d" % diff), Style.FONT_SMALL,
 			Style.SUCCESS if diff > 0 else Style.DANGER, true))
+		# Мощь counts item level and quality only; this line says if the stats suit the build
+		var fit := Game.build_with(it) - Game.build_now()
+		bv.add_child(UI.label("Для текущей сборки: " + ("лучше" if fit > 0 else ("хуже" if fit < 0 else "без разницы")), Style.FONT_SMALL,
+			Style.SUCCESS if fit > 0 else (Style.DANGER if fit < 0 else Style.MUTED)))
 		v.add_child(box)
 	return v
 
@@ -2571,6 +2572,37 @@ func _logout() -> void:
 	_refresh()
 
 ## What a hero stat does, with the numbers of this hero.
+## What "Мощь" is made of: item level x quality of each worn item, two-handed counts twice,
+## and the rotation spells by level and rarity.
+func _power_info(snap: Dictionary) -> void:
+	var v := UI.vbox(8)
+	v.add_child(UI.wrap("Мощь — как GearScore в WoW: считается только уровень и редкость надетых вещей и заклинаний ротации. Что вещь даёт — силу или силу заклинаний — и таланты не учитываются. Двуручное оружие считается за две руки. По Мощи подбираются наёмники: они не сильнее героя больше чем на 10%%." % [], Style.FONT_SMALL, Style.TEXT))
+	var rows := UI.vbox(2)
+	var gear: Dictionary = snap.get("gear", {})
+	var gear_sum := 0.0
+	for slot in Loot.ALL_SLOTS:
+		var it = gear.get(slot)
+		if it == null:
+			continue
+		gear_sum += Roster.item_gs(it)
+		var r := UI.hbox(6)
+		r.add_child(UI.expand(UI.label("%s · ур. %d%s" % [UI.item_title(it), int(it["ilvl"]), " · двуручное" if Loot.is_two_handed(it) else ""], Style.FONT_TINY, Style.QUALITY[it["rarity"]])))
+		r.add_child(UI.label("%d" % roundi(Roster.item_gs(it)), Style.FONT_TINY, Style.TEXT, true))
+		rows.add_child(r)
+	var spell_sum := 0.0
+	for e in snap.get("spells", []):
+		var usable := Db.spell_usable(e["id"], snap.get("weapons", []), snap.get("talents", {}))
+		var g := Roster.spell_gs(e["id"], int(e["lvl"])) if usable else 0.0
+		spell_sum += g
+		var r := UI.hbox(6)
+		var d: Dictionary = Db.SPELLS[e["id"]]
+		r.add_child(UI.expand(UI.label("%s · ур. %d%s" % [d["name"], int(e["lvl"]), "" if usable else " · не подходит к оружию"], Style.FONT_TINY, Style.RARITY[d["rarity"]])))
+		r.add_child(UI.label("%d" % roundi(g), Style.FONT_TINY, Style.TEXT, true))
+		rows.add_child(r)
+	v.add_child(rows)
+	v.add_child(UI.label("Вещи %d + заклинания %d = %d" % [roundi(gear_sum), roundi(spell_sum), Roster.power_score(snap)], Style.FONT_SMALL, Style.PRIMARY, true))
+	_modal("Мощь", v)
+
 func _stat_info(key: String, st: Dictionary, snap: Dictionary) -> void:
 	var wt := Loot.WEAPON_TYPES
 	var armor_cut := 100.0 - 100.0 * 100.0 / (100.0 + float(st["armor"]))

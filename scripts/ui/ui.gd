@@ -338,7 +338,7 @@ static func badge(parent: Control, text: String = "", near_center: bool = false)
 
 ## A stat as a table row you can press: striped background, hover/press highlight and a
 ## "?" mark on the right so it is obvious the row opens an explanation.
-static func stat_button(icon_name: String, name: String, value: String, alt: bool, cb: Callable) -> Button:
+static func stat_button(icon_name: String, name: String, value: String, alt: bool, cb: Callable, value_size: int = Style.FONT_SMALL, value_col: Color = Style.TEXT) -> Button:
 	var b := Button.new()
 	b.custom_minimum_size = Vector2(0, 32)
 	b.focus_mode = Control.FOCUS_NONE
@@ -359,7 +359,7 @@ static func stat_button(icon_name: String, name: String, value: String, alt: boo
 	m.add_child(h)
 	h.add_child(icon(icon_name, 22))
 	h.add_child(expand(label(name, Style.FONT_SMALL, Style.MUTED)))
-	h.add_child(label(value, Style.FONT_SMALL, Style.TEXT, true))
+	h.add_child(label(value, value_size, value_col, true))
 	var q := flat(Style.SECONDARY, 0, 10)
 	q.custom_minimum_size = Vector2(20, 20)
 	q.size_flags_vertical = Control.SIZE_SHRINK_CENTER

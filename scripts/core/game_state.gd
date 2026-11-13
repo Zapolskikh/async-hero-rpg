@@ -349,6 +349,15 @@ func power_with(it: Dictionary, slot: String = "") -> int:
 func power_now() -> int:
 	return Roster.power_score(hero_snapshot())
 
+## Same for how well the item suits the current build (stats it can use): the ▲ marks.
+func build_with(it: Dictionary, slot: String = "") -> int:
+	var h: Dictionary = hero.duplicate(true)
+	Rules.place_item(h["equipped"], it.duplicate(true), slot if slot != "" else str(it["slot"]))
+	return Roster.build_value(Roster.hero_snapshot(h, collection))
+
+func build_now() -> int:
+	return Roster.build_value(hero_snapshot())
+
 func unequip(slot: String) -> void:
 	act("unequip", {"slot": slot})
 

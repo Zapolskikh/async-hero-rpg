@@ -138,6 +138,7 @@ static func hero_snapshot(hero: Dictionary, collection: Dictionary) -> Dictionar
 		"weapons": Loot.weapon_types(hero["equipped"]),
 		"talents": hero.get("talents", {}).duplicate(),
 		"effects": Items.effects_of(hero["equipped"]),
+		"gear": hero["equipped"].duplicate(true),
 		"look": look(hero["equipped"]),
 		"cosmetics": cosmetic_colors(hero.get("cosmetics", {})),
 		"appearance": CharacterAppearance.normalize(hero.get("appearance")),
@@ -208,11 +209,35 @@ static func ensure_merc(m: Dictionary) -> void:
 static func baseline_spell_level(level: int) -> int:
 	return min(8, 1 + int(level / 4))
 
-## Power a typical (normal tier, no gear) mercenary of this level would have.
+## Power of a typical character of this level: uncommon gear of its level in the 8 main
+## slots (no accessories) and three common spells at the baseline level.
 static func expected_power(level: int) -> float:
-	var st := Db.hero_base_stats(level)
-	st["atk"] = st["str"]
-	return _power_value(st, st["power"] * Db.spell_level_mult(baseline_spell_level(level)), POWER_SPELL_WEIGHT, 3 * baseline_spell_level(level), 0)
+	return GS_PER_ILVL * (8.0 * level * GS_QUALITY[Items.UNCOMMON] + 3.0 * spell_ilvl(baseline_spell_level(level)) * GS_QUALITY[spell_quality(0)])
+
+## "Мощь" is a gear score, as in the WoW GearScore addon: item level times quality for every
+## worn item and every rotation spell. What an item gives (strength or spell power) and the
+## talents do not count, so a warrior who puts on a staff and caster spells is not rated
+## higher than his gear. A two-handed weapon counts twice: it takes both hands.
+const GS_PER_ILVL := 5.0
+const GS_QUALITY := [0.5, 0.75, 1.0, 1.4, 1.9, 2.6]   # poor, common, uncommon, rare, epic, legendary
+
+static func item_gs(it) -> float:
+	if it == null:
+		return 0.0
+	var hands := 2.0 if Loot.is_two_handed(it) else 1.0
+	return GS_PER_ILVL * float(it["ilvl"]) * GS_QUALITY[clampi(int(it["rarity"]), 0, GS_QUALITY.size() - 1)] * hands
+
+## A spell counts as one worn item: its level stands for an item level (level I ~ ilvl 2,
+## level X ~ ilvl 38, in step with how spells level up with the hero), its rarity for quality.
+static func spell_ilvl(spell_level: int) -> float:
+	return 4.0 * spell_level - 2.0
+
+## Spell rarities (Обычный, Редкий, Эпический, Легендарный) as item qualities.
+static func spell_quality(rarity: int) -> int:
+	return [Items.COMMON, Items.RARE, Items.EPIC, Items.LEGENDARY][clampi(rarity, 0, 3)]
+
+static func spell_gs(sid: String, spell_level: int) -> float:
+	return GS_PER_ILVL * spell_ilvl(spell_level) * GS_QUALITY[spell_quality(int(Db.SPELLS[sid].get("rarity", 0)))]
 
 const POWER_SPELL_WEIGHT := 2.5 # Doubled for a staff: it has no basic attack, all damage is spells.
 const POWER_PER_EFFECT := 0.06  # A unique effect has no stats, it is priced as a share of the total.
@@ -228,10 +253,24 @@ static func ensure_visuals(snap: Dictionary) -> void:
 	if not snap.has("ranged"):
 		snap["ranged"] = snap.get("role", "") in RANGED_ROLES
 
-## Single "Power" number shown in UI and used to compare items. It follows combat: damage
-## comes from what this build really hits with, crit and haste multiply it, armor multiplies
-## health. Still an estimate: the concept says success depends on composition, not just Power.
+## "Мощь" shown everywhere and used for the mercenary cap: the gear score of the worn items
+## (snap["gear"]) and the rotation spells. A spell the weapons cannot cast does not count.
 static func power_score(snap: Dictionary) -> int:
+	var total := 0.0
+	var gear: Dictionary = snap.get("gear", {})
+	for slot in gear:
+		total += item_gs(gear[slot])
+	var weapons: Array = snap.get("weapons", [])
+	var talents: Dictionary = snap.get("talents", {})
+	for s in snap.get("spells", []):
+		if Db.SPELLS.has(s["id"]) and Db.spell_usable(s["id"], weapons, talents):
+			total += spell_gs(s["id"], int(s["lvl"]))
+	return int(round(total))
+
+## How well the build uses its stats (not shown as a number): what the build really hits with,
+## crit and haste multiply it, armor multiplies health. Only marks bag items that suit the
+## current build (▲) and sorts them; "Мощь" is power_score.
+static func build_value(snap: Dictionary) -> int:
 	var weapons: Array = snap.get("weapons", [])
 	var talents: Dictionary = snap.get("talents", {})
 	var st: Dictionary = snap["stats"]
