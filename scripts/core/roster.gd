@@ -148,7 +148,7 @@ static func make_merc(rng: RandomNumberGenerator, _template_idx: int, level: int
 	return MercGenerator.make(rng, level)
 
 ## Guild mercenaries on the board grow with the hero (same build, new gear).
-static func relevel(rng: RandomNumberGenerator, merc: Dictionary, level: int, power_cap: float = -1.0) -> Dictionary:
+static func relevel(rng: RandomNumberGenerator, merc: Dictionary, level: int, power_ref: Dictionary = {}) -> Dictionary:
 	var spec: String = merc.get("spec", "hybrid")
 	var fresh := MercGenerator.make(rng, level, merc.get("weapons",[]), "", [], spec if MercGenerator.SPECS.has(spec) else "hybrid")
 	fresh["spells"] = merc["spells"].duplicate(true)
@@ -158,7 +158,7 @@ static func relevel(rng: RandomNumberGenerator, merc: Dictionary, level: int, po
 		if not merc.has(k):
 			continue
 		fresh[k] = merc[k]
-	MercGenerator.fit_power(rng, fresh, power_cap)
+	MercGenerator.fit_ref(rng, fresh, power_ref)
 	return fresh
 
 ## Mercenary talents within the budget of its level (older saves had twice the points);
@@ -302,26 +302,26 @@ static func _power_value(st: Dictionary, spell_stat: float, weight: float, spell
 	return int((offense + toughness + 10.0 * spell_levels) * (1.0 + POWER_PER_EFFECT * effects))
 
 ## Six independent random candidates near the hero level.
-## Six candidates near the hero level. `power_cap` > 0: none is stronger than that
-## (MercGenerator.fit_power), so a lucky roll cannot carry the hero through the campaign.
-static func roll_board(rng: RandomNumberGenerator, hero_level: int, power_cap: float = -1.0) -> Array:
+## Six candidates near the hero level, each brought to what the hero owns
+## (MercGenerator.fit_ref), so a lucky roll cannot carry the hero through the campaign.
+static func roll_board(rng: RandomNumberGenerator, hero_level: int, power_ref: Dictionary = {}) -> Array:
 	var board := []
 	var names := {}
 	for i in 6:
 		var m := MercGenerator.make(rng, _merc_level(rng, hero_level))
-		MercGenerator.fit_power(rng, m, power_cap)
+		MercGenerator.fit_ref(rng, m, power_ref)
 		while names.has(m["name"]):
 			m["name"] = Db.MERC_NAMES[rng.randi_range(0, Db.MERC_NAMES.size()-1)]
 		names[m["name"]] = true
 		board.append(m)
 	return board
 
-static func starter_party(rng: RandomNumberGenerator, power_cap: float = -1.0) -> Array:
+static func starter_party(rng: RandomNumberGenerator, power_ref: Dictionary = {}) -> Array:
 	var party := []
 	var names := {}
 	for s in MercGenerator.STARTERS:
 		var m := MercGenerator.make(rng, 1, s["weapons"], s["talents"], s["spells"])
-		MercGenerator.fit_power(rng, m, power_cap)
+		MercGenerator.fit_ref(rng, m, power_ref)
 		while names.has(m["name"]):
 			m["name"] = Db.MERC_NAMES[rng.randi_range(0, Db.MERC_NAMES.size()-1)]
 		names[m["name"]] = true

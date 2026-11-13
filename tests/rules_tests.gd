@@ -412,28 +412,54 @@ func test_items() -> void:
 			if not found_acc:
 				break
 	check(found_acc, "accessories are in the normal drop list")
-	# mercenaries are never more than 10% stronger than the hero who meets them
+	# mercenaries are rolled to 90-110% of 90% of what the hero owns, slot by slot
 	var capped := Rules.new_profile(78, T0)
 	var cap_rng := RandomNumberGenerator.new()
 	cap_rng.seed = 12
 	capped["hero"]["level"] = 12
 	for slot in ["weapon", "armor", "trinket", "head", "hands", "legs", "feet"]:
 		capped["hero"]["equipped"][slot] = Loot.roll_gear(cap_rng, 12, "drop", slot, "sword" if slot == "weapon" else "", "melee")
-	var merc_cap := MercGenerator.power_cap_for(Rules.hero_snapshot(capped))
+	var ref := MercGenerator.power_ref(capped)
 	var board := Rules.roll_board(capped, cap_rng, {})
-	var over := []
+	var outside := []
 	for m in board:
-		if m.get("npc", true) and Roster.power_score(m) > merc_cap:
-			over.append(Roster.power_score(m))
-	check(over.is_empty(), "board mercenaries stay within 110%% of the hero's power (cap %d, over: %s)" % [int(merc_cap), str(over)])
+		if m.get("npc", true):
+			var t := MercGenerator.power_target(ref, m)
+			var pw := float(Roster.power_score(m))
+			if pw > t * 1.1 + 0.5 or pw < t * 0.9 - 0.5:
+				outside.append("%d (%d-%d)" % [pw, t * 0.9, t * 1.1])
+	check(outside.is_empty(), "board mercenaries are within 90-110%% of their target: %s" % str(outside))
+	# equipping the best items or rare spells right before a refresh changes nothing
+	var worn := capped.duplicate(true)
+	var epic := Loot.roll_gear(cap_rng, 16, "drop", "legs", "", "", Items.EPIC)
+	var in_bag := capped.duplicate(true)
+	in_bag["inventory"].append(epic.duplicate(true))
+	worn["inventory"].append(capped["hero"]["equipped"]["legs"])
+	worn["hero"]["equipped"]["legs"] = epic.duplicate(true)
+	check(MercGenerator.power_ref(worn) == MercGenerator.power_ref(in_bag), "an item counts the same in the bag as worn")
+	check(MercGenerator.power_ref(in_bag)["slots"]["slot_legs"] > ref["slots"]["slot_legs"], "a better item in the bag raises the reference for its slot")
+	var swapped := capped.duplicate(true)
+	swapped["hero"]["rotation"] = ["kick", "fireball", "strike"]
+	check(MercGenerator.power_ref(swapped) == ref, "the rotation does not matter: spells count from the collection")
+	var naked := Rules.new_profile(79, T0)
+	naked["hero"]["level"] = 20
+	var nref := MercGenerator.power_ref(naked)
+	check(is_equal_approx(float(nref["slots"]["slot_armor"]), Roster.GS_PER_ILVL * 20.0), "an empty slot counts as a typical uncommon item of the hero level")
 	var wild := MercGenerator.make(cap_rng, 12, ["greatsword"], "", ["whirlwind", "mortal_strike", "strike"])
 	for slot in wild["gear"]:
 		if wild["gear"][slot] != null:
 			wild["gear"][slot] = Loot.roll_gear(cap_rng, 12, "merc", "" if wild["gear"][slot].has("wtype") else str(wild["gear"][slot]["slot"]), wild["gear"][slot].get("wtype", ""), "melee", Items.EPIC)
 	for e in wild["spells"]:
 		e["lvl"] = 5
-	MercGenerator.fit_power(cap_rng, wild, merc_cap)
-	check(Roster.power_score(wild) <= merc_cap and wild["spells"][0]["id"] == "whirlwind", "an epic greatsword merc with level V spells is brought down to the cap, spells kept")
+	MercGenerator.fit_ref(cap_rng, wild, ref)
+	check(Roster.power_score(wild) <= MercGenerator.power_target(ref, wild) * 1.1 + 0.5 and wild["spells"][0]["id"] == "whirlwind", "an epic greatsword merc with level V spells is brought down into the band, spells kept")
+	var weak := MercGenerator.make(cap_rng, 12, ["sword", "shield"])
+	for slot in weak["gear"]:
+		var it = weak["gear"][slot]
+		if it != null:
+			weak["gear"][slot] = Loot.roll_gear(cap_rng, 6, "merc", "" if it.has("wtype") else str(it["slot"]), it.get("wtype", ""), "tank", Items.COMMON)
+	MercGenerator.fit_ref(cap_rng, weak, ref)
+	check(Roster.power_score(weak) >= MercGenerator.power_target(ref, weak) * 0.9 - 0.5, "a weak roll is raised into the band")
 	var role_rng := RandomNumberGenerator.new()
 	role_rng.seed = 5
 	var roles_seen := {}

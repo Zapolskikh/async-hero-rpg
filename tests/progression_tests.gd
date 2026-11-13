@@ -108,7 +108,7 @@ func test_real_combat() -> void:
 	var rng := RandomNumberGenerator.new()
 	rng.seed = 7
 	for i in p["hired"].size():
-		p["hired"][i] = Roster.relevel(rng,p["hired"][i],6,MercGenerator.power_cap_for(Rules.hero_snapshot(p)))
+		p["hired"][i] = Roster.relevel(rng,p["hired"][i],6,MercGenerator.power_ref(p))
 	var party := Rules.party_snapshots(p)
 	var push := Expedition.build_timeline(4,"push",party,7,true)
 	check(push["won"], "representative party clears stage 4")
