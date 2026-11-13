@@ -1273,6 +1273,35 @@ static func _collect(p: Dictionary, r: RandomNumberGenerator, now: float, ctx: D
 		p["expedition"] = null
 	return _ok({"report": rep, "assists": assists})
 
+## Guaranteed gear for the first clears of the early levels: level -> quality. Mercenaries
+## follow the hero's own items, so the hero must not stay in starter gear.
+const FIRST_CLEAR_GEAR := {2: Items.UNCOMMON, 4: Items.UNCOMMON, 6: Items.UNCOMMON, 8: Items.UNCOMMON, 10: Items.RARE}
+const FIRST_CLEAR_SLOTS := ["armor", "legs", "head", "feet", "hands", "trinket"]
+
+## The item is for the hero's weakest armor or amulet slot, counting the bag (an empty one
+## first, in FIRST_CLEAR_SLOTS order); no weapon, it would pick a role.
+static func _first_clear_gear(p: Dictionary, r: RandomNumberGenerator, rep: Dictionary) -> void:
+	var lvl := int(rep["level"])
+	if not FIRST_CLEAR_GEAR.has(lvl):
+		return
+	# best owned item per slot, worn or in the bag (an earlier gift not put on yet counts)
+	var best := {}
+	var owned: Array = p["inventory"].duplicate()
+	for s in p["hero"]["equipped"]:
+		if p["hero"]["equipped"][s] != null:
+			owned.append(p["hero"]["equipped"][s])
+	for it in owned:
+		var s := str(it["slot"])
+		best[s] = maxf(float(best.get(s, 0.0)), Roster.item_gs(it))
+	var slot := ""
+	for s in FIRST_CLEAR_SLOTS:
+		if slot == "" or float(best.get(s, 0.0)) < float(best.get(slot, 0.0)):
+			slot = s
+	var it := Loot.roll_gear(r, lvl, "first", slot, "", "", int(FIRST_CLEAR_GEAR[lvl]))
+	p["inventory"].append(it)
+	rep["items"].append(it)
+	rep["first_gear"] = it["id"]
+
 static func _apply_rewards(p: Dictionary, r: RandomNumberGenerator, rep: Dictionary, ctx: Dictionary) -> void:
 	var st := _stats(p)
 	st["gold"] += int(rep["gold"]) + int(rep["auto_sold_gold"])
@@ -1295,6 +1324,7 @@ static func _apply_rewards(p: Dictionary, r: RandomNumberGenerator, rep: Diction
 		return
 	if rep.get("closed", false) and int(rep["level"]) > int(p["closed_level"]):
 		p["closed_level"] = int(rep["level"])
+		_first_clear_gear(p, r, rep)
 		var at := float(rep.get("at", 0.0))
 		var ls := level_stat(p, int(rep["level"]), at)
 		ls["closed_at"] = at

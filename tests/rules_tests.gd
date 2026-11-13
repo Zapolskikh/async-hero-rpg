@@ -444,7 +444,23 @@ func test_items() -> void:
 	var naked := Rules.new_profile(79, T0)
 	naked["hero"]["level"] = 20
 	var nref := MercGenerator.power_ref(naked)
-	check(is_equal_approx(float(nref["slots"]["slot_armor"]), Roster.GS_PER_ILVL * 20.0), "an empty slot counts as a typical uncommon item of the hero level")
+	check(float(nref["slots"]["slot_armor"]) == 0.0, "an empty slot counts as nothing, whatever the hero level")
+	# first clears of levels 2, 4, 6, 8 give a green item, level 10 a blue one, into an empty slot
+	var fc := Rules.new_profile(80, T0)
+	var fc_rng := RandomNumberGenerator.new()
+	fc_rng.seed = 4
+	var got := []
+	for lvl in range(1, 12):
+		var rep := {"level": lvl, "closed": true, "mode": "push", "items": [], "gold": 0, "auto_sold_gold": 0, "auto_sold": 0, "xp": 0, "kills": 0, "boxes": 0, "mats": {}}
+		Rules._apply_rewards(fc, fc_rng, rep, {})
+		if rep.has("first_gear"):
+			got.append([lvl, int(rep["items"][-1]["rarity"]), str(rep["items"][-1]["slot"])])
+	check(got.size() == 5 and got[0][0] == 2 and got[4][0] == 10 and got[4][1] == Items.RARE and got[0][1] == Items.UNCOMMON, "first clears give guaranteed gear on 2-10: %s" % str(got))
+	var gift_slots := got.map(func(g): return g[2])
+	var distinct := {}
+	for g in gift_slots:
+		distinct[g] = true
+	check(gift_slots[0] == "armor" and distinct.size() == 5, "each gift goes to a different empty slot, counting gifts still in the bag: %s" % str(gift_slots))
 	var wild := MercGenerator.make(cap_rng, 12, ["greatsword"], "", ["whirlwind", "mortal_strike", "strike"])
 	for slot in wild["gear"]:
 		if wild["gear"][slot] != null:

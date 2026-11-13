@@ -68,15 +68,14 @@ static func spec_spells(rng: RandomNumberGenerator, spec: String, weapons: Array
 ## collection. Putting on rare items or spells just before the board refreshes changes nothing.
 ## A mercenary is compared slot by slot (it has fewer slots at low levels): its target is
 ## REF_SHARE of the hero's best items in the slots it has plus his best spells, and it rolls
-## within BAND of that target. A slot is never below a typical item of the hero's level, so
-## an undergeared hero still gets usable mercenaries.
+## within BAND of that target. An empty slot counts as nothing: an undergeared hero gets
+## undergeared mercenaries (the first clears of levels 2-10 hand out gear, Rules.FIRST_CLEAR_GEAR).
 const REF_SHARE := 0.9
 const BAND := [0.9, 1.1]
 const RAISE_ILVL_OVER := 5     # raising a mercenary: items up to its level + this
 const RAISE_MAX_RARITY := 4    # and up to epic (legendaries are uniques, not for mercenaries)
 
 static func power_ref(p: Dictionary) -> Dictionary:
-	var lvl := int(p["hero"]["level"])
 	var items := []
 	for slot in p["hero"]["equipped"]:
 		if p["hero"]["equipped"][slot] != null:
@@ -111,11 +110,10 @@ static func power_ref(p: Dictionary) -> Dictionary:
 		pair = maxf(pair, w[0] + off)
 	accs.sort()
 	accs.reverse()
-	var typical := Roster.GS_PER_ILVL * lvl * Roster.GS_QUALITY[Items.UNCOMMON]
-	var slots := {"weapons": maxf(pair, 2.0 * typical),
+	var slots := {"weapons": pair,
 		"accessory1": accs[0] if accs.size() > 0 else 0.0, "accessory2": accs[1] if accs.size() > 1 else 0.0}
 	for slot in ["head", "armor", "hands", "legs", "feet", "trinket"]:
-		slots["slot_" + slot] = maxf(float(best.get(slot, 0.0)), typical)
+		slots["slot_" + slot] = float(best.get(slot, 0.0))
 	var spells := []
 	for sid in p["collection"]:
 		var l := int(p["collection"][sid].get("lvl", 0))
@@ -123,10 +121,9 @@ static func power_ref(p: Dictionary) -> Dictionary:
 			spells.append(Roster.spell_gs(sid, l))
 	spells.sort()
 	spells.reverse()
-	var typical_spell := Roster.spell_gs("kick", Roster.baseline_spell_level(lvl))
 	var top := []
 	for i in 3:
-		top.append(maxf(spells[i] if i < spells.size() else 0.0, typical_spell))
+		top.append(spells[i] if i < spells.size() else 0.0)
 	return {"slots": slots, "spells": top}
 
 ## REF_SHARE of the hero's best items in the slots this mercenary has, plus his best spells.
